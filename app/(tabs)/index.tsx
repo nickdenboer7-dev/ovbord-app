@@ -4,6 +4,7 @@ import { useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { LijnBadge } from "../../components/LijnBadge";
+import { SettingsButton } from "../../components/SettingsButton";
 import { modaliteitColors } from "../../constants/vervoerders";
 import { useApp } from "../../context/AppProvider";
 import { getNearby, searchStops } from "../../lib/api";
@@ -87,7 +88,8 @@ export default function HomeScreen() {
       <View style={styles.header}>
         <View style={styles.brandRow}>
           <View style={[styles.logo, { backgroundColor: colors.accent }]}><Ionicons name="train" size={20} color="#fff" /></View>
-          <View><Text style={[styles.title, { color: colors.text }]}>OVbord</Text><Text style={[styles.subtitle, { color: colors.textSoft }]}>Live OV in één oogopslag</Text></View>
+          <View style={styles.brandCopy}><Text style={[styles.title, { color: colors.text }]}>OVbord</Text><Text style={[styles.subtitle, { color: colors.textSoft }]}>Live OV in één oogopslag</Text></View>
+          <SettingsButton />
         </View>
         <Pressable onPress={() => inputRef.current?.focus()} style={[styles.searchBox, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
           <Ionicons name="search" size={18} color={colors.textSoft} />
@@ -112,10 +114,10 @@ export default function HomeScreen() {
                 <View style={[styles.modeIcon, { backgroundColor: modaliteitColors[item.mode] }]}><Ionicons name={item.mode === "train" ? "train" : item.mode === "ferry" ? "boat" : "bus"} size={17} color="#fff" /></View>
                 <View style={styles.stopMain}>
                   <Text style={[styles.stopName, { color: colors.text }]} numberOfLines={1}>{item.name}</Text>
-                  <Text style={[styles.stopCity, { color: colors.textSoft }]}>{item.city || "Nederland"}</Text>
+                  <Text style={[styles.stopCity, { color: colors.textSoft }]}>{item.city}</Text>
                   <View style={styles.badgeRow}>{item.lines.slice(0, 5).map((line, index) => <LijnBadge key={`${line.line}-${index}`} line={line.line} carrier={line.carrier} compact />)}</View>
                 </View>
-                <Text style={[styles.walkText, { color: colors.textSoft }]}>{item.walkMinutes ? `${item.walkMinutes} min\nlopen` : "—"}</Text>
+                <Text style={[styles.walkText, { color: colors.textSoft }]}>{item.walkMinutes ? `${item.walkMinutes} min\nlopen` : "Nabij"}</Text>
               </View>
             </Pressable>
           )}
@@ -128,7 +130,7 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 }, header: { paddingTop: 58, paddingHorizontal: 16, gap: 14 }, brandRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  screen: { flex: 1 }, header: { paddingTop: 58, paddingHorizontal: 16, gap: 14 }, brandRow: { flexDirection: "row", alignItems: "center", gap: 12 }, brandCopy: { flex: 1 },
   logo: { width: 44, height: 44, borderRadius: 15, alignItems: "center", justifyContent: "center" }, title: { fontSize: 27, fontWeight: "800", letterSpacing: -0.7 }, subtitle: { fontSize: 13, marginTop: 1 },
   searchBox: { height: 54, borderRadius: 17, borderWidth: 1, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 10 }, searchInput: { flex: 1, fontSize: 15, paddingVertical: 0 },
   topTabs: { borderRadius: 16, padding: 4, flexDirection: "row" }, topTab: { flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: "center" }, topTabText: { fontWeight: "700", fontSize: 13 },

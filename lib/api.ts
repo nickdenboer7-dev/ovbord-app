@@ -40,17 +40,14 @@ function mapLines(item: any) {
 function normalizeStop(item: any): StopSummary {
   const id = str(first(item?.id, item?.stop_id, item?.halte_id, item?.code, item?.ids?.[0])) || "unknown";
   const distanceMeters = num(first(item?.distance_meters, item?.distance, item?.distanceMeters));
-  const walkMinutesRaw = num(first(item?.walk_minutes, item?.walkMinutes, item?.minutes, item?.looptijd));
-  const walkMinutes = walkMinutesRaw !== undefined
-    ? walkMinutesRaw
-    : distanceMeters !== undefined
-      ? Math.max(1, Math.round(distanceMeters / 80))
-      : undefined;
+  const walkMinutes = distanceMeters !== undefined
+    ? Math.max(1, Math.round(distanceMeters / 80))
+    : undefined;
 
   return {
     id,
     name: str(first(item?.name, item?.stop_name, item?.title), "Onbekende halte"),
-    city: str(first(item?.city, item?.place, item?.town), ""),
+    city: str(first(item?.city, item?.place, item?.town, item?.municipality, item?.gemeente), ""),
     mode: pickMode(item),
     walkMinutes,
     distanceMeters,
