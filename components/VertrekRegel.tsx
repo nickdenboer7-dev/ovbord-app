@@ -36,15 +36,17 @@ export function VertrekRegel({ item, onPress }: Props) {
         <Text style={[styles.time, { color: colors.text }]} numberOfLines={1} ellipsizeMode="clip">
           {item.plannedTime}
         </Text>
-        <Text
-          style={[styles.relative, { color: colors.textSoft }]}
-          numberOfLines={1}
-          ellipsizeMode="clip"
-          adjustsFontSizeToFit
-          minimumFontScale={0.9}
-        >
-          {item.relativeText}
-        </Text>
+        {item.relativeText ? (
+          <Text
+            style={[styles.relative, { color: colors.textSoft }]}
+            numberOfLines={1}
+            ellipsizeMode="clip"
+            adjustsFontSizeToFit
+            minimumFontScale={0.9}
+          >
+            {item.relativeText}
+          </Text>
+        ) : null}
       </View>
 
       <View style={styles.infoColumn}>
@@ -146,7 +148,7 @@ const styles = StyleSheet.create({
   destination: {
     flex: 1,
     minWidth: 0,
-    fontSize: 13.5,
+    fontSize: 12.5,
     fontWeight: "800"
   },
   bottomRow: {

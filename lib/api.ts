@@ -29,17 +29,23 @@ function pickMode(item: any): Mode {
 }
 
 function mapLines(item: any) {
-  const rawLines = arrayOf<any>(first(item?.lines, item?.lijnbadges, item?.line_badges, item?.routes));
+  const detailedLines = arrayOf<any>(item?.line_details);
+  const rawLines = detailedLines.length
+    ? detailedLines
+    : arrayOf<any>(first(item?.lines, item?.lijnbadges, item?.line_badges, item?.routes));
   const source = rawLines.length ? rawLines : arrayOf<any>(item?.line ? [{ line: item.line, carrier: item.carrier }] : []);
-  return source.map((line) => ({
-    line: str(first(line?.line, line?.number, line?.name, line)),
-    carrier: str(first(line?.carrier, line?.operator, line?.agency_name, item?.carrier), inferCarrierFromLine(line?.line))
-  }));
+  return source.map((entry) => {
+    const line = str(first(entry?.line, entry?.number, entry?.name, entry));
+    return {
+      line,
+      carrier: str(first(entry?.carrier, entry?.operator, entry?.agency_name, item?.carrier), inferCarrierFromLine(line))
+    };
+  });
 }
 
 function normalizeStop(item: any): StopSummary {
   const id = str(first(item?.id, item?.stop_id, item?.halte_id, item?.code, item?.ids?.[0])) || "unknown";
-  const distanceMeters = num(first(item?.distance_meters, item?.distance, item?.distanceMeters));
+  const distanceMeters = num(first(item?.distance_meters, item?.distance_m, item?.distance, item?.distanceMeters));
   const walkMinutes = distanceMeters !== undefined
     ? Math.max(1, Math.round(distanceMeters / 80))
     : undefined;
@@ -60,10 +66,11 @@ function normalizeStop(item: any): StopSummary {
 function normalizeDeparture(item: any): DepartureItem {
   const line = str(first(item?.line, item?.line_number, item?.service, item?.route_short_name), "?");
   const plannedRaw = first(item?.planned_time, item?.planned_departure, item?.departure_time, item?.time, item?.vertrek);
+  const effectiveRaw = first(item?.effective_time, item?.actual_time, item?.expected_time, item?.realtime_time, plannedRaw);
   const delayMinutes = num(first(item?.delay_minutes, item?.delay, item?.vertraging));
   const alert = str(first(item?.alert, item?.disruption, item?.storing), "") || undefined;
   const effectiveDelay = Math.max(0, delayMinutes ?? 0);
-  const reliability: DepartureItem["reliability"] = effectiveDelay > 3
+  const reliability: DepartureItem["reliability"] = alert || effectiveDelay > 3
     ? "low"
     : effectiveDelay >= 1
       ? "medium"
@@ -86,8 +93,8 @@ function normalizeDeparture(item: any): DepartureItem {
       inferCarrierFromLine(line)
     ),
     destination: str(first(item?.destination, item?.headsign, item?.richting), "Onbekende bestemming"),
-    plannedTime: formatClock(plannedRaw),
-    relativeText: str(first(item?.relative_text, item?.countdown), relativeMinutesText(plannedRaw)),
+    plannedTime: formatClock(effectiveRaw),
+    relativeText: relativeMinutesText(effectiveRaw),
     delayMinutes,
     reliability,
     trend: item?.trend || inferTrend(delayMinutes),

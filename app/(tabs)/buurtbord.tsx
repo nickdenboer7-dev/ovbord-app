@@ -1,24 +1,27 @@
 import * as Location from "expo-location";
 import { useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, Platform, Pressable, StyleSheet, Text, View } from "react-native";
-import MapView, { Marker, UrlTile } from "react-native-maps";
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { LeafletMap } from "../../components/LeafletMap";
 import { LijnBadge } from "../../components/LijnBadge";
 import { SettingsButton } from "../../components/SettingsButton";
 import { modaliteitColors } from "../../constants/vervoerders";
 import { useApp } from "../../context/AppProvider";
-import { getNearby } from "../../lib/api";
-import { StopSummary } from "../../types/api";
+import { getHalte, getNearby } from "../../lib/api";
+import { minutesUntil } from "../../lib/format";
+import { DepartureItem, StopSummary } from "../../types/api";
 
-const OSM_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+type PreviewState = { loading: boolean; departures: DepartureItem[] };
 
 export default function BuurtbordScreen() {
   const { colors, addRecentStop } = useApp();
   const [items, setItems] = useState<StopSummary[]>([]);
+  const [previews, setPreviews] = useState<Record<string, PreviewState>>({});
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
+    let cancelled = false;
     void (async () => {
       try {
         const permission = await Location.requestForegroundPermissionsAsync();
@@ -29,24 +32,55 @@ export default function BuurtbordScreen() {
           latitude = current.coords.latitude;
           longitude = current.coords.longitude;
         }
-        setItems(await getNearby(latitude, longitude));
+        const nearby = (await getNearby(latitude, longitude)).slice(0, 5);
+        if (cancelled) return;
+        setItems(nearby);
+        setPreviews(Object.fromEntries(nearby.map((stop) => [stop.id, { loading: true, departures: [] }])));
+        setLoading(false);
+
+        await Promise.all(nearby.map(async (stop) => {
+          try {
+            const board = await getHalte(stop.id);
+            if (cancelled) return;
+            setPreviews((current) => ({
+              ...current,
+              [stop.id]: { loading: false, departures: board.departures.slice(0, 3) }
+            }));
+          } catch (error) {
+            console.error(`Vertrekken laden mislukt voor ${stop.id}`, error);
+            if (!cancelled) setPreviews((current) => ({ ...current, [stop.id]: { loading: false, departures: [] } }));
+          }
+        }));
       } catch (error) {
         console.error("Buurtbord laden mislukt", error);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
+    return () => { cancelled = true; };
   }, []);
 
   const bestStopId = useMemo(() => {
-    const withDistance = items.filter((item) => item.walkMinutes !== undefined);
-    return [...withDistance].sort((a, b) => (a.walkMinutes ?? 999) - (b.walkMinutes ?? 999))[0]?.id || "";
+    const candidates = items.map((stop) => {
+      const departures = previews[stop.id]?.departures || [];
+      const realMinutes = departures
+        .map((departure) => minutesUntil(departure.plannedTime))
+        .filter((minutes) => minutes >= (stop.walkMinutes ?? 1));
+      if (!realMinutes.length) return null;
+      const soonest = Math.min(...realMinutes);
+      return { id: stop.id, score: soonest + (stop.walkMinutes ?? 1) };
+    }).filter((value): value is { id: string; score: number } => Boolean(value));
+    return candidates.sort((a, b) => a.score - b.score)[0]?.id || "";
+  }, [items, previews]);
+
+  const center = useMemo(() => {
+    const first = items.find((item) => item.lat !== undefined && item.lon !== undefined);
+    return { lat: first?.lat ?? 52.1601, lon: first?.lon ?? 5.3848 };
   }, [items]);
 
-  const region = useMemo(() => {
-    const first = items.find((item) => item.lat !== undefined && item.lon !== undefined);
-    return { latitude: first?.lat ?? 52.1601, longitude: first?.lon ?? 5.3848, latitudeDelta: 0.035, longitudeDelta: 0.035 };
-  }, [items]);
+  const mapMarkers = useMemo(() => items
+    .filter((item) => item.lat !== undefined && item.lon !== undefined)
+    .map((item) => ({ id: item.id, lat: item.lat!, lon: item.lon!, title: item.name, color: modaliteitColors[item.mode] })), [items]);
 
   const openStop = (stop: StopSummary) => {
     addRecentStop(stop);
@@ -64,24 +98,7 @@ export default function BuurtbordScreen() {
       </View>
 
       <View style={[styles.mapWrap, { borderColor: colors.border, backgroundColor: colors.surface }]}> 
-        <MapView
-          style={styles.map}
-          region={region}
-          provider={undefined}
-          mapType={Platform.OS === "android" ? "none" : "standard"}
-        >
-          <UrlTile urlTemplate={OSM_URL} maximumZ={19} />
-          {items.filter((item) => item.lat !== undefined && item.lon !== undefined).map((item) => (
-            <Marker
-              key={item.id}
-              coordinate={{ latitude: item.lat!, longitude: item.lon! }}
-              title={item.name}
-              description={item.city}
-              pinColor={modaliteitColors[item.mode]}
-            />
-          ))}
-        </MapView>
-        <Text style={[styles.attribution, { backgroundColor: colors.surface, color: colors.textSoft }]}>© OpenStreetMap contributors</Text>
+        <LeafletMap markers={mapMarkers} center={center} />
       </View>
 
       {loading ? <View style={styles.center}><ActivityIndicator color={colors.accent} /></View> : (
@@ -89,28 +106,45 @@ export default function BuurtbordScreen() {
           data={items}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => (
-            <Pressable onPress={() => openStop(item)} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}> 
-              <View style={styles.topRow}>
-                <View style={styles.nameArea}>
-                  <View style={[styles.modeDot, { backgroundColor: modaliteitColors[item.mode] }]} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>{item.name}</Text>
-                    <Text style={[styles.meta, { color: colors.textSoft }]}>{item.walkMinutes ? `${item.walkMinutes} min lopen` : "Nabij"}</Text>
+          renderItem={({ item }) => {
+            const preview = previews[item.id] || { loading: true, departures: [] };
+            return (
+              <Pressable onPress={() => openStop(item)} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}> 
+                <View style={styles.topRow}>
+                  <View style={styles.nameArea}>
+                    <View style={[styles.modeDot, { backgroundColor: modaliteitColors[item.mode] }]} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>{item.name}</Text>
+                      <Text style={[styles.meta, { color: colors.textSoft }]}>{item.walkMinutes ? `${item.walkMinutes} min lopen` : "Nabij"}</Text>
+                    </View>
                   </View>
+                  {item.id === bestStopId ? <View style={[styles.bestBadge, { backgroundColor: colors.successSoft }]}><Text style={[styles.bestBadgeText, { color: colors.accent }]}>Beste halte</Text></View> : null}
                 </View>
-                {item.id === bestStopId ? <View style={[styles.bestBadge, { backgroundColor: colors.successSoft }]}><Text style={[styles.bestBadgeText, { color: colors.success }]}>Beste halte</Text></View> : null}
-              </View>
-              <View style={styles.departureRow}>
-                {item.lines.slice(0, 3).map((line, index) => (
-                  <View key={`${line.line}-${index}`} style={styles.departureChip}>
-                    <LijnBadge line={line.line} carrier={line.carrier} compact />
-                    <Text style={[styles.departureMeta, { color: colors.textSoft }]}>{2 + index * 4} min</Text>
+
+                {preview.loading ? (
+                  <View style={styles.previewLoading}><ActivityIndicator size="small" color={colors.accent} /><Text style={[styles.previewText, { color: colors.textSoft }]}>Vertrekken laden…</Text></View>
+                ) : preview.departures.length ? (
+                  <View style={styles.departureList}>
+                    {preview.departures.map((departure) => {
+                      const nearbyCarrier = item.lines.find((line) => line.line === departure.line)?.carrier;
+                      return (
+                      <View key={departure.id} style={styles.departureRow}>
+                        <LijnBadge line={departure.line} carrier={departure.carrier || nearbyCarrier} compact />
+                        <Text style={[styles.destination, { color: colors.text }]} numberOfLines={1}>{departure.destination}</Text>
+                        <View style={styles.departureTime}>
+                          <Text style={[styles.clock, { color: colors.text }]}>{departure.plannedTime}</Text>
+                          {departure.relativeText ? <Text style={[styles.countdown, { color: colors.textSoft }]}>{departure.relativeText}</Text> : null}
+                        </View>
+                      </View>
+                      );
+                    })}
                   </View>
-                ))}
-              </View>
-            </Pressable>
-          )}
+                ) : (
+                  <Text style={[styles.previewText, { color: colors.textSoft }]}>Geen actuele vertrekken.</Text>
+                )}
+              </Pressable>
+            );
+          }}
           ListEmptyComponent={<Text style={[styles.empty, { color: colors.textSoft }]}>Geen haltes in de buurt gevonden.</Text>}
         />
       )}
@@ -124,21 +158,24 @@ const styles = StyleSheet.create({
   headerCopy: { flex: 1 },
   title: { fontSize: 27, fontWeight: "800", letterSpacing: -0.6 },
   subtitle: { fontSize: 13, marginTop: 4 },
-  mapWrap: { margin: 16, height: 220, borderRadius: 24, overflow: "hidden", borderWidth: 1, position: "relative" },
-  map: { flex: 1 },
-  attribution: { position: "absolute", right: 6, bottom: 5, paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4, fontSize: 9, overflow: "hidden" },
-  listContent: { paddingHorizontal: 16, paddingBottom: 28, gap: 12 },
-  card: { borderRadius: 20, borderWidth: 1, padding: 14, gap: 12 },
-  topRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
-  nameArea: { flexDirection: "row", gap: 10, alignItems: "center", flex: 1 },
-  modeDot: { width: 16, height: 16, borderRadius: 999 },
-  name: { fontSize: 16, fontWeight: "800" },
-  meta: { marginTop: 4, fontSize: 13 },
-  bestBadge: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
-  bestBadgeText: { fontSize: 12, fontWeight: "800" },
-  departureRow: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  departureChip: { flexDirection: "row", alignItems: "center", gap: 5 },
-  departureMeta: { fontSize: 12, fontWeight: "700" },
+  mapWrap: { margin: 16, height: 220, borderRadius: 24, overflow: "hidden", borderWidth: 1 },
+  listContent: { paddingHorizontal: 16, paddingBottom: 30, gap: 10 },
+  card: { borderRadius: 18, borderWidth: 1, padding: 13, gap: 10 },
+  topRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  nameArea: { flexDirection: "row", gap: 9, alignItems: "center", flex: 1 },
+  modeDot: { width: 14, height: 14, borderRadius: 999 },
+  name: { fontSize: 15, fontWeight: "800" },
+  meta: { marginTop: 3, fontSize: 12 },
+  bestBadge: { paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999 },
+  bestBadgeText: { fontSize: 11, fontWeight: "900" },
+  previewLoading: { minHeight: 30, flexDirection: "row", alignItems: "center", gap: 8 },
+  previewText: { fontSize: 12, fontWeight: "600" },
+  departureList: { gap: 7 },
+  departureRow: { minHeight: 28, flexDirection: "row", alignItems: "center", gap: 7 },
+  destination: { flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: "700" },
+  departureTime: { width: 72, alignItems: "flex-end" },
+  clock: { fontSize: 12, fontWeight: "900", fontVariant: ["tabular-nums"] },
+  countdown: { marginTop: 1, fontSize: 9.5, fontWeight: "600" },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   empty: { padding: 20, textAlign: "center" }
 });

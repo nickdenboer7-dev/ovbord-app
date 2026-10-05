@@ -70,9 +70,9 @@ export function minutesUntil(value?: string | number | null) {
 
 export function relativeMinutesText(value?: string | number | null) {
   const minutes = minutesUntil(value);
-  if (minutes <= 0) return "nu";
-  if (minutes === 1) return "over 1 min";
-  return `over ${minutes} min`;
+  if (minutes === 0) return "nu";
+  if (minutes >= 1 && minutes <= 59) return `over ${minutes} min`;
+  return "";
 }
 
 export function inferTrend(delayMinutes?: number): Trend {

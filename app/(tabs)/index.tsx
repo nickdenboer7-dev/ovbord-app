@@ -99,7 +99,7 @@ export default function HomeScreen() {
         <View style={[styles.topTabs, { backgroundColor: colors.surfaceAlt }]}> 
           {([{ key: "nabij", label: "Nabij" }, { key: "recent", label: "Recent" }, { key: "favoriet", label: "Favoriet" }] as const).map((tab) => {
             const active = selectedTab === tab.key;
-            return <Pressable key={tab.key} onPress={() => { setSelectedTab(tab.key); setQuery(""); }} style={[styles.topTab, { backgroundColor: active ? colors.accentSoft : "transparent" }]}><Text style={[styles.topTabText, { color: active ? colors.accent : colors.textSoft }]}>{tab.label}</Text></Pressable>;
+            return <Pressable key={tab.key} onPress={() => { setSelectedTab(tab.key); setQuery(""); }} style={[styles.topTab, { backgroundColor: active ? colors.successSoft : "transparent" }]}><Text style={[styles.topTabText, { color: active ? colors.accent : colors.textSoft }]}>{tab.label}</Text></Pressable>;
           })}
         </View>
       </View>
@@ -133,8 +133,8 @@ const styles = StyleSheet.create({
   screen: { flex: 1 }, header: { paddingTop: 58, paddingHorizontal: 16, gap: 14 }, brandRow: { flexDirection: "row", alignItems: "center", gap: 12 }, brandCopy: { flex: 1 },
   logo: { width: 44, height: 44, borderRadius: 15, alignItems: "center", justifyContent: "center" }, title: { fontSize: 27, fontWeight: "800", letterSpacing: -0.7 }, subtitle: { fontSize: 13, marginTop: 1 },
   searchBox: { height: 54, borderRadius: 17, borderWidth: 1, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 10 }, searchInput: { flex: 1, fontSize: 15, paddingVertical: 0 },
-  topTabs: { borderRadius: 16, padding: 4, flexDirection: "row" }, topTab: { flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: "center" }, topTabText: { fontWeight: "700", fontSize: 13 },
-  listContent: { padding: 16, gap: 12, paddingBottom: 110 }, stopCard: { borderWidth: 1, borderRadius: 20, padding: 14, shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 1 },
+  topTabs: { borderRadius: 16, padding: 4, flexDirection: "row" }, topTab: { flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: "center" }, topTabText: { fontWeight: "800", fontSize: 13 },
+  listContent: { padding: 16, gap: 12, paddingBottom: 150 }, stopCard: { borderWidth: 1, borderRadius: 20, padding: 14, shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 1 },
   stopRow: { flexDirection: "row", alignItems: "flex-start", gap: 12 }, modeIcon: { width: 38, height: 38, borderRadius: 13, alignItems: "center", justifyContent: "center" }, stopMain: { flex: 1, gap: 3 }, stopName: { fontSize: 16, fontWeight: "800" }, stopCity: { fontSize: 13 }, badgeRow: { flexDirection: "row", gap: 6, flexWrap: "wrap", marginTop: 7 }, walkText: { fontSize: 12, fontWeight: "700", width: 58, textAlign: "right", lineHeight: 17 },
-  fab: { position: "absolute", right: 20, bottom: 84, width: 60, height: 60, borderRadius: 20, alignItems: "center", justifyContent: "center", shadowOpacity: 0.22, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 6 }, center: { flex: 1, alignItems: "center", justifyContent: "center" }, empty: { paddingTop: 70, alignItems: "center", gap: 10 }
+  fab: { position: "absolute", right: 20, bottom: 88, width: 52, height: 52, borderRadius: 18, alignItems: "center", justifyContent: "center", shadowOpacity: 0.22, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 6 }, center: { flex: 1, alignItems: "center", justifyContent: "center" }, empty: { paddingTop: 70, alignItems: "center", gap: 10 }
 });

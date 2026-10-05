@@ -34,7 +34,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [favoriteStops, setFavoriteStops] = useState<StopSummary[]>([]);
   const [favoriteLines, setFavoriteLines] = useState<string[]>([]);
   const [recentStops, setRecentStops] = useState<StopSummary[]>([]);
-  const [deviceScheme, setDeviceScheme] = useState<ColorSchemeName>(Appearance.getColorScheme());
+  const [deviceScheme, setDeviceScheme] = useState<ColorSchemeName | null | undefined>(Appearance.getColorScheme());
 
   useEffect(() => {
     const subscription = Appearance.addChangeListener(({ colorScheme }) => setDeviceScheme(colorScheme));
