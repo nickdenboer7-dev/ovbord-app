@@ -53,11 +53,6 @@ export default function HalteDetailScreen() {
     return data.departures;
   }, [data, tab]);
 
-  const visibleItems = useMemo(() => {
-    if (tab !== "departures" || activeItems.length <= 1) return activeItems;
-    return [activeItems[0], ...activeItems.slice(4)];
-  }, [activeItems, tab]);
-
   if (loading || !data) return <View style={[styles.center, { backgroundColor: colors.background }]}><ActivityIndicator color={colors.accent} /></View>;
   const favorite = isFavoriteStop(data.stop.id);
 
@@ -74,10 +69,10 @@ export default function HalteDetailScreen() {
         </View>
       </View>
       <FlatList
-        data={visibleItems}
+        data={activeItems}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
-        renderItem={({ item, index }) => <VertrekRegel item={item} compactItems={tab === "departures" && index === 0 ? activeItems.slice(1, 4) : []} onPress={() => { if (item.ritId) router.push({ pathname: "/rit/[id]", params: { id: item.ritId } }); }} />}
+        renderItem={({ item }) => <VertrekRegel item={item} onPress={() => { if (item.ritId) router.push({ pathname: "/rit/[id]", params: { id: item.ritId } }); }} />}
         ListEmptyComponent={<View style={[styles.emptyBox, { backgroundColor: colors.surface, borderColor: colors.border }]}><Text style={{ color: colors.textSoft }}>Geen gegevens beschikbaar.</Text></View>}
       />
     </View>
@@ -85,5 +80,5 @@ export default function HalteDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 }, header: { paddingTop: 54, paddingHorizontal: 16, gap: 14 }, headerRow: { flexDirection: "row", alignItems: "center", gap: 12 }, iconButton: { width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center" }, stopTitleRow: { flexDirection: "row", alignItems: "center", gap: 9 }, modeDot: { width: 16, height: 16, borderRadius: 999 }, title: { fontSize: 22, fontWeight: "800", flex: 1 }, subtitle: { marginTop: 4, fontSize: 13 }, tabWrap: { borderRadius: 16, padding: 4, flexDirection: "row" }, tabButton: { flex: 1, alignItems: "center", paddingVertical: 10, borderRadius: 12 }, tabButtonText: { fontWeight: "700", fontSize: 13 }, listContent: { padding: 16, gap: 12, paddingBottom: 32 }, emptyBox: { borderWidth: 1, borderRadius: 20, padding: 16 }, center: { flex: 1, alignItems: "center", justifyContent: "center" }
+  screen: { flex: 1 }, header: { paddingTop: 54, paddingHorizontal: 16, gap: 14 }, headerRow: { flexDirection: "row", alignItems: "center", gap: 12 }, iconButton: { width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center" }, stopTitleRow: { flexDirection: "row", alignItems: "center", gap: 9 }, modeDot: { width: 16, height: 16, borderRadius: 999 }, title: { fontSize: 22, fontWeight: "800", flex: 1 }, subtitle: { marginTop: 4, fontSize: 13 }, tabWrap: { borderRadius: 16, padding: 4, flexDirection: "row" }, tabButton: { flex: 1, alignItems: "center", paddingVertical: 10, borderRadius: 12 }, tabButtonText: { fontWeight: "700", fontSize: 13 }, listContent: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 32 }, emptyBox: { borderWidth: 1, borderRadius: 20, padding: 16 }, center: { flex: 1, alignItems: "center", justifyContent: "center" }
 });

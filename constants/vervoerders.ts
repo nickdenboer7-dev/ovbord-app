@@ -10,6 +10,8 @@ export const vervoerderColors: Record<string, { bg: string; text: string }> = {
   Connexxion: { bg: "#0066CC", text: "#FFFFFF" },
   EBS: { bg: "#FF6B00", text: "#FFFFFF" },
   UOV: { bg: "#FFCC00", text: "#000000" },
+  RRReis: { bg: "#167A4A", text: "#FFFFFF" },
+  Breng: { bg: "#E53935", text: "#FFFFFF" },
   Night: { bg: "#343A40", text: "#FFFFFF" },
   Default: { bg: "#495057", text: "#FFFFFF" }
 };
@@ -22,24 +24,38 @@ export const modaliteitColors: Record<Mode, string> = {
   ferry: "#26c6da"
 };
 
+function normalizeCarrier(value?: string) {
+  return (value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]/g, "");
+}
+
 export function getVervoerderStyle(name?: string, line?: string) {
-  const normalized = (name || "").trim().toLowerCase();
+  const carrier = normalizeCarrier(name);
   const normalizedLine = (line || "").trim().toUpperCase();
 
-  if (normalized.includes("connexxion") || normalized.includes("cxx")) return vervoerderColors.Connexxion;
-  if (normalized.includes("qbuzz")) return vervoerderColors.Qbuzz;
-  if (normalized.includes("ebs")) return vervoerderColors.EBS;
-  if (normalized.includes("u-ov") || normalized.includes("uov")) return vervoerderColors.UOV;
-  if (normalized.includes("ns")) return vervoerderColors.NS;
-  if (normalized.includes("gvb")) return vervoerderColors.GVB;
-  if (normalized.includes("ret")) return vervoerderColors.RET;
-  if (normalized.includes("arriva")) return vervoerderColors.Arriva;
-  if (normalized.includes("htm")) return vervoerderColors.HTM;
+  if (carrier.includes("connexxion") || carrier === "cxx" || carrier.includes("transdev")) {
+    return vervoerderColors.Connexxion;
+  }
+  if (carrier.includes("qbuzz")) return vervoerderColors.Qbuzz;
+  if (carrier.includes("ebs") || carrier.includes("ebspublictransportation")) return vervoerderColors.EBS;
+  if (carrier.includes("uov") || carrier.includes("utrechtov")) return vervoerderColors.UOV;
+  if (carrier.includes("arriva")) return vervoerderColors.Arriva;
+  if (carrier.includes("gvb")) return vervoerderColors.GVB;
+  if (carrier.includes("ret")) return vervoerderColors.RET;
+  if (carrier.includes("htm")) return vervoerderColors.HTM;
+  if (carrier.includes("rrreis") || carrier.includes("keolis")) return vervoerderColors.RRReis;
+  if (carrier.includes("breng")) return vervoerderColors.Breng;
+  if (carrier === "ns" || carrier.includes("nederlandse spoorwegen")) return vervoerderColors.NS;
 
+  if (/^N[A-Z0-9-]*$/.test(normalizedLine)) return vervoerderColors.Night;
   if (/^3\d{2}$/.test(normalizedLine) || normalizedLine === "394" || normalizedLine === "395") {
     return vervoerderColors.Connexxion;
   }
-  if (/^N(?:\d+|[A-Z0-9-]*)$/.test(normalizedLine)) return vervoerderColors.Night;
+  if (normalizedLine.startsWith("IC") || normalizedLine.startsWith("SPR")) return vervoerderColors.NS;
 
   return vervoerderColors.Default;
 }
@@ -51,6 +67,6 @@ export function inferCarrierFromLine(line?: string, carrier?: string) {
   const value = (line || "").trim().toUpperCase();
   if (value.startsWith("IC") || value.startsWith("SPR")) return "NS";
   if (/^3\d{2}$/.test(value) || value === "394" || value === "395") return "Connexxion";
-  if (/^N(?:\d+|[A-Z0-9-]*)$/.test(value)) return "Night";
+  if (/^N[A-Z0-9-]*$/.test(value)) return "Night";
   return "Default";
 }
