@@ -1,14 +1,37 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { getVervoerderStyle, inferCarrierFromLine } from "../constants/vervoerders";
 
 type Props = { line: string; carrier?: string; compact?: boolean };
 
 export function LijnBadge({ line, carrier, compact = false }: Props) {
-  const palette = getVervoerderStyle(inferCarrierFromLine(line, carrier));
+  const resolvedCarrier = inferCarrierFromLine(line, carrier);
+  const palette = getVervoerderStyle(resolvedCarrier, line);
+
+  useEffect(() => {
+    if (__DEV__) {
+      console.log("[OVbord] LijnBadge carrier", {
+        line,
+        carrier: carrier || null,
+        resolvedCarrier
+      });
+    }
+  }, [line, carrier, resolvedCarrier]);
+
   return (
-    <View style={[styles.badge, { backgroundColor: palette.bg, minHeight: compact ? 26 : 32, paddingHorizontal: compact ? 8 : 10 }]}>
-      <Text style={[styles.text, { color: palette.text, fontSize: compact ? 12 : 13 }]} numberOfLines={1}>{line}</Text>
+    <View
+      style={[
+        styles.badge,
+        {
+          backgroundColor: palette.bg,
+          minHeight: compact ? 26 : 32,
+          paddingHorizontal: compact ? 8 : 10
+        }
+      ]}
+    >
+      <Text style={[styles.text, { color: palette.text, fontSize: compact ? 12 : 13 }]} numberOfLines={1}>
+        {line}
+      </Text>
     </View>
   );
 }

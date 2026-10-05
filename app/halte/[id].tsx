@@ -53,6 +53,11 @@ export default function HalteDetailScreen() {
     return data.departures;
   }, [data, tab]);
 
+  const visibleItems = useMemo(() => {
+    if (tab !== "departures" || activeItems.length <= 1) return activeItems;
+    return [activeItems[0], ...activeItems.slice(4)];
+  }, [activeItems, tab]);
+
   if (loading || !data) return <View style={[styles.center, { backgroundColor: colors.background }]}><ActivityIndicator color={colors.accent} /></View>;
   const favorite = isFavoriteStop(data.stop.id);
 
@@ -69,7 +74,7 @@ export default function HalteDetailScreen() {
         </View>
       </View>
       <FlatList
-        data={activeItems}
+        data={visibleItems}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         renderItem={({ item, index }) => <VertrekRegel item={item} compactItems={tab === "departures" && index === 0 ? activeItems.slice(1, 4) : []} onPress={() => { if (item.ritId) router.push({ pathname: "/rit/[id]", params: { id: item.ritId } }); }} />}

@@ -1,6 +1,6 @@
 import { inferCarrierFromLine } from "../constants/vervoerders";
 import { DepartureItem, HalteBoardData, JourneyStop, Mode, RitData, StopSummary } from "../types/api";
-import { formatClock, inferReliability, inferTrend, normalizeMode, relativeMinutesText } from "./format";
+import { formatClock, inferTrend, normalizeMode, relativeMinutesText } from "./format";
 
 const API_BASE = "https://ovbord.nl";
 
@@ -64,6 +64,14 @@ function normalizeDeparture(item: any): DepartureItem {
   const line = str(first(item?.line, item?.line_number, item?.service, item?.route_short_name), "?");
   const plannedRaw = first(item?.planned_time, item?.planned_departure, item?.departure_time, item?.time, item?.vertrek);
   const delayMinutes = num(first(item?.delay_minutes, item?.delay, item?.vertraging));
+  const alert = str(first(item?.alert, item?.disruption, item?.storing), "") || undefined;
+  const effectiveDelay = delayMinutes ?? 0;
+  const reliability: DepartureItem["reliability"] = alert || effectiveDelay > 3
+    ? "low"
+    : effectiveDelay >= 1
+      ? "medium"
+      : "high";
+
   return {
     id: str(first(item?.id, item?.trip_id, item?.rit_id, `${line}-${plannedRaw}-${item?.destination}`)),
     ritId: str(first(item?.rit_id, item?.trip_id, item?.journey_id), "") || undefined,
@@ -73,10 +81,10 @@ function normalizeDeparture(item: any): DepartureItem {
     plannedTime: formatClock(plannedRaw),
     relativeText: str(first(item?.relative_text, item?.countdown), relativeMinutesText(plannedRaw)),
     delayMinutes,
-    reliability: inferReliability(first(item?.reliability, item?.position_source, item?.source)),
+    reliability,
     trend: item?.trend || inferTrend(delayMinutes),
     platform: str(first(item?.platform, item?.spoor, item?.perron), "") || undefined,
-    alert: str(first(item?.alert, item?.disruption, item?.storing), "") || undefined,
+    alert,
     mode: pickMode(item)
   };
 }
