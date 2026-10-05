@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "OVbord",
+    "slug": "ovbord-app",
+    "scheme": "ovbord",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "plugins": [
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "OVbord gebruikt je locatie om haltes in de buurt te tonen."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "nl.ovbord.app"
+    },
+    "android": {
+      "package": "nl.ovbord.app"
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
