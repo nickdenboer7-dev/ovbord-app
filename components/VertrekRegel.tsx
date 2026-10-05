@@ -33,37 +33,50 @@ export function VertrekRegel({ item, onPress }: Props) {
       </View>
 
       <View style={styles.timeColumn}>
-        <Text style={[styles.time, { color: colors.text }]}>{item.plannedTime}</Text>
-        <Text style={[styles.relative, { color: colors.textSoft }]} numberOfLines={1}>
+        <Text style={[styles.time, { color: colors.text }]} numberOfLines={1} ellipsizeMode="clip">
+          {item.plannedTime}
+        </Text>
+        <Text
+          style={[styles.relative, { color: colors.textSoft }]}
+          numberOfLines={1}
+          ellipsizeMode="clip"
+          adjustsFontSizeToFit
+          minimumFontScale={0.9}
+        >
           {item.relativeText}
         </Text>
       </View>
 
       <View style={styles.infoColumn}>
-        <View style={styles.destinationRow}>
+        <View style={styles.topRow}>
           <LijnBadge line={item.line} carrier={item.carrier} compact />
-          <Text style={[styles.destination, { color: colors.text }]} numberOfLines={1}>
+          <Text style={[styles.destination, { color: colors.text }]} numberOfLines={1} ellipsizeMode="tail">
             {item.destination}
           </Text>
-          {carrierLabel ? (
-            <Text style={[styles.carrier, { color: colors.textSoft }]} numberOfLines={1}>
-              {carrierLabel}
-            </Text>
-          ) : null}
         </View>
 
-        <View style={styles.metaRow}>
+        <View style={styles.bottomRow}>
+          <Text style={[styles.carrier, { color: colors.textMuted || colors.textSoft }]} numberOfLines={1}>
+            {carrierLabel || " "}
+          </Text>
+
           {hasDelay ? (
             <View style={[styles.delayChip, { backgroundColor: colors.dangerSoft }]}>
-              <Text style={[styles.delayText, { color: colors.danger }]}>+{item.delayMinutes} min {trendSymbol}</Text>
+              <Text style={[styles.delayText, { color: colors.danger }]} numberOfLines={1}>
+                +{item.delayMinutes} min {trendSymbol}
+              </Text>
             </View>
           ) : (
-            <Text style={[styles.onTime, { color: colors.success }]}>Op tijd</Text>
+            <Text style={[styles.onTime, { color: colors.success }]} numberOfLines={1}>
+              Op tijd
+            </Text>
           )}
 
           {item.alert ? (
             <View style={[styles.alertChip, { backgroundColor: colors.dangerSoft }]}>
-              <Text style={[styles.alertText, { color: colors.danger }]} numberOfLines={1}>Storing</Text>
+              <Text style={[styles.alertText, { color: colors.danger }]} numberOfLines={1}>
+                Storing
+              </Text>
             </View>
           ) : null}
         </View>
@@ -72,7 +85,9 @@ export function VertrekRegel({ item, onPress }: Props) {
       <View style={styles.platformColumn}>
         {item.platform ? (
           <View style={[styles.platformBadge, { backgroundColor: colors.surfaceAlt }]}>
-            <Text style={[styles.platformText, { color: colors.text }]}> {item.platform} </Text>
+            <Text style={[styles.platformText, { color: colors.text }]} numberOfLines={1}>
+              {item.platform}
+            </Text>
           </View>
         ) : (
           <View style={styles.platformPlaceholder} />
@@ -84,44 +99,48 @@ export function VertrekRegel({ item, onPress }: Props) {
 
 const styles = StyleSheet.create({
   card: {
-    minHeight: 62,
+    minHeight: 60,
     flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 9,
-    paddingRight: 12,
+    alignItems: "stretch",
+    paddingVertical: 10,
+    paddingRight: 10,
     borderBottomWidth: StyleSheet.hairlineWidth
   },
   reliabilityRail: {
     width: 4,
     alignSelf: "stretch",
-    overflow: "hidden"
+    marginRight: 10,
+    overflow: "visible"
   },
   timeColumn: {
-    width: 66,
-    paddingLeft: 10,
+    width: 64,
     paddingRight: 8,
-    justifyContent: "center"
+    justifyContent: "center",
+    gap: 4
   },
   time: {
-    fontSize: 18,
-    fontWeight: "900",
-    letterSpacing: -0.45,
-    fontVariant: ["tabular-nums"]
+    fontSize: 16,
+    fontWeight: "800",
+    lineHeight: 18,
+    letterSpacing: -0.2,
+    fontVariant: ["tabular-nums"],
+    flexWrap: "nowrap"
   },
   relative: {
-    marginTop: 2,
-    fontSize: 9.5,
+    fontSize: 10,
+    lineHeight: 12,
     fontWeight: "600"
   },
   infoColumn: {
     flex: 1,
     minWidth: 0,
-    justifyContent: "center"
+    justifyContent: "center",
+    gap: 4
   },
-  destinationRow: {
+  topRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 7,
+    gap: 6,
     minWidth: 0
   },
   destination: {
@@ -130,18 +149,16 @@ const styles = StyleSheet.create({
     fontSize: 13.5,
     fontWeight: "800"
   },
-  metaRow: {
-    minHeight: 18,
-    marginTop: 4,
+  bottomRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 4,
     minWidth: 0
   },
   carrier: {
-    maxWidth: 70,
     flexShrink: 1,
-    fontSize: 9.5,
+    maxWidth: 74,
+    fontSize: 11,
     fontWeight: "600"
   },
   delayChip: {
@@ -154,7 +171,7 @@ const styles = StyleSheet.create({
     fontWeight: "800"
   },
   onTime: {
-    fontSize: 9.5,
+    fontSize: 10,
     fontWeight: "800"
   },
   alertChip: {
@@ -174,9 +191,9 @@ const styles = StyleSheet.create({
   },
   platformBadge: {
     minWidth: 42,
-    minHeight: 28,
+    minHeight: 24,
     paddingHorizontal: 6,
-    borderRadius: 9,
+    borderRadius: 8,
     alignItems: "center",
     justifyContent: "center"
   },
@@ -186,6 +203,6 @@ const styles = StyleSheet.create({
   },
   platformPlaceholder: {
     width: 42,
-    height: 28
+    height: 24
   }
 });

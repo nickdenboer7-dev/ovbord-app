@@ -15,5 +15,9 @@ export function BetrouwbaarheidsBar({ reliability }: { reliability: Reliability 
 }
 
 const styles = StyleSheet.create({
-  bar: { width: 6, borderRadius: 999, alignSelf: "stretch" }
+  bar: {
+    width: 4,
+    alignSelf: "stretch",
+    borderRadius: 2
+  }
 });

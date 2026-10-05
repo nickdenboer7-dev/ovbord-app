@@ -34,9 +34,38 @@ export function formatClock(value?: string | number | null) {
 }
 
 export function minutesUntil(value?: string | number | null) {
+  if (typeof value === "string") {
+    const hhmm = value.match(/^(\d{1,2}):(\d{2})$/);
+    if (hhmm) {
+      const now = new Date();
+      const targetTotal = Number(hhmm[1]) * 60 + Number(hhmm[2]);
+      const nowTotal = now.getHours() * 60 + now.getMinutes();
+      let diff = targetTotal - nowTotal;
+
+      if (diff < 0) {
+        const crossesMidnight = targetTotal < nowTotal && nowTotal >= 20 * 60 && targetTotal <= 4 * 60;
+        const smallNegative = diff > -60;
+        const withinFourHours = Math.abs(diff) < 4 * 60;
+        if (crossesMidnight || smallNegative || withinFourHours) {
+          diff += 24 * 60;
+        }
+      }
+
+      return diff;
+    }
+  }
+
   const date = parseDateLoose(value);
   if (!date) return 0;
-  return Math.round((date.getTime() - Date.now()) / 60000);
+  let minutes = Math.round((date.getTime() - Date.now()) / 60000);
+  if (minutes < 0) {
+    const withinHour = minutes > -60;
+    const withinFourHours = Math.abs(minutes) < 4 * 60;
+    if (withinHour || withinFourHours) {
+      minutes += 24 * 60;
+    }
+  }
+  return minutes;
 }
 
 export function relativeMinutesText(value?: string | number | null) {
