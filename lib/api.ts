@@ -78,7 +78,7 @@ function normalizeDeparture(item: any): DepartureItem {
 
   return {
     id: str(first(item?.id, item?.trip_id, item?.rit_id, `${line}-${plannedRaw}-${item?.destination}`)),
-    ritId: str(first(item?.rit_id, item?.trip_id, item?.journey_id), "") || undefined,
+    ritId: str(first(item?.rit_id, item?.journey_id, item?.trip_id, item?.gtfs_trip_id, item?.realtime_trip_id), "") || undefined,
     line,
     carrier: str(
       first(
@@ -165,8 +165,8 @@ export async function getRit(id: string): Promise<RitData> {
   const line = str(first(raw?.line, raw?.line_number, raw?.trip?.line, raw?.service), "?");
   const carrier = str(first(raw?.carrier, raw?.operator, raw?.agency_name), inferCarrierFromLine(line));
   const points = arrayOf<any>(first(raw?.polyline, raw?.shape, raw?.route_shape, raw?.path)).map((point) => ({
-    latitude: num(first(point?.latitude, point?.lat), 0) || 0,
-    longitude: num(first(point?.longitude, point?.lon, point?.lng), 0) || 0
+    latitude: num(Array.isArray(point) ? point[0] : first(point?.latitude, point?.lat), 0) || 0,
+    longitude: num(Array.isArray(point) ? point[1] : first(point?.longitude, point?.lon, point?.lng), 0) || 0
   }));
   const stopItems = arrayOf<any>(first(raw?.stops, raw?.timeline, raw?.haltes, raw?.journey));
   const vehicle = first(raw?.vehicle, raw?.position, raw?.live_position);
@@ -182,7 +182,7 @@ export async function getRit(id: string): Promise<RitData> {
     vehicle: vLat !== undefined && vLon !== undefined ? { lat: vLat, lon: vLon } : undefined,
     polyline: points.filter((point) => point.latitude !== 0 && point.longitude !== 0),
     stops: stopItems.map((item, index) => normalizeJourneyStop(item, index, stopItems.length)),
-    liveLabel: str(first(raw?.live_label, raw?.status_label), "Live ritinformatie"),
+    liveLabel: str(first(raw?.live_label, raw?.status_label), raw?.live === false ? "Dienstregeling" : "Live ritinformatie"),
     delayLabel: str(first(raw?.delay_label, raw?.delay_text), "") || undefined
   };
 }
