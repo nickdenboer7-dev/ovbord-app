@@ -66,15 +66,31 @@ function normalizeStop(item: any): StopSummary {
 function normalizeDeparture(item: any): DepartureItem {
   const line = str(first(item?.line, item?.line_number, item?.service, item?.route_short_name), "?");
   const plannedRaw = first(item?.planned_time, item?.planned_departure, item?.departure_time, item?.time, item?.vertrek);
-  const effectiveRaw = first(item?.effective_time, item?.actual_time, item?.expected_time, item?.realtime_time, plannedRaw);
-  const delayMinutes = num(first(item?.delay_minutes, item?.delay, item?.vertraging));
+  const rawDelayMinutes = num(item?.delay_minutes);
+  const rawDelaySeconds = num(first(item?.delay_seconds, item?.delay, item?.vertraging));
+  const delayMinutes = rawDelayMinutes !== undefined
+    ? Math.round(rawDelayMinutes)
+    : rawDelaySeconds !== undefined
+      ? Math.round(rawDelaySeconds / 60)
+      : undefined;
+  const rawEffective = first(item?.effective_time, item?.actual_time, item?.expected_time, item?.realtime_time, plannedRaw);
+  const effectiveRaw = rawDelaySeconds !== undefined && (rawDelaySeconds < -300 || rawDelaySeconds > 7200)
+    ? plannedRaw
+    : rawEffective;
   const alert = str(first(item?.alert, item?.disruption, item?.storing), "") || undefined;
+  const isLive = typeof item?.live === "boolean"
+    ? item.live
+    : item?.realtime === true
+      ? true
+      : undefined;
   const effectiveDelay = Math.max(0, delayMinutes ?? 0);
-  const reliability: DepartureItem["reliability"] = alert || effectiveDelay > 3
-    ? "low"
-    : effectiveDelay >= 1
-      ? "medium"
-      : "high";
+  const reliability: DepartureItem["reliability"] = isLive === false
+    ? "planned"
+    : alert || effectiveDelay > 3
+      ? "low"
+      : effectiveDelay >= 1
+        ? "medium"
+        : "high";
 
   return {
     id: str(first(item?.id, item?.trip_id, item?.rit_id, `${line}-${plannedRaw}-${item?.destination}`)),
@@ -93,14 +109,15 @@ function normalizeDeparture(item: any): DepartureItem {
       inferCarrierFromLine(line)
     ),
     destination: str(first(item?.destination, item?.headsign, item?.richting), "Onbekende bestemming"),
-    plannedTime: formatClock(effectiveRaw),
+    plannedTime: formatClock(plannedRaw || effectiveRaw),
     relativeText: relativeMinutesText(effectiveRaw),
     delayMinutes,
     reliability,
     trend: item?.trend || inferTrend(delayMinutes),
     platform: str(first(item?.platform, item?.spoor, item?.perron), "") || undefined,
     alert,
-    mode: pickMode(item)
+    mode: pickMode(item),
+    isLive
   };
 }
 
@@ -111,17 +128,39 @@ function normalizeJourneyStop(item: any, index: number, total: number): JourneyS
   else if (stateRaw.includes("current") || stateRaw.includes("nu")) state = "current";
   else if (index === total - 1) state = "end";
 
+  const plannedRaw = first(
+    item?.planned_departure_time,
+    item?.planned_arrival_time,
+    item?.planned_time,
+    item?.planned_departure,
+    item?.planned_arrival,
+    item?.time
+  );
+  const timingLive = Boolean(first(item?.timing_live, item?.departure_timing_live, item?.arrival_timing_live));
+  const actualRaw = first(
+    item?.actual_time,
+    item?.actual_departure,
+    item?.actual_arrival,
+    timingLive ? item?.departure_time : undefined,
+    timingLive ? item?.arrival_time : undefined
+  );
+  const directDelay = num(item?.delay_minutes);
+  const delaySeconds = num(item?.delay_seconds);
+  const delayMinutes = directDelay !== undefined
+    ? Math.round(directDelay)
+    : delaySeconds !== undefined
+      ? Math.round(delaySeconds / 60)
+      : undefined;
+
   return {
     id: str(first(item?.id, item?.stop_id, `${index}`)),
     name: str(first(item?.name, item?.stop_name), "Onbekende halte"),
-    plannedTime: formatClock(first(item?.planned_time, item?.planned_arrival, item?.time)),
-    actualTime: first(item?.actual_time, item?.actual_arrival, item?.actual_departure)
-      ? formatClock(first(item?.actual_time, item?.actual_arrival, item?.actual_departure))
-      : undefined,
-    delayMinutes: num(first(item?.delay_minutes, item?.delay)),
+    plannedTime: formatClock(plannedRaw),
+    actualTime: actualRaw ? formatClock(actualRaw) : undefined,
+    delayMinutes,
     state,
-    platform: str(first(item?.platform, item?.spoor, item?.perron), "") || undefined,
-    platformChanged: Boolean(first(item?.platform_changed, item?.spoorwijziging)),
+    platform: str(first(item?.track, item?.platform, item?.spoor, item?.perron), "") || undefined,
+    platformChanged: Boolean(first(item?.platform_changed, item?.spoorwijziging, item?.platform_change)),
     lat: num(first(item?.lat, item?.latitude)),
     lon: num(first(item?.lon, item?.longitude))
   };
@@ -179,6 +218,7 @@ export async function getRit(id: string): Promise<RitData> {
     destination: str(first(raw?.destination, raw?.headsign, raw?.trip?.destination), "Onbekende bestemming"),
     carrier,
     mode: pickMode(raw),
+    live: raw?.live === true,
     vehicle: vLat !== undefined && vLon !== undefined ? { lat: vLat, lon: vLon } : undefined,
     polyline: points.filter((point) => point.latitude !== 0 && point.longitude !== 0),
     stops: stopItems.map((item, index) => normalizeJourneyStop(item, index, stopItems.length)),

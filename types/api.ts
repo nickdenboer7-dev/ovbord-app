@@ -1,5 +1,5 @@
 export type Mode = "bus" | "tram" | "metro" | "train" | "ferry";
-export type Reliability = "high" | "medium" | "low";
+export type Reliability = "high" | "medium" | "low" | "planned";
 export type Trend = "up" | "down" | "flat";
 export type JourneyStopState = "passed" | "current" | "upcoming" | "end";
 
@@ -34,6 +34,7 @@ export interface DepartureItem {
   platform?: string;
   alert?: string;
   mode?: Mode;
+  isLive?: boolean;
 }
 
 export interface HalteBoardData {
@@ -62,6 +63,7 @@ export interface RitData {
   destination: string;
   carrier?: string;
   mode: Mode;
+  live?: boolean;
   vehicle?: { lat: number; lon: number };
   polyline: { latitude: number; longitude: number }[];
   stops: JourneyStop[];

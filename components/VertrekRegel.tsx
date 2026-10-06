@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useApp } from "../context/AppProvider";
@@ -10,15 +11,25 @@ type Props = {
   onPress?: () => void;
 };
 
+function platformLabel(item: DepartureItem) {
+  if (item.mode === "train") return "Spoor";
+  if (item.mode === "ferry") return "Steiger";
+  if (item.mode === "tram" || item.mode === "metro") return "Halte";
+  return "Perron";
+}
+
 export function VertrekRegel({ item, onPress }: Props) {
   const { colors } = useApp();
   const trendSymbol = item.trend === "up" ? "↑" : item.trend === "down" ? "↓" : "→";
   const hasDelay = typeof item.delayMinutes === "number" && item.delayMinutes > 0;
   const carrierLabel = item.carrier && item.carrier !== "Default" ? item.carrier : "";
+  const plannedOnly = item.isLive === false;
 
   return (
     <Pressable
+      disabled={!onPress}
       onPress={onPress}
+      accessibilityRole={onPress ? "button" : undefined}
       style={({ pressed }) => [
         styles.card,
         {
@@ -33,17 +44,11 @@ export function VertrekRegel({ item, onPress }: Props) {
       </View>
 
       <View style={styles.timeColumn}>
-        <Text style={[styles.time, { color: colors.text }]} numberOfLines={1} ellipsizeMode="clip">
+        <Text style={[styles.time, { color: colors.text }]} numberOfLines={1}>
           {item.plannedTime}
         </Text>
         {item.relativeText ? (
-          <Text
-            style={[styles.relative, { color: colors.textSoft }]}
-            numberOfLines={1}
-            ellipsizeMode="clip"
-            adjustsFontSizeToFit
-            minimumFontScale={0.9}
-          >
+          <Text style={[styles.relative, { color: colors.textSoft }]} numberOfLines={1}>
             {item.relativeText}
           </Text>
         ) : null}
@@ -58,42 +63,47 @@ export function VertrekRegel({ item, onPress }: Props) {
         </View>
 
         <View style={styles.bottomRow}>
-          <Text style={[styles.carrier, { color: colors.textMuted || colors.textSoft }]} numberOfLines={1}>
-            {carrierLabel || " "}
-          </Text>
+          {carrierLabel ? (
+            <Text style={[styles.carrier, { color: colors.textSoft }]} numberOfLines={1}>
+              {carrierLabel}
+            </Text>
+          ) : null}
 
-          {hasDelay ? (
-            <View style={[styles.delayChip, { backgroundColor: colors.dangerSoft }]}>
-              <Text style={[styles.delayText, { color: colors.danger }]} numberOfLines={1}>
-                +{item.delayMinutes} min {trendSymbol}
-              </Text>
+          {plannedOnly ? (
+            <View style={[styles.statusChip, { backgroundColor: colors.surfaceAlt }]}>
+              <Text style={[styles.statusText, { color: colors.textSoft }]}>Dienstregeling</Text>
+            </View>
+          ) : hasDelay ? (
+            <View style={[styles.statusChip, { backgroundColor: colors.dangerSoft }]}>
+              <Text style={[styles.statusText, { color: colors.danger }]}>+{item.delayMinutes} min {trendSymbol}</Text>
+            </View>
+          ) : item.isLive ? (
+            <View style={[styles.statusChip, { backgroundColor: colors.successSoft }]}>
+              <View style={[styles.liveDot, { backgroundColor: colors.success }]} />
+              <Text style={[styles.statusText, { color: colors.success }]}>Live</Text>
             </View>
           ) : (
-            <Text style={[styles.onTime, { color: colors.success }]} numberOfLines={1}>
-              Op tijd
-            </Text>
+            <Text style={[styles.onTime, { color: colors.success }]}>Op tijd</Text>
           )}
 
           {item.alert ? (
-            <View style={[styles.alertChip, { backgroundColor: colors.dangerSoft }]}>
-              <Text style={[styles.alertText, { color: colors.danger }]} numberOfLines={1}>
-                Storing
-              </Text>
+            <View style={[styles.statusChip, { backgroundColor: colors.dangerSoft }]}>
+              <Text style={[styles.statusText, { color: colors.danger }]}>Storing</Text>
             </View>
           ) : null}
         </View>
       </View>
 
-      <View style={styles.platformColumn}>
+      <View style={styles.rightColumn}>
         {item.platform ? (
-          <View style={[styles.platformBadge, { backgroundColor: colors.surfaceAlt }]}>
-            <Text style={[styles.platformText, { color: colors.text }]} numberOfLines={1}>
-              {item.platform}
-            </Text>
+          <View style={styles.platformWrap}>
+            <Text style={[styles.platformLabel, { color: colors.textMuted }]}>{platformLabel(item)}</Text>
+            <View style={[styles.platformBadge, { backgroundColor: colors.surfaceAlt }]}>
+              <Text style={[styles.platformText, { color: colors.text }]} numberOfLines={1}>{item.platform}</Text>
+            </View>
           </View>
-        ) : (
-          <View style={styles.platformPlaceholder} />
-        )}
+        ) : null}
+        {onPress ? <Ionicons name="chevron-forward" size={16} color={colors.textMuted} /> : null}
       </View>
     </Pressable>
   );
@@ -101,98 +111,97 @@ export function VertrekRegel({ item, onPress }: Props) {
 
 const styles = StyleSheet.create({
   card: {
-    minHeight: 60,
+    minHeight: 70,
     flexDirection: "row",
     alignItems: "stretch",
-    paddingVertical: 10,
-    paddingRight: 10,
+    paddingVertical: 11,
+    paddingRight: 8,
     borderBottomWidth: StyleSheet.hairlineWidth
   },
   reliabilityRail: {
     width: 4,
     alignSelf: "stretch",
-    marginRight: 10,
-    overflow: "visible"
+    marginRight: 11
   },
   timeColumn: {
-    width: 64,
+    width: 62,
     paddingRight: 8,
     justifyContent: "center",
     gap: 4
   },
   time: {
-    fontSize: 16,
-    fontWeight: "800",
-    lineHeight: 18,
-    letterSpacing: -0.2,
-    fontVariant: ["tabular-nums"],
-    flexWrap: "nowrap"
+    fontSize: 17,
+    fontWeight: "900",
+    lineHeight: 19,
+    letterSpacing: -0.25,
+    fontVariant: ["tabular-nums"]
   },
   relative: {
-    fontSize: 10,
+    fontSize: 10.5,
     lineHeight: 12,
-    fontWeight: "600"
+    fontWeight: "700"
   },
   infoColumn: {
     flex: 1,
     minWidth: 0,
     justifyContent: "center",
-    gap: 4
+    gap: 6
   },
   topRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 7,
     minWidth: 0
   },
   destination: {
     flex: 1,
     minWidth: 0,
-    fontSize: 12.5,
+    fontSize: 14,
+    lineHeight: 17,
     fontWeight: "800"
   },
   bottomRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    minWidth: 0
+    gap: 6,
+    minWidth: 0,
+    flexWrap: "wrap"
   },
   carrier: {
-    flexShrink: 1,
-    maxWidth: 74,
-    fontSize: 11,
-    fontWeight: "600"
+    maxWidth: 78,
+    fontSize: 10.5,
+    fontWeight: "700"
   },
-  delayChip: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6
+  statusChip: {
+    minHeight: 20,
+    paddingHorizontal: 7,
+    borderRadius: 7,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4
   },
-  delayText: {
+  statusText: {
     fontSize: 9.5,
-    fontWeight: "800"
+    fontWeight: "900"
   },
+  liveDot: { width: 6, height: 6, borderRadius: 99 },
   onTime: {
     fontSize: 10,
     fontWeight: "800"
   },
-  alertChip: {
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    borderRadius: 6
-  },
-  alertText: {
-    fontSize: 9,
-    fontWeight: "800"
-  },
-  platformColumn: {
-    width: 48,
+  rightColumn: {
+    width: 62,
     marginLeft: 8,
-    alignItems: "flex-end",
-    justifyContent: "center"
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 4
   },
+  platformWrap: { alignItems: "flex-end", gap: 3 },
+  platformLabel: { fontSize: 8.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.3 },
   platformBadge: {
-    minWidth: 42,
+    minWidth: 34,
     minHeight: 24,
     paddingHorizontal: 6,
     borderRadius: 8,
@@ -200,11 +209,7 @@ const styles = StyleSheet.create({
     justifyContent: "center"
   },
   platformText: {
-    fontSize: 10.5,
+    fontSize: 11,
     fontWeight: "900"
-  },
-  platformPlaceholder: {
-    width: 42,
-    height: 24
   }
 });

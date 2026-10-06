@@ -8,7 +8,8 @@ export function BetrouwbaarheidsBar({ reliability }: { reliability: Reliability 
   const reliabilityColors: Record<Reliability, string> = {
     high: colors.success,
     medium: colors.warning,
-    low: colors.danger
+    low: colors.danger,
+    planned: colors.textMuted
   };
 
   return <View style={[styles.bar, { backgroundColor: reliabilityColors[reliability] }]} />;
@@ -19,6 +20,6 @@ const styles = StyleSheet.create({
     width: 4,
     flex: 1,
     alignSelf: "stretch",
-    borderRadius: 2
+    borderRadius: 3
   }
 });
