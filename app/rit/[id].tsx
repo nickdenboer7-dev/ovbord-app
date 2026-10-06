@@ -2,15 +2,22 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
-import { LeafletMap } from "../../components/LeafletMap";
 import { LijnBadge } from "../../components/LijnBadge";
 import { useApp } from "../../context/AppProvider";
 import { getRit } from "../../lib/api";
 import { JourneyStop, RitData } from "../../types/api";
 
-function stopLabel(stop: JourneyStop) {
+function modeIcon(mode: RitData["mode"]): keyof typeof Ionicons.glyphMap {
+  if (mode === "train") return "train-outline";
+  if (mode === "metro") return "subway-outline";
+  if (mode === "tram") return "subway-outline";
+  if (mode === "ferry") return "boat-outline";
+  return "bus-outline";
+}
+
+function stopStatus(stop: JourneyStop) {
   if (stop.state === "current") return "Nu hier";
-  if (stop.state === "end") return "Eindhalte";
+  if (typeof stop.delayMinutes === "number" && stop.delayMinutes >= 1) return `+${stop.delayMinutes} min`;
   return "";
 }
 
@@ -45,29 +52,16 @@ export default function RitScreen() {
     };
   }, [id]);
 
-  const center = useMemo(() => {
-    if (data?.vehicle) return { lat: data.vehicle.lat, lon: data.vehicle.lon };
-    const currentStop = data?.stops.find((stop) => stop.state === "current" && stop.lat !== undefined && stop.lon !== undefined);
-    if (currentStop) return { lat: currentStop.lat!, lon: currentStop.lon! };
-    const first = data?.polyline[0];
-    return { lat: first?.latitude ?? 52.0907, lon: first?.longitude ?? 5.1214 };
+  const activeIndex = useMemo(() => {
+    if (!data) return -1;
+    return data.stops.findIndex((stop) => stop.state === "current");
   }, [data]);
 
-  const mapMarkers = useMemo(() => (data?.stops || [])
-    .filter((stop) => stop.lat !== undefined && stop.lon !== undefined)
-    .map((stop) => ({
-      id: stop.id,
-      lat: stop.lat!,
-      lon: stop.lon!,
-      title: stop.name,
-      color: stop.state === "current"
-        ? colors.accent
-        : stop.state === "passed"
-          ? "#A6B2AB"
-          : stop.state === "end"
-            ? colors.accent
-            : "#75847B"
-    })), [data, colors.accent]);
+  const nextStop = useMemo(() => {
+    if (!data?.stops.length) return undefined;
+    if (activeIndex >= 0) return data.stops[activeIndex + 1] || data.stops[activeIndex];
+    return data.stops.find((stop) => stop.state === "upcoming" || stop.state === "end") || data.stops[0];
+  }, [data, activeIndex]);
 
   if (loading || !data) {
     return <View style={[styles.center, { backgroundColor: colors.background }]}><ActivityIndicator color={colors.accent} /></View>;
@@ -75,121 +69,113 @@ export default function RitScreen() {
 
   const isFavoriteLine = favoriteLines.includes(data.line);
   const isLive = data.live === true || Boolean(data.vehicle);
-  const statusText = isLive ? "Live" : "Dienstregeling";
-  const activeIndex = data.stops.findIndex((stop) => stop.state === "current");
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}> 
       <View style={styles.header}>
-        <View style={styles.headerRow}>
-          <Pressable onPress={() => router.back()} style={[styles.iconButton, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Ionicons name="chevron-back" size={22} color={colors.text} />
-          </Pressable>
+        <Pressable onPress={() => router.back()} style={[styles.backButton, { backgroundColor: colors.surface, borderColor: colors.border }]}> 
+          <Ionicons name="chevron-back" size={28} color={colors.text} />
+        </Pressable>
 
-          <View style={styles.headerCopy}>
-            <View style={styles.lineRow}>
-              <LijnBadge line={data.line} carrier={data.carrier} />
-              <View style={[styles.statusChip, { backgroundColor: isLive ? colors.successSoft : colors.surfaceAlt }]}> 
-                {isLive ? <View style={[styles.liveDot, { backgroundColor: colors.success }]} /> : <Ionicons name="time-outline" size={12} color={colors.textSoft} />}
-                <Text style={[styles.statusText, { color: isLive ? colors.success : colors.textSoft }]}>{statusText}</Text>
-              </View>
-            </View>
-            <Text style={[styles.title, { color: colors.text }]} numberOfLines={2}>→ {data.destination}</Text>
-            <Text style={[styles.subtitle, { color: colors.textSoft }]} numberOfLines={1}>
-              {[data.carrier, data.delayLabel || data.liveLabel].filter(Boolean).join(" · ")}
-            </Text>
+        <View style={styles.headerMain}>
+          <View style={styles.headerLine}>
+            <LijnBadge line={data.line} carrier={data.carrier} />
+            <Text style={[styles.destination, { color: colors.text }]} numberOfLines={2}>{data.destination}</Text>
           </View>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Favoriete lijn"
-            android_ripple={{ color: "transparent", borderless: true }}
-            onPress={() => toggleFavoriteLine(data.line)}
-            style={({ pressed }) => [styles.favoriteButton, { opacity: pressed ? 0.6 : 1 }]}
-          >
-            <Ionicons name={isFavoriteLine ? "heart" : "heart-outline"} size={24} color={isFavoriteLine ? colors.danger : colors.textSoft} />
-          </Pressable>
+          <Text style={[styles.headerSub, { color: colors.textSoft }]}>{isLive ? "Live ritinformatie" : "Dienstregeling"}</Text>
         </View>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Favoriete lijn"
+          onPress={() => toggleFavoriteLine(data.line)}
+          style={({ pressed }) => [styles.favoriteButton, { opacity: pressed ? 0.55 : 1 }]}
+        >
+          <Ionicons name={isFavoriteLine ? "heart" : "heart-outline"} size={30} color={isFavoriteLine ? colors.danger : colors.textSoft} />
+        </Pressable>
       </View>
 
-      <View style={[styles.mapWrap, { borderColor: colors.border, backgroundColor: colors.surface }]}> 
-        <LeafletMap polyline={data.polyline} markers={mapMarkers} vehicle={data.vehicle} center={center} />
-        <View pointerEvents="none" style={[styles.mapLabel, { backgroundColor: colors.surface }]}> 
-          <Ionicons name={isLive ? "navigate" : "map-outline"} size={13} color={isLive ? colors.accent : colors.textSoft} />
-          <Text style={[styles.mapLabelText, { color: colors.text }]}>{isLive ? "Live positie op de route" : "Route volgens dienstregeling"}</Text>
+      <View style={[styles.summaryCard, { backgroundColor: colors.surface, borderColor: colors.border }]}> 
+        <View style={[styles.modeIcon, { backgroundColor: colors.accentSoft }]}> 
+          <Ionicons name={modeIcon(data.mode)} size={25} color={colors.accent} />
         </View>
+        <View style={styles.summaryMain}>
+          <Text style={[styles.summaryTitle, { color: colors.text }]}>Lijn {data.line}</Text>
+          <Text style={[styles.summaryRoute, { color: colors.textSoft }]} numberOfLines={1}>Richting {data.destination}</Text>
+          <Text style={[styles.summaryStatus, { color: isLive ? colors.success : colors.textSoft }]}>{isLive ? "Live gevolgd" : "Volgens dienstregeling"}</Text>
+        </View>
+        {nextStop ? (
+          <View style={[styles.nextStopBox, { borderLeftColor: colors.border }]}> 
+            <Text style={[styles.nextLabel, { color: colors.textSoft }]}>Volgende halte</Text>
+            <Text style={[styles.nextName, { color: colors.text }]} numberOfLines={2}>{nextStop.name}</Text>
+          </View>
+        ) : null}
       </View>
 
-      <View style={styles.timelineHeader}>
-        <Text style={[styles.timelineTitle, { color: colors.text }]}>Ritverloop</Text>
-        <Text style={[styles.timelineMeta, { color: colors.textSoft }]}> 
-          {activeIndex >= 0 ? `${activeIndex + 1} van ${data.stops.length} haltes` : `${data.stops.length} haltes`}
-        </Text>
+      <View style={styles.timelineHeading}>
+        <Text style={[styles.timelineTitle, { color: colors.text }]}>Haltes</Text>
+        <Text style={[styles.timelineMeta, { color: colors.textSoft }]}>{data.stops.length} haltes</Text>
       </View>
 
       <FlatList
         data={data.stops}
         keyExtractor={(item, index) => `${item.id}-${index}`}
         contentContainerStyle={styles.timeline}
+        showsVerticalScrollIndicator={false}
         renderItem={({ item, index }) => {
-          const label = stopLabel(item);
-          const showDelay = typeof item.delayMinutes === "number" && item.delayMinutes > 0;
-          const primaryTime = item.actualTime || item.plannedTime;
           const passed = item.state === "passed";
           const current = item.state === "current";
+          const isEnd = item.state === "end" || index === data.stops.length - 1;
+          const status = stopStatus(item);
+          const showDelay = typeof item.delayMinutes === "number" && item.delayMinutes >= 1;
+          const displayTime = item.actualTime || item.plannedTime;
 
           return (
-            <View style={[styles.timelineRow, { opacity: passed ? 0.58 : 1 }]}> 
+            <View style={[styles.stopRow, { opacity: passed ? 0.52 : 1 }]}> 
               <View style={styles.timeColumn}>
-                <Text style={[styles.stopTime, { color: colors.text }]}>{primaryTime}</Text>
-                {showDelay ? <Text style={[styles.stopDelay, { color: colors.danger }]}>+{item.delayMinutes} min</Text> : null}
+                <Text style={[styles.stopTime, { color: showDelay ? colors.danger : colors.text }]}>{displayTime}</Text>
+                {showDelay ? <Text style={[styles.delayText, { color: colors.danger }]}>+{item.delayMinutes} min</Text> : null}
               </View>
 
-              <View style={styles.timelineRail}>
+              <View style={styles.railColumn}>
                 <View style={[
-                  styles.timelineDot,
+                  styles.dot,
                   {
-                    backgroundColor: current || item.state === "end" ? colors.accent : passed ? colors.accentSoft : colors.surface,
-                    borderColor: current || item.state === "end" ? colors.accent : passed ? colors.accent : colors.border
+                    backgroundColor: current ? colors.accent : colors.background,
+                    borderColor: current || passed || isEnd ? colors.accent : colors.border
                   }
-                ]} />
+                ]}>
+                  {isEnd && !current ? <View style={[styles.endDot, { backgroundColor: colors.accent }]} /> : null}
+                </View>
                 {index < data.stops.length - 1 ? (
-                  <View style={[styles.timelineLine, { backgroundColor: passed || current ? colors.accent : colors.border }]} />
+                  <View style={[styles.rail, { backgroundColor: passed || current ? colors.accent : colors.border }]} />
                 ) : null}
               </View>
 
               <View style={[
-                styles.stopContent,
+                styles.stopBody,
                 current ? { backgroundColor: colors.accentSoft, borderColor: colors.accentSoft } : { borderColor: "transparent" }
               ]}>
-                <View style={styles.stopTopRow}>
+                <View style={styles.stopTop}>
                   <Text style={[styles.stopName, { color: colors.text }]} numberOfLines={2}>{item.name}</Text>
+                  {status ? (
+                    <Text style={[styles.rowStatus, { color: current ? colors.accent : colors.danger }]}>{status}</Text>
+                  ) : null}
+                </View>
+
+                <View style={styles.stopMetaRow}>
                   {item.platform ? (
-                    <View style={[styles.platformBadge, { backgroundColor: colors.surfaceAlt }]}> 
-                      <Text style={[styles.platformText, { color: colors.text }]}>{data.mode === "train" ? `Spoor ${item.platform}` : item.platform}</Text>
+                    <Text style={[styles.platformText, { color: colors.textSoft }]}>
+                      {data.mode === "train" ? `Spoor ${item.platform}` : `Perron ${item.platform}`}
+                    </Text>
+                  ) : null}
+                  {item.platformChanged ? (
+                    <View style={[styles.changeBadge, { backgroundColor: colors.dangerSoft }]}> 
+                      <Ionicons name="swap-horizontal" size={12} color={colors.danger} />
+                      <Text style={[styles.changeText, { color: colors.danger }]}>Gewijzigd</Text>
                     </View>
                   ) : null}
                 </View>
-
-                <View style={styles.stopBottomRow}>
-                  {label ? (
-                    <View style={[styles.currentBadge, { backgroundColor: current ? colors.accent : colors.surfaceAlt }]}> 
-                      <Text style={[styles.currentBadgeText, { color: current ? "#FFFFFF" : colors.textSoft }]}>{label}</Text>
-                    </View>
-                  ) : null}
-                  {item.actualTime && item.actualTime !== item.plannedTime ? (
-                    <Text style={[styles.plannedTime, { color: colors.textSoft }]}>Gepland {item.plannedTime}</Text>
-                  ) : !isLive && !label ? (
-                    <Text style={[styles.plannedTime, { color: colors.textSoft }]}>Volgens dienstregeling</Text>
-                  ) : null}
-                </View>
-
-                {item.platformChanged ? (
-                  <View style={[styles.changeBadge, { backgroundColor: colors.dangerSoft }]}> 
-                    <Ionicons name="swap-horizontal" size={13} color={colors.danger} />
-                    <Text style={[styles.changeText, { color: colors.danger }]}>Spoor gewijzigd</Text>
-                  </View>
-                ) : null}
               </View>
             </View>
           );
@@ -202,42 +188,44 @@ export default function RitScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  header: { paddingTop: 52, paddingHorizontal: 16, paddingBottom: 4 },
-  headerRow: { flexDirection: "row", gap: 11, alignItems: "flex-start" },
-  headerCopy: { flex: 1, minWidth: 0 },
-  iconButton: { width: 40, height: 40, borderRadius: 13, borderWidth: 1, alignItems: "center", justifyContent: "center" },
-  favoriteButton: { width: 42, height: 42, alignItems: "center", justifyContent: "center", backgroundColor: "transparent", borderWidth: 0, elevation: 0 },
-  lineRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  statusChip: { minHeight: 27, paddingHorizontal: 9, borderRadius: 9, flexDirection: "row", alignItems: "center", gap: 5 },
-  liveDot: { width: 6, height: 6, borderRadius: 99 },
-  statusText: { fontSize: 10.5, fontWeight: "900" },
-  title: { fontSize: 20, lineHeight: 23, fontWeight: "900", marginTop: 8, letterSpacing: -0.3 },
-  subtitle: { marginTop: 4, fontSize: 12.5, fontWeight: "600" },
-  mapWrap: { marginHorizontal: 16, marginTop: 14, marginBottom: 12, height: 214, borderRadius: 20, borderWidth: 1, overflow: "hidden" },
-  mapLabel: { position: "absolute", left: 10, bottom: 10, minHeight: 30, borderRadius: 10, paddingHorizontal: 9, flexDirection: "row", alignItems: "center", gap: 6, shadowOpacity: 0.12, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 3 },
-  mapLabelText: { fontSize: 10.5, fontWeight: "800" },
-  timelineHeader: { paddingHorizontal: 16, paddingBottom: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  header: { paddingTop: 52, paddingHorizontal: 16, paddingBottom: 14, flexDirection: "row", alignItems: "flex-start", gap: 12 },
+  backButton: { width: 48, height: 48, borderRadius: 16, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  headerMain: { flex: 1, minWidth: 0 },
+  headerLine: { flexDirection: "row", alignItems: "center", gap: 10 },
+  destination: { flex: 1, minWidth: 0, fontSize: 24, lineHeight: 29, fontWeight: "900", letterSpacing: -0.55 },
+  headerSub: { marginTop: 5, marginLeft: 2, fontSize: 15, fontWeight: "600" },
+  favoriteButton: { width: 44, height: 48, alignItems: "center", justifyContent: "center" },
+
+  summaryCard: { marginHorizontal: 16, marginBottom: 14, borderWidth: 1, borderRadius: 18, padding: 14, flexDirection: "row", alignItems: "center", gap: 12 },
+  modeIcon: { width: 46, height: 46, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  summaryMain: { flex: 1, minWidth: 0 },
+  summaryTitle: { fontSize: 16, fontWeight: "900" },
+  summaryRoute: { marginTop: 2, fontSize: 12.5, fontWeight: "600" },
+  summaryStatus: { marginTop: 5, fontSize: 12, fontWeight: "800" },
+  nextStopBox: { width: 120, minHeight: 58, paddingLeft: 12, borderLeftWidth: 1, justifyContent: "center" },
+  nextLabel: { fontSize: 10.5, fontWeight: "700" },
+  nextName: { marginTop: 3, fontSize: 12.5, lineHeight: 16, fontWeight: "900" },
+
+  timelineHeading: { paddingHorizontal: 18, paddingBottom: 7, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   timelineTitle: { fontSize: 15, fontWeight: "900" },
   timelineMeta: { fontSize: 11.5, fontWeight: "700" },
-  timeline: { paddingHorizontal: 16, paddingBottom: 80 },
-  timelineRow: { flexDirection: "row", alignItems: "stretch", minHeight: 72 },
-  timeColumn: { width: 53, paddingTop: 6, alignItems: "flex-end", paddingRight: 7 },
-  stopTime: { fontSize: 13.5, fontWeight: "900", fontVariant: ["tabular-nums"] },
-  stopDelay: { marginTop: 3, fontSize: 9.5, fontWeight: "900" },
-  timelineRail: { width: 25, alignItems: "center" },
-  timelineDot: { marginTop: 8, width: 15, height: 15, borderRadius: 99, borderWidth: 2.5, zIndex: 2 },
-  timelineLine: { width: 3, flex: 1, marginTop: 2, minHeight: 51, borderRadius: 99 },
-  stopContent: { flex: 1, minWidth: 0, marginLeft: 8, marginBottom: 7, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, borderWidth: 1 },
-  stopTopRow: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
-  stopName: { flex: 1, minWidth: 0, fontSize: 14, lineHeight: 18, fontWeight: "800" },
-  platformBadge: { borderRadius: 8, minHeight: 24, paddingHorizontal: 7, alignItems: "center", justifyContent: "center" },
-  platformText: { fontSize: 9.5, fontWeight: "900" },
-  stopBottomRow: { flexDirection: "row", alignItems: "center", gap: 7, minHeight: 21, marginTop: 4 },
-  currentBadge: { borderRadius: 7, paddingHorizontal: 7, paddingVertical: 3 },
-  currentBadgeText: { fontSize: 9.5, fontWeight: "900" },
-  plannedTime: { fontSize: 10, fontWeight: "600" },
-  changeBadge: { marginTop: 5, alignSelf: "flex-start", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, flexDirection: "row", alignItems: "center", gap: 4 },
-  changeText: { fontSize: 10, fontWeight: "800" },
+  timeline: { paddingHorizontal: 12, paddingBottom: 86 },
+  stopRow: { minHeight: 82, flexDirection: "row", alignItems: "stretch" },
+  timeColumn: { width: 69, paddingTop: 15, paddingRight: 9, alignItems: "flex-end" },
+  stopTime: { fontSize: 15, lineHeight: 19, fontWeight: "900", fontVariant: ["tabular-nums"] },
+  delayText: { marginTop: 2, fontSize: 10.5, fontWeight: "900" },
+  railColumn: { width: 27, alignItems: "center" },
+  dot: { marginTop: 18, width: 17, height: 17, borderRadius: 99, borderWidth: 2.5, zIndex: 2, alignItems: "center", justifyContent: "center" },
+  endDot: { width: 7, height: 7, borderRadius: 99 },
+  rail: { width: 3, flex: 1, minHeight: 62, marginTop: 1, borderRadius: 99 },
+  stopBody: { flex: 1, minWidth: 0, marginLeft: 7, marginBottom: 5, borderRadius: 15, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 12 },
+  stopTop: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
+  stopName: { flex: 1, minWidth: 0, fontSize: 16, lineHeight: 20, fontWeight: "900" },
+  rowStatus: { fontSize: 11.5, fontWeight: "900" },
+  stopMetaRow: { minHeight: 20, marginTop: 5, flexDirection: "row", alignItems: "center", gap: 7 },
+  platformText: { fontSize: 11, fontWeight: "700" },
+  changeBadge: { alignSelf: "flex-start", borderRadius: 7, paddingHorizontal: 7, paddingVertical: 3, flexDirection: "row", alignItems: "center", gap: 4 },
+  changeText: { fontSize: 9.5, fontWeight: "900" },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   empty: { padding: 20, textAlign: "center" }
 });
