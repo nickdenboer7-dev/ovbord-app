@@ -12,6 +12,22 @@ import { StopSummary } from "../../types/api";
 
 type HomeTab = "nabij" | "recent" | "favoriet";
 
+function secondaryStopLabel(stop: StopSummary) {
+  const city = (stop.city || "").trim();
+  if (!city) return "";
+  if (stop.name.toLowerCase().includes(city.toLowerCase())) return "";
+  return city;
+}
+
+function distanceText(stop: StopSummary) {
+  const meters = stop.distanceMeters;
+  const walk = stop.walkMinutes;
+  if (typeof meters === "number" && walk) return `${Math.round(meters)} m · ${walk} min`;
+  if (walk) return `${walk} min lopen`;
+  if (typeof meters === "number") return `${Math.round(meters)} m`;
+  return "Nabij";
+}
+
 export default function HomeScreen() {
   const { colors, recentStops, favoriteStops, addRecentStop } = useApp();
   const [selectedTab, setSelectedTab] = useState<HomeTab>("nabij");
@@ -87,54 +103,152 @@ export default function HomeScreen() {
     <View style={[styles.screen, { backgroundColor: colors.background }]}> 
       <View style={styles.header}>
         <View style={styles.brandRow}>
-          <View style={[styles.logo, { backgroundColor: colors.accent }]}><Ionicons name="train" size={20} color="#fff" /></View>
-          <View style={styles.brandCopy}><Text style={[styles.title, { color: colors.text }]}>OVbord</Text><Text style={[styles.subtitle, { color: colors.textSoft }]}>Live OV in één oogopslag</Text></View>
+          <View style={[styles.logo, { backgroundColor: colors.accent }]}>
+            <Ionicons name="train" size={18} color="#fff" />
+          </View>
+          <View style={styles.brandCopy}>
+            <Text style={[styles.title, { color: colors.text }]}>OVbord</Text>
+            <Text style={[styles.subtitle, { color: colors.textSoft }]}>Live OV in één oogopslag</Text>
+          </View>
           <SettingsButton />
         </View>
-        <Pressable onPress={() => inputRef.current?.focus()} style={[styles.searchBox, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+
+        <Pressable
+          onPress={() => inputRef.current?.focus()}
+          style={[styles.searchBox, { backgroundColor: colors.inputBg, borderColor: colors.border }]}
+        >
           <Ionicons name="search" size={18} color={colors.textSoft} />
-          <TextInput ref={inputRef} value={query} onChangeText={setQuery} placeholder="Zoek halte of station..." placeholderTextColor={colors.textMuted} style={[styles.searchInput, { color: colors.text }]} returnKeyType="search" />
-          {query ? <Pressable onPress={() => setQuery("")}><Ionicons name="close-circle" size={18} color={colors.textMuted} /></Pressable> : null}
+          <TextInput
+            ref={inputRef}
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Zoek halte of station..."
+            placeholderTextColor={colors.textMuted}
+            style={[styles.searchInput, { color: colors.text }]}
+            returnKeyType="search"
+          />
+          {query ? (
+            <Pressable onPress={() => setQuery("")}>
+              <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+            </Pressable>
+          ) : null}
         </Pressable>
+
         <View style={[styles.topTabs, { backgroundColor: colors.surfaceAlt }]}> 
           {([{ key: "nabij", label: "Nabij" }, { key: "recent", label: "Recent" }, { key: "favoriet", label: "Favoriet" }] as const).map((tab) => {
             const active = selectedTab === tab.key;
-            return <Pressable key={tab.key} onPress={() => { setSelectedTab(tab.key); setQuery(""); }} style={[styles.topTab, { backgroundColor: active ? colors.successSoft : "transparent" }]}><Text style={[styles.topTabText, { color: active ? colors.accent : colors.textSoft }]}>{tab.label}</Text></Pressable>;
+            return (
+              <Pressable
+                key={tab.key}
+                onPress={() => { setSelectedTab(tab.key); setQuery(""); }}
+                style={[styles.topTab, { backgroundColor: active ? colors.accent : "transparent" }]}
+              >
+                <Text style={[styles.topTabText, { color: active ? "#FFFFFF" : colors.textSoft }]}>{tab.label}</Text>
+              </Pressable>
+            );
           })}
         </View>
       </View>
-      {loading ? <View style={styles.center}><ActivityIndicator color={colors.accent} /></View> : (
+
+      {loading ? (
+        <View style={styles.center}><ActivityIndicator color={colors.accent} /></View>
+      ) : (
         <FlatList
           data={dataset}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => (
-            <Pressable onPress={() => openStop(item)} style={[styles.stopCard, { backgroundColor: colors.surface, borderColor: colors.border, shadowColor: colors.cardShadow }]}>
-              <View style={styles.stopRow}>
-                <View style={[styles.modeIcon, { backgroundColor: modaliteitColors[item.mode] }]}><Ionicons name={item.mode === "train" ? "train" : item.mode === "ferry" ? "boat" : "bus"} size={17} color="#fff" /></View>
+          renderItem={({ item }) => {
+            const secondary = secondaryStopLabel(item);
+            return (
+              <Pressable
+                onPress={() => openStop(item)}
+                style={({ pressed }) => [
+                  styles.stopRow,
+                  {
+                    borderBottomColor: colors.border,
+                    backgroundColor: pressed ? colors.surfaceSoft : "transparent"
+                  }
+                ]}
+              >
+                <View style={[styles.modeIcon, { backgroundColor: modaliteitColors[item.mode] }]}>
+                  <Ionicons
+                    name={item.mode === "train" ? "train" : item.mode === "ferry" ? "boat" : item.mode === "metro" ? "subway" : "bus"}
+                    size={16}
+                    color="#fff"
+                  />
+                </View>
+
                 <View style={styles.stopMain}>
                   <Text style={[styles.stopName, { color: colors.text }]} numberOfLines={1}>{item.name}</Text>
-                  <Text style={[styles.stopCity, { color: colors.textSoft }]}>{item.city}</Text>
-                  <View style={styles.badgeRow}>{item.lines.slice(0, 5).map((line, index) => <LijnBadge key={`${line.line}-${index}`} line={line.line} carrier={line.carrier} compact />)}</View>
+                  {secondary ? <Text style={[styles.stopCity, { color: colors.textSoft }]} numberOfLines={1}>{secondary}</Text> : null}
+                  <View style={styles.badgeRow}>
+                    {item.lines.slice(0, 5).map((line, index) => (
+                      <LijnBadge key={`${line.line}-${index}`} line={line.line} carrier={line.carrier} compact />
+                    ))}
+                  </View>
                 </View>
-                <Text style={[styles.walkText, { color: colors.textSoft }]}>{item.walkMinutes ? `${item.walkMinutes} min\nlopen` : "Nabij"}</Text>
-              </View>
-            </Pressable>
+
+                <View style={styles.rightMeta}>
+                  <Text style={[styles.distance, { color: colors.textSoft }]}>{distanceText(item)}</Text>
+                  <Ionicons name="chevron-forward" size={17} color={colors.textMuted} />
+                </View>
+              </Pressable>
+            );
+          }}
+          ListEmptyComponent={(
+            <View style={styles.empty}>
+              <Ionicons name="location-outline" size={28} color={colors.textMuted} />
+              <Text style={{ color: colors.textSoft }}>
+                {query.trim() ? "Geen resultaten gevonden." : "Nog geen haltes beschikbaar."}
+              </Text>
+            </View>
           )}
-          ListEmptyComponent={<View style={styles.empty}><Ionicons name="location-outline" size={32} color={colors.textMuted} /><Text style={{ color: colors.textSoft }}>{query.trim() ? "Geen resultaten gevonden." : "Nog geen haltes beschikbaar."}</Text></View>}
         />
       )}
-      <Pressable onPress={() => inputRef.current?.focus()} style={[styles.fab, { backgroundColor: colors.accent, shadowColor: colors.cardShadow }]}><Ionicons name="search" size={24} color={colors.fabText} /></Pressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 }, header: { paddingTop: 58, paddingHorizontal: 16, gap: 14 }, brandRow: { flexDirection: "row", alignItems: "center", gap: 12 }, brandCopy: { flex: 1 },
-  logo: { width: 44, height: 44, borderRadius: 15, alignItems: "center", justifyContent: "center" }, title: { fontSize: 27, fontWeight: "800", letterSpacing: -0.7 }, subtitle: { fontSize: 13, marginTop: 1 },
-  searchBox: { height: 54, borderRadius: 17, borderWidth: 1, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 10 }, searchInput: { flex: 1, fontSize: 15, paddingVertical: 0 },
-  topTabs: { borderRadius: 16, padding: 4, flexDirection: "row" }, topTab: { flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: "center" }, topTabText: { fontWeight: "800", fontSize: 13 },
-  listContent: { padding: 16, gap: 12, paddingBottom: 150 }, stopCard: { borderWidth: 1, borderRadius: 20, padding: 14, shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 1 },
-  stopRow: { flexDirection: "row", alignItems: "flex-start", gap: 12 }, modeIcon: { width: 38, height: 38, borderRadius: 13, alignItems: "center", justifyContent: "center" }, stopMain: { flex: 1, gap: 3 }, stopName: { fontSize: 16, fontWeight: "800" }, stopCity: { fontSize: 13 }, badgeRow: { flexDirection: "row", gap: 6, flexWrap: "wrap", marginTop: 7 }, walkText: { fontSize: 12, fontWeight: "700", width: 58, textAlign: "right", lineHeight: 17 },
-  fab: { position: "absolute", right: 20, bottom: 88, width: 52, height: 52, borderRadius: 18, alignItems: "center", justifyContent: "center", shadowOpacity: 0.22, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 6 }, center: { flex: 1, alignItems: "center", justifyContent: "center" }, empty: { paddingTop: 70, alignItems: "center", gap: 10 }
+  screen: { flex: 1 },
+  header: { paddingTop: 50, paddingHorizontal: 14, gap: 10 },
+  brandRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  brandCopy: { flex: 1 },
+  logo: { width: 40, height: 40, borderRadius: 13, alignItems: "center", justifyContent: "center" },
+  title: { fontSize: 24, lineHeight: 26, fontWeight: "900", letterSpacing: -0.6 },
+  subtitle: { fontSize: 12.5, marginTop: 1, fontWeight: "600" },
+
+  searchBox: {
+    height: 46,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9
+  },
+  searchInput: { flex: 1, fontSize: 14.5, paddingVertical: 0 },
+
+  topTabs: { borderRadius: 13, padding: 3, flexDirection: "row" },
+  topTab: { flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: "center" },
+  topTabText: { fontWeight: "900", fontSize: 12.5 },
+
+  listContent: { paddingHorizontal: 14, paddingTop: 8, paddingBottom: 92 },
+  stopRow: {
+    minHeight: 78,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 9,
+    borderBottomWidth: StyleSheet.hairlineWidth
+  },
+  modeIcon: { width: 34, height: 34, borderRadius: 11, alignItems: "center", justifyContent: "center", marginRight: 10 },
+  stopMain: { flex: 1, minWidth: 0 },
+  stopName: { fontSize: 15.5, lineHeight: 18, fontWeight: "900", letterSpacing: -0.2 },
+  stopCity: { fontSize: 11.5, lineHeight: 14, marginTop: 1, fontWeight: "600" },
+  badgeRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 5, overflow: "hidden" },
+  rightMeta: { width: 88, marginLeft: 8, flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 3 },
+  distance: { flex: 1, fontSize: 10.5, lineHeight: 13, fontWeight: "800", textAlign: "right" },
+
+  center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  empty: { paddingTop: 54, alignItems: "center", gap: 8 }
 });

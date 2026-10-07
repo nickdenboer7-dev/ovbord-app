@@ -11,17 +11,9 @@ type Props = {
   onPress?: () => void;
 };
 
-function platformLabel(item: DepartureItem) {
-  if (item.mode === "train") return "Spoor";
-  if (item.mode === "ferry") return "Steiger";
-  if (item.mode === "tram" || item.mode === "metro") return "Halte";
-  return "Perron";
-}
-
 export function VertrekRegel({ item, onPress }: Props) {
   const { colors } = useApp();
-  const trendSymbol = item.trend === "up" ? "↑" : item.trend === "down" ? "↓" : "→";
-  const hasDelay = typeof item.delayMinutes === "number" && item.delayMinutes > 0;
+  const hasDelay = typeof item.delayMinutes === "number" && item.delayMinutes >= 1;
   const carrierLabel = item.carrier && item.carrier !== "Default" ? item.carrier : "";
   const plannedOnly = item.isLive === false;
 
@@ -31,11 +23,10 @@ export function VertrekRegel({ item, onPress }: Props) {
       onPress={onPress}
       accessibilityRole={onPress ? "button" : undefined}
       style={({ pressed }) => [
-        styles.card,
+        styles.row,
         {
-          backgroundColor: colors.surface,
-          borderBottomColor: colors.border,
-          opacity: pressed ? 0.72 : 1
+          backgroundColor: pressed ? colors.surfaceSoft : colors.surface,
+          borderBottomColor: colors.border
         }
       ]}
     >
@@ -44,172 +35,97 @@ export function VertrekRegel({ item, onPress }: Props) {
       </View>
 
       <View style={styles.timeColumn}>
-        <Text style={[styles.time, { color: colors.text }]} numberOfLines={1}>
-          {item.plannedTime}
-        </Text>
-        {item.relativeText ? (
-          <Text style={[styles.relative, { color: colors.textSoft }]} numberOfLines={1}>
-            {item.relativeText}
-          </Text>
+        <Text style={[styles.time, { color: hasDelay ? colors.danger : colors.text }]}>{item.plannedTime}</Text>
+        {hasDelay ? (
+          <Text style={[styles.delay, { color: colors.danger }]}>+{item.delayMinutes} min</Text>
+        ) : item.relativeText ? (
+          <Text style={[styles.relative, { color: colors.textSoft }]}>{item.relativeText}</Text>
         ) : null}
       </View>
 
       <View style={styles.infoColumn}>
         <View style={styles.topRow}>
           <LijnBadge line={item.line} carrier={item.carrier} compact />
-          <Text style={[styles.destination, { color: colors.text }]} numberOfLines={1} ellipsizeMode="tail">
+          <Text style={[styles.destination, { color: colors.text }]} numberOfLines={2} ellipsizeMode="tail">
             {item.destination}
           </Text>
         </View>
 
-        <View style={styles.bottomRow}>
-          {carrierLabel ? (
-            <Text style={[styles.carrier, { color: colors.textSoft }]} numberOfLines={1}>
-              {carrierLabel}
-            </Text>
-          ) : null}
+        <View style={styles.metaRow}>
+          {carrierLabel ? <Text style={[styles.carrier, { color: colors.textSoft }]}>{carrierLabel}</Text> : null}
 
           {plannedOnly ? (
-            <View style={[styles.statusChip, { backgroundColor: colors.surfaceAlt }]}>
-              <Text style={[styles.statusText, { color: colors.textSoft }]}>Dienstregeling</Text>
-            </View>
-          ) : hasDelay ? (
-            <View style={[styles.statusChip, { backgroundColor: colors.dangerSoft }]}>
-              <Text style={[styles.statusText, { color: colors.danger }]}>+{item.delayMinutes} min {trendSymbol}</Text>
-            </View>
+            <Text style={[styles.planned, { color: colors.textMuted }]}>Dienstregeling</Text>
           ) : item.isLive ? (
-            <View style={[styles.statusChip, { backgroundColor: colors.successSoft }]}>
+            <View style={styles.liveWrap}>
               <View style={[styles.liveDot, { backgroundColor: colors.success }]} />
-              <Text style={[styles.statusText, { color: colors.success }]}>Live</Text>
-            </View>
-          ) : (
-            <Text style={[styles.onTime, { color: colors.success }]}>Op tijd</Text>
-          )}
-
-          {item.alert ? (
-            <View style={[styles.statusChip, { backgroundColor: colors.dangerSoft }]}>
-              <Text style={[styles.statusText, { color: colors.danger }]}>Storing</Text>
+              <Text style={[styles.liveText, { color: colors.success }]}>Live</Text>
             </View>
           ) : null}
+
+          {item.alert ? <Text style={[styles.alertText, { color: colors.danger }]}>Storing</Text> : null}
         </View>
       </View>
 
       <View style={styles.rightColumn}>
         {item.platform ? (
-          <View style={styles.platformWrap}>
-            <Text style={[styles.platformLabel, { color: colors.textMuted }]}>{platformLabel(item)}</Text>
-            <View style={[styles.platformBadge, { backgroundColor: colors.surfaceAlt }]}>
-              <Text style={[styles.platformText, { color: colors.text }]} numberOfLines={1}>{item.platform}</Text>
-            </View>
+          <View style={[styles.platformBadge, { backgroundColor: colors.surfaceAlt }]}> 
+            <Text style={[styles.platformText, { color: colors.text }]} numberOfLines={1}>{item.platform}</Text>
           </View>
         ) : null}
-        {onPress ? <Ionicons name="chevron-forward" size={16} color={colors.textMuted} /> : null}
+        {onPress ? <Ionicons name="chevron-forward" size={17} color={colors.textMuted} /> : null}
       </View>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    minHeight: 70,
+  row: {
+    minHeight: 64,
     flexDirection: "row",
     alignItems: "stretch",
-    paddingVertical: 11,
+    paddingVertical: 8,
     paddingRight: 8,
     borderBottomWidth: StyleSheet.hairlineWidth
   },
-  reliabilityRail: {
-    width: 4,
-    alignSelf: "stretch",
-    marginRight: 11
-  },
-  timeColumn: {
-    width: 62,
-    paddingRight: 8,
-    justifyContent: "center",
-    gap: 4
-  },
+  reliabilityRail: { width: 3, alignSelf: "stretch", marginRight: 10 },
+  timeColumn: { width: 58, paddingRight: 7, justifyContent: "center" },
   time: {
-    fontSize: 17,
+    fontSize: 16.5,
+    lineHeight: 18,
     fontWeight: "900",
-    lineHeight: 19,
-    letterSpacing: -0.25,
+    letterSpacing: -0.2,
     fontVariant: ["tabular-nums"]
   },
-  relative: {
-    fontSize: 10.5,
-    lineHeight: 12,
-    fontWeight: "700"
-  },
-  infoColumn: {
-    flex: 1,
-    minWidth: 0,
-    justifyContent: "center",
-    gap: 6
-  },
-  topRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-    minWidth: 0
-  },
-  destination: {
-    flex: 1,
-    minWidth: 0,
-    fontSize: 14,
-    lineHeight: 17,
-    fontWeight: "800"
-  },
-  bottomRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    minWidth: 0,
-    flexWrap: "wrap"
-  },
-  carrier: {
-    maxWidth: 78,
-    fontSize: 10.5,
-    fontWeight: "700"
-  },
-  statusChip: {
-    minHeight: 20,
-    paddingHorizontal: 7,
-    borderRadius: 7,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 4
-  },
-  statusText: {
-    fontSize: 9.5,
-    fontWeight: "900"
-  },
-  liveDot: { width: 6, height: 6, borderRadius: 99 },
-  onTime: {
-    fontSize: 10,
-    fontWeight: "800"
-  },
+  relative: { marginTop: 2, fontSize: 9.5, lineHeight: 11, fontWeight: "700" },
+  delay: { marginTop: 2, fontSize: 10, lineHeight: 11, fontWeight: "900" },
+
+  infoColumn: { flex: 1, minWidth: 0, justifyContent: "center" },
+  topRow: { flexDirection: "row", alignItems: "center", gap: 7, minWidth: 0 },
+  destination: { flex: 1, minWidth: 0, fontSize: 13.5, lineHeight: 15.5, fontWeight: "900" },
+  metaRow: { minHeight: 16, marginTop: 3, flexDirection: "row", alignItems: "center", gap: 6 },
+  carrier: { fontSize: 10, fontWeight: "800" },
+  planned: { fontSize: 9.5, fontWeight: "800" },
+  liveWrap: { flexDirection: "row", alignItems: "center", gap: 3 },
+  liveDot: { width: 5, height: 5, borderRadius: 99 },
+  liveText: { fontSize: 9.5, fontWeight: "900" },
+  alertText: { fontSize: 9.5, fontWeight: "900" },
+
   rightColumn: {
-    width: 62,
-    marginLeft: 8,
+    minWidth: 52,
+    marginLeft: 7,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-end",
     gap: 4
   },
-  platformWrap: { alignItems: "flex-end", gap: 3 },
-  platformLabel: { fontSize: 8.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.3 },
   platformBadge: {
-    minWidth: 34,
-    minHeight: 24,
-    paddingHorizontal: 6,
+    minWidth: 31,
+    height: 24,
+    paddingHorizontal: 7,
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center"
   },
-  platformText: {
-    fontSize: 11,
-    fontWeight: "900"
-  }
+  platformText: { fontSize: 11, fontWeight: "900" }
 });

@@ -111,9 +111,8 @@ export default function HalteDetailScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Favoriete halte"
-            android_ripple={{ color: "transparent", borderless: true }}
             onPress={() => toggleFavoriteStop(data.stop)}
-            style={({ pressed }) => [styles.favoriteButton, { opacity: pressed ? 0.6 : 1 }]}
+            style={({ pressed }) => [styles.favoriteButton, { opacity: pressed ? 0.55 : 1 }]}
           >
             <Ionicons name={favorite ? "star" : "star-outline"} size={25} color={favorite ? colors.warning : colors.textSoft} />
           </Pressable>
@@ -128,7 +127,7 @@ export default function HalteDetailScreen() {
                 onPress={() => setTab(item.key)}
                 style={[styles.tabButton, { backgroundColor: active ? colors.accent : "transparent" }]}
               >
-                <Ionicons name={item.icon} size={15} color={active ? "#FFFFFF" : colors.textSoft} />
+                <Ionicons name={item.icon} size={14} color={active ? "#FFFFFF" : colors.textSoft} />
                 <Text style={[styles.tabButtonText, { color: active ? "#FFFFFF" : colors.textSoft }]}>{item.label}</Text>
               </Pressable>
             );
@@ -138,7 +137,7 @@ export default function HalteDetailScreen() {
 
       <View style={styles.sectionHead}>
         <Text style={[styles.sectionTitle, { color: colors.text }]}>
-          {tab === "departures" ? "Eerstvolgende vertrekken" : tab === "arrivals" ? "Eerstvolgende aankomsten" : "Actuele storingen"}
+          {tab === "departures" ? "Vertrekken" : tab === "arrivals" ? "Aankomsten" : "Storingen"}
         </Text>
         <Text style={[styles.sectionCount, { color: colors.textSoft }]}>{activeItems.length}</Text>
       </View>
@@ -154,8 +153,8 @@ export default function HalteDetailScreen() {
           />
         )}
         ListEmptyComponent={(
-          <View style={[styles.emptyBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Ionicons name="checkmark-circle-outline" size={25} color={colors.textMuted} />
+          <View style={[styles.emptyBox, { backgroundColor: colors.surface, borderColor: colors.border }]}> 
+            <Ionicons name="checkmark-circle-outline" size={23} color={colors.textMuted} />
             <Text style={{ color: colors.textSoft }}>Geen gegevens beschikbaar.</Text>
           </View>
         )}
@@ -166,23 +165,26 @@ export default function HalteDetailScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  header: { paddingTop: 52, paddingHorizontal: 16, paddingBottom: 10, gap: 16 },
-  headerRow: { flexDirection: "row", alignItems: "center", gap: 11 },
+  header: { paddingTop: 48, paddingHorizontal: 14, paddingBottom: 7, gap: 10 },
+  headerRow: { flexDirection: "row", alignItems: "center", gap: 9 },
   headerCopy: { flex: 1, minWidth: 0 },
-  iconButton: { width: 40, height: 40, borderRadius: 13, borderWidth: 1, alignItems: "center", justifyContent: "center" },
-  favoriteButton: { width: 42, height: 42, alignItems: "center", justifyContent: "center", backgroundColor: "transparent", borderWidth: 0, elevation: 0 },
-  stopTitleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  modeDot: { width: 13, height: 13, borderRadius: 99 },
-  title: { fontSize: 21, fontWeight: "900", flex: 1, lineHeight: 23, letterSpacing: -0.35 },
-  titleLong: { fontSize: 18.5, lineHeight: 21 },
-  subtitle: { marginTop: 4, fontSize: 12.5, fontWeight: "600" },
-  tabWrap: { borderRadius: 14, padding: 4, flexDirection: "row", gap: 3 },
-  tabButton: { flex: 1, minHeight: 40, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 5, borderRadius: 10 },
-  tabButtonText: { fontWeight: "800", fontSize: 12 },
-  sectionHead: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 7, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  iconButton: { width: 39, height: 39, borderRadius: 12, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  favoriteButton: { width: 39, height: 39, alignItems: "center", justifyContent: "center" },
+  stopTitleRow: { flexDirection: "row", alignItems: "center", gap: 7 },
+  modeDot: { width: 10, height: 10, borderRadius: 99 },
+  title: { fontSize: 20, fontWeight: "900", flex: 1, lineHeight: 22, letterSpacing: -0.35 },
+  titleLong: { fontSize: 18, lineHeight: 20 },
+  subtitle: { marginTop: 2, fontSize: 11.5, lineHeight: 14, fontWeight: "700" },
+
+  tabWrap: { borderRadius: 12, padding: 3, flexDirection: "row", gap: 2 },
+  tabButton: { flex: 1, minHeight: 35, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 4, borderRadius: 9 },
+  tabButtonText: { fontWeight: "900", fontSize: 11.5 },
+
+  sectionHead: { paddingHorizontal: 14, paddingTop: 4, paddingBottom: 4, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   sectionTitle: { fontSize: 14, fontWeight: "900" },
-  sectionCount: { fontSize: 12, fontWeight: "800" },
-  listContent: { paddingHorizontal: 16, paddingBottom: 110 },
-  emptyBox: { borderWidth: 1, borderRadius: 18, padding: 18, flexDirection: "row", alignItems: "center", gap: 10 },
+  sectionCount: { fontSize: 11, fontWeight: "800" },
+  listContent: { paddingHorizontal: 14, paddingBottom: 92 },
+
+  emptyBox: { borderWidth: 1, borderRadius: 14, padding: 15, flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 },
   center: { flex: 1, alignItems: "center", justifyContent: "center" }
 });
