@@ -12,12 +12,11 @@ import { DepartureItem, HalteBoardData, Mode } from "../../types/api";
 type BoardTab = "departures" | "arrivals" | "disruptions";
 
 type LineChoice = {
-  key: string;
   line: string;
-  destination: string;
   carrier?: string;
   isLive?: boolean;
   nextTime: string;
+  destinations: string[];
 };
 
 const modeLabel: Record<Mode, string> = {
@@ -28,10 +27,6 @@ const modeLabel: Record<Mode, string> = {
   ferry: "Veer"
 };
 
-function choiceKey(item: DepartureItem) {
-  return `${item.line}::${item.destination}`;
-}
-
 export default function HalteDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { colors, toggleFavoriteStop, isFavoriteStop, addRecentStop } = useApp();
@@ -39,7 +34,7 @@ export default function HalteDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<BoardTab>("departures");
   const [lineSheetOpen, setLineSheetOpen] = useState(false);
-  const [selectedLineKey, setSelectedLineKey] = useState<string | null>(null);
+  const [selectedLine, setSelectedLine] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -69,7 +64,7 @@ export default function HalteDetailScreen() {
   }, [id]);
 
   useEffect(() => {
-    setSelectedLineKey(null);
+    setSelectedLine(null);
   }, [tab]);
 
   const baseItems = useMemo(() => {
@@ -96,36 +91,44 @@ export default function HalteDetailScreen() {
 
     const map = new Map<string, LineChoice>();
     for (const item of baseItems) {
-      const key = choiceKey(item);
-      if (!map.has(key)) {
-        map.set(key, {
-          key,
-          line: item.line,
-          destination: item.destination,
+      const line = String(item.line || "").trim();
+      if (!line) continue;
+
+      const existing = map.get(line);
+      if (!existing) {
+        map.set(line, {
+          line,
           carrier: item.carrier,
           isLive: item.isLive,
-          nextTime: item.plannedTime
+          nextTime: item.plannedTime,
+          destinations: item.destination ? [item.destination] : []
         });
-      } else if (item.isLive) {
-        const old = map.get(key)!;
-        map.set(key, { ...old, isLive: true });
+        continue;
+      }
+
+      if (item.isLive) existing.isLive = true;
+      if (item.destination && !existing.destinations.includes(item.destination)) {
+        existing.destinations.push(item.destination);
       }
     }
-    return Array.from(map.values());
+
+    return Array.from(map.values()).sort((a, b) =>
+      a.line.localeCompare(b.line, "nl", { numeric: true, sensitivity: "base" })
+    );
   }, [baseItems, tab]);
 
   useEffect(() => {
-    if (selectedLineKey && !lineChoices.some((choice) => choice.key === selectedLineKey)) {
-      setSelectedLineKey(null);
+    if (selectedLine && !lineChoices.some((choice) => choice.line === selectedLine)) {
+      setSelectedLine(null);
     }
-  }, [lineChoices, selectedLineKey]);
+  }, [lineChoices, selectedLine]);
 
   const activeItems = useMemo(() => {
-    if (!selectedLineKey || tab === "disruptions") return baseItems;
-    return baseItems.filter((item) => choiceKey(item) === selectedLineKey);
-  }, [baseItems, selectedLineKey, tab]);
+    if (!selectedLine || tab === "disruptions") return baseItems;
+    return baseItems.filter((item) => item.line === selectedLine);
+  }, [baseItems, selectedLine, tab]);
 
-  const selectedChoice = lineChoices.find((choice) => choice.key === selectedLineKey);
+  const selectedChoice = lineChoices.find((choice) => choice.line === selectedLine);
 
   const transportSummary = useMemo(() => {
     if (!data) return "";
@@ -232,7 +235,9 @@ export default function HalteDetailScreen() {
               <Ionicons name="options-outline" size={15} color={colors.accent} />
             )}
             <Text style={[styles.lineFilterText, { color: colors.text }]} numberOfLines={1}>
-              {selectedChoice ? selectedChoice.destination : "Kies lijn"}
+              {selectedChoice
+                ? `Lijn ${selectedChoice.line}${selectedChoice.destinations.length > 1 ? ` · ${selectedChoice.destinations.length} richtingen` : ""}`
+                : "Kies lijn"}
             </Text>
             <Ionicons name="chevron-down" size={14} color={colors.textSoft} />
           </Pressable>
@@ -286,12 +291,12 @@ export default function HalteDetailScreen() {
 
             <Pressable
               onPress={() => {
-                setSelectedLineKey(null);
+                setSelectedLine(null);
                 setLineSheetOpen(false);
               }}
               style={[
                 styles.choiceRow,
-                { borderColor: colors.border, backgroundColor: !selectedLineKey ? colors.accentSoft : colors.background }
+                { borderColor: colors.border, backgroundColor: !selectedLine ? colors.accentSoft : colors.background }
               ]}
             >
               <View style={[styles.allLinesIcon, { backgroundColor: colors.accentSoft }]}>
@@ -301,20 +306,20 @@ export default function HalteDetailScreen() {
                 <Text style={[styles.choiceDestination, { color: colors.text }]}>Alle lijnen</Text>
                 <Text style={[styles.choiceStatus, { color: colors.textSoft }]}>Volledig halteoverzicht</Text>
               </View>
-              {!selectedLineKey ? <Ionicons name="checkmark" size={20} color={colors.accent} /> : null}
+              {!selectedLine ? <Ionicons name="checkmark" size={20} color={colors.accent} /> : null}
             </Pressable>
 
             <FlatList
               data={lineChoices}
-              keyExtractor={(choice) => choice.key}
+              keyExtractor={(choice) => choice.line}
               style={styles.choiceList}
               showsVerticalScrollIndicator={false}
               renderItem={({ item }) => {
-                const selected = item.key === selectedLineKey;
+                const selected = item.line === selectedLine;
                 return (
                   <Pressable
                     onPress={() => {
-                      setSelectedLineKey(item.key);
+                      setSelectedLine(item.line);
                       setLineSheetOpen(false);
                     }}
                     style={[
@@ -328,7 +333,7 @@ export default function HalteDetailScreen() {
                     <LijnBadge line={item.line} carrier={item.carrier} />
                     <View style={styles.choiceCopy}>
                       <Text style={[styles.choiceDestination, { color: colors.text }]} numberOfLines={1}>
-                        {item.destination}
+                        Lijn {item.line}
                       </Text>
                       <View style={styles.choiceMeta}>
                         <View
@@ -343,7 +348,7 @@ export default function HalteDetailScreen() {
                             { color: item.isLive ? colors.success : colors.textSoft }
                           ]}
                         >
-                          {item.isLive ? "Live" : "Dienstregeling"} · {item.nextTime}
+                          {item.destinations.length > 1 ? `${item.destinations.length} richtingen · ` : ""}{item.isLive ? "Live" : "Dienstregeling"} · {item.nextTime}
                         </Text>
                       </View>
                     </View>

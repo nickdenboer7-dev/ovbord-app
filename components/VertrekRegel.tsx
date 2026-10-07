@@ -18,10 +18,19 @@ function platformLabel(item: DepartureItem) {
   return "Perron";
 }
 
+function compactRelativeText(value?: string) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  if (/^nu$/i.test(text)) return "nu";
+  const match = text.match(/(?:over\s*)?(\d+)\s*min/i);
+  return match ? `${match[1]} min` : text;
+}
+
 export function VertrekRegel({ item, onPress }: Props) {
   const { colors } = useApp();
   const hasDelay = typeof item.delayMinutes === "number" && item.delayMinutes >= 1;
   const carrierLabel = item.carrier && item.carrier !== "Default" ? item.carrier : "";
+  const relativeText = compactRelativeText(item.relativeText);
 
   return (
     <Pressable
@@ -43,9 +52,9 @@ export function VertrekRegel({ item, onPress }: Props) {
 
       <View style={styles.timeColumn}>
         <Text style={[styles.time, { color: colors.text }]}>{item.plannedTime}</Text>
-        {item.relativeText ? (
+        {relativeText ? (
           <Text style={[styles.relative, { color: colors.textSoft }]} numberOfLines={1}>
-            {item.relativeText}
+            {relativeText}
           </Text>
         ) : null}
       </View>
@@ -53,7 +62,7 @@ export function VertrekRegel({ item, onPress }: Props) {
       <View style={styles.infoColumn}>
         <View style={styles.topRow}>
           <LijnBadge line={item.line} carrier={item.carrier} compact />
-          <Text style={[styles.destination, { color: colors.text }]} numberOfLines={1}>
+          <Text style={[styles.destination, { color: colors.text }]} numberOfLines={2}>
             {item.destination}
           </Text>
         </View>
@@ -99,7 +108,7 @@ export function VertrekRegel({ item, onPress }: Props) {
 
 const styles = StyleSheet.create({
   card: {
-    minHeight: 64,
+    minHeight: 70,
     flexDirection: "row",
     alignItems: "stretch",
     paddingVertical: 8,
@@ -110,7 +119,7 @@ const styles = StyleSheet.create({
     overflow: "hidden"
   },
   reliabilityRail: { width: 4, alignSelf: "stretch", marginRight: 9 },
-  timeColumn: { width: 59, paddingRight: 7, justifyContent: "center", gap: 2 },
+  timeColumn: { width: 57, paddingRight: 6, justifyContent: "center", gap: 2 },
   time: {
     fontSize: 16.5,
     fontWeight: "900",
@@ -121,7 +130,7 @@ const styles = StyleSheet.create({
   relative: { fontSize: 9.5, lineHeight: 11, fontWeight: "700" },
   infoColumn: { flex: 1, minWidth: 0, justifyContent: "center", gap: 4 },
   topRow: { flexDirection: "row", alignItems: "center", gap: 6, minWidth: 0 },
-  destination: { flex: 1, minWidth: 0, fontSize: 13.5, lineHeight: 16, fontWeight: "900" },
+  destination: { flex: 1, minWidth: 0, fontSize: 13.2, lineHeight: 16, fontWeight: "900" },
   bottomRow: { minHeight: 16, flexDirection: "row", alignItems: "center", gap: 6, minWidth: 0 },
   carrier: { maxWidth: 72, fontSize: 10, fontWeight: "700" },
   liveMeta: { flexDirection: "row", alignItems: "center", gap: 4 },
