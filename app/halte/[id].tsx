@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { LijnBadge } from "../../components/LijnBadge";
 import { VertrekRegel } from "../../components/VertrekRegel";
 import { modaliteitColors } from "../../constants/vervoerders";
@@ -33,8 +33,9 @@ export default function HalteDetailScreen() {
   const [data, setData] = useState<HalteBoardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<BoardTab>("departures");
-  const [lineSheetOpen, setLineSheetOpen] = useState(false);
+  const [openFilter, setOpenFilter] = useState<"line" | "direction" | null>(null);
   const [selectedLine, setSelectedLine] = useState<string | null>(null);
+  const [selectedDirection, setSelectedDirection] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -65,6 +66,8 @@ export default function HalteDetailScreen() {
 
   useEffect(() => {
     setSelectedLine(null);
+    setSelectedDirection(null);
+    setOpenFilter(null);
   }, [tab]);
 
   const baseItems = useMemo(() => {
@@ -120,15 +123,27 @@ export default function HalteDetailScreen() {
   useEffect(() => {
     if (selectedLine && !lineChoices.some((choice) => choice.line === selectedLine)) {
       setSelectedLine(null);
+      setSelectedDirection(null);
     }
   }, [lineChoices, selectedLine]);
 
-  const activeItems = useMemo(() => {
-    if (!selectedLine || tab === "disruptions") return baseItems;
-    return baseItems.filter((item) => item.line === selectedLine);
-  }, [baseItems, selectedLine, tab]);
-
   const selectedChoice = lineChoices.find((choice) => choice.line === selectedLine);
+  const directionChoices = selectedChoice?.destinations ?? [];
+
+  useEffect(() => {
+    if (selectedDirection && !directionChoices.includes(selectedDirection)) {
+      setSelectedDirection(null);
+    }
+  }, [directionChoices, selectedDirection]);
+
+  const activeItems = useMemo(() => {
+    if (tab === "disruptions") return baseItems;
+    return baseItems.filter((item) => {
+      if (selectedLine && item.line !== selectedLine) return false;
+      if (selectedDirection && item.destination !== selectedDirection) return false;
+      return true;
+    });
+  }, [baseItems, selectedLine, selectedDirection, tab]);
 
   const transportSummary = useMemo(() => {
     if (!data) return "";
@@ -225,22 +240,189 @@ export default function HalteDetailScreen() {
         </View>
 
         {hasLineChoice ? (
-          <Pressable
-            onPress={() => setLineSheetOpen(true)}
-            style={[styles.lineFilter, { backgroundColor: colors.surface, borderColor: colors.border }]}
-          >
-            {selectedChoice ? (
-              <LijnBadge line={selectedChoice.line} carrier={selectedChoice.carrier} compact />
-            ) : (
-              <Ionicons name="options-outline" size={15} color={colors.accent} />
-            )}
-            <Text style={[styles.lineFilterText, { color: colors.text }]} numberOfLines={1}>
-              {selectedChoice
-                ? `Lijn ${selectedChoice.line}${selectedChoice.destinations.length > 1 ? ` · ${selectedChoice.destinations.length} richtingen` : ""}`
-                : "Kies lijn"}
-            </Text>
-            <Ionicons name="chevron-down" size={14} color={colors.textSoft} />
-          </Pressable>
+          <>
+            <View style={styles.filterRow}>
+              <Pressable
+                onPress={() => setOpenFilter(openFilter === "line" ? null : "line")}
+                style={[
+                  styles.selector,
+                  styles.selectorLine,
+                  {
+                    backgroundColor: selectedLine ? colors.accentSoft : colors.surface,
+                    borderColor: selectedLine ? colors.accent : colors.border
+                  }
+                ]}
+              >
+                <View style={styles.selectorCopy}>
+                  <View style={styles.selectorTopRow}>
+                    {selectedChoice ? (
+                      <LijnBadge line={selectedChoice.line} carrier={selectedChoice.carrier} compact />
+                    ) : (
+                      <Ionicons name="git-branch-outline" size={16} color={colors.accent} />
+                    )}
+                    <Text style={[styles.selectorTitle, { color: colors.text }]} numberOfLines={1}>
+                      {selectedChoice ? `Lijn ${selectedChoice.line}` : "Alle lijnen"}
+                    </Text>
+                  </View>
+                  <Text style={[styles.selectorSub, { color: colors.textSoft }]} numberOfLines={1}>
+                    {selectedChoice
+                      ? `${selectedChoice.destinations.length} ${selectedChoice.destinations.length === 1 ? "richting" : "richtingen"}`
+                      : `${lineChoices.length} lijnen`}
+                  </Text>
+                </View>
+                <Ionicons
+                  name={openFilter === "line" ? "chevron-up" : "chevron-down"}
+                  size={15}
+                  color={colors.textSoft}
+                />
+              </Pressable>
+
+              <Pressable
+                disabled={!selectedLine}
+                onPress={() => selectedLine && setOpenFilter(openFilter === "direction" ? null : "direction")}
+                style={[
+                  styles.selector,
+                  styles.selectorDirection,
+                  {
+                    backgroundColor: colors.surface,
+                    borderColor: colors.border,
+                    opacity: selectedLine ? 1 : 0.45
+                  }
+                ]}
+              >
+                <View style={styles.selectorCopy}>
+                  <View style={styles.selectorTopRow}>
+                    <Ionicons name="navigate-outline" size={15} color={selectedLine ? colors.accent : colors.textMuted} />
+                    <Text style={[styles.selectorTitle, { color: colors.text }]} numberOfLines={1}>
+                      {selectedDirection || "Alle richtingen"}
+                    </Text>
+                  </View>
+                  <Text style={[styles.selectorSub, { color: colors.textSoft }]} numberOfLines={1}>
+                    {selectedLine
+                      ? `${directionChoices.length} ${directionChoices.length === 1 ? "richting" : "richtingen"}`
+                      : "Kies eerst lijn"}
+                  </Text>
+                </View>
+                <Ionicons
+                  name={openFilter === "direction" ? "chevron-up" : "chevron-down"}
+                  size={15}
+                  color={colors.textSoft}
+                />
+              </Pressable>
+            </View>
+
+            {openFilter === "line" ? (
+              <View style={[styles.inlineMenu, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Pressable
+                  onPress={() => {
+                    setSelectedLine(null);
+                    setSelectedDirection(null);
+                    setOpenFilter(null);
+                  }}
+                  style={[
+                    styles.inlineOption,
+                    { backgroundColor: !selectedLine ? colors.accentSoft : "transparent" }
+                  ]}
+                >
+                  <View style={[styles.inlineIcon, { backgroundColor: colors.accentSoft }]}>
+                    <Ionicons name="git-branch-outline" size={17} color={colors.accent} />
+                  </View>
+                  <View style={styles.inlineOptionCopy}>
+                    <Text style={[styles.inlineOptionTitle, { color: colors.text }]}>Alle lijnen</Text>
+                    <Text style={[styles.inlineOptionSub, { color: colors.textSoft }]}>Volledig halteoverzicht</Text>
+                  </View>
+                  {!selectedLine ? <Ionicons name="checkmark" size={18} color={colors.accent} /> : null}
+                </Pressable>
+
+                {lineChoices.map((choice) => {
+                  const selected = choice.line === selectedLine;
+                  return (
+                    <Pressable
+                      key={choice.line}
+                      onPress={() => {
+                        setSelectedLine(choice.line);
+                        setSelectedDirection(null);
+                        setOpenFilter(null);
+                      }}
+                      style={[
+                        styles.inlineOption,
+                        { backgroundColor: selected ? colors.accentSoft : "transparent" }
+                      ]}
+                    >
+                      <LijnBadge line={choice.line} carrier={choice.carrier} compact />
+                      <View style={styles.inlineOptionCopy}>
+                        <Text style={[styles.inlineOptionTitle, { color: colors.text }]}>Lijn {choice.line}</Text>
+                        <Text style={[styles.inlineOptionSub, { color: colors.textSoft }]}>
+                          {choice.destinations.length} {choice.destinations.length === 1 ? "richting" : "richtingen"}
+                          {choice.isLive ? " · Live" : ""}
+                        </Text>
+                      </View>
+                      {selected ? (
+                        <Ionicons name="checkmark" size={18} color={colors.accent} />
+                      ) : (
+                        <Ionicons name="chevron-forward" size={17} color={colors.textMuted} />
+                      )}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : null}
+
+            {openFilter === "direction" && selectedLine ? (
+              <View style={[styles.inlineMenu, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Pressable
+                  onPress={() => {
+                    setSelectedDirection(null);
+                    setOpenFilter(null);
+                  }}
+                  style={[
+                    styles.inlineOption,
+                    { backgroundColor: !selectedDirection ? colors.accentSoft : "transparent" }
+                  ]}
+                >
+                  <View style={[styles.inlineIcon, { backgroundColor: colors.accentSoft }]}>
+                    <Ionicons name="navigate-outline" size={17} color={colors.accent} />
+                  </View>
+                  <View style={styles.inlineOptionCopy}>
+                    <Text style={[styles.inlineOptionTitle, { color: colors.text }]}>Alle richtingen</Text>
+                    <Text style={[styles.inlineOptionSub, { color: colors.textSoft }]}>Lijn {selectedLine}</Text>
+                  </View>
+                  {!selectedDirection ? <Ionicons name="checkmark" size={18} color={colors.accent} /> : null}
+                </Pressable>
+
+                {directionChoices.map((destination) => {
+                  const selected = destination === selectedDirection;
+                  return (
+                    <Pressable
+                      key={destination}
+                      onPress={() => {
+                        setSelectedDirection(destination);
+                        setOpenFilter(null);
+                      }}
+                      style={[
+                        styles.inlineOption,
+                        { backgroundColor: selected ? colors.accentSoft : "transparent" }
+                      ]}
+                    >
+                      <View style={[styles.inlineIcon, { backgroundColor: colors.surfaceAlt }]}>
+                        <Ionicons name="arrow-forward" size={16} color={colors.textSoft} />
+                      </View>
+                      <View style={styles.inlineOptionCopy}>
+                        <Text style={[styles.inlineOptionTitle, { color: colors.text }]} numberOfLines={2}>
+                          {destination}
+                        </Text>
+                      </View>
+                      {selected ? (
+                        <Ionicons name="checkmark" size={18} color={colors.accent} />
+                      ) : (
+                        <Ionicons name="chevron-forward" size={17} color={colors.textMuted} />
+                      )}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : null}
+          </>
         ) : null}
       </View>
 
@@ -262,108 +444,6 @@ export default function HalteDetailScreen() {
         }
       />
 
-      <Modal
-        visible={lineSheetOpen}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setLineSheetOpen(false)}
-      >
-        <View style={styles.modalRoot}>
-          <Pressable style={styles.backdrop} onPress={() => setLineSheetOpen(false)} />
-
-          <View style={[styles.sheet, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
-
-            <View style={styles.sheetHeader}>
-              <View>
-                <Text style={[styles.sheetTitle, { color: colors.text }]}>Kies een lijn</Text>
-                <Text style={[styles.sheetSubtitle, { color: colors.textSoft }]}>
-                  Meerdere ritten vanaf deze halte
-                </Text>
-              </View>
-              <Pressable
-                onPress={() => setLineSheetOpen(false)}
-                style={[styles.closeButton, { backgroundColor: colors.surfaceAlt }]}
-              >
-                <Ionicons name="close" size={20} color={colors.textSoft} />
-              </Pressable>
-            </View>
-
-            <Pressable
-              onPress={() => {
-                setSelectedLine(null);
-                setLineSheetOpen(false);
-              }}
-              style={[
-                styles.choiceRow,
-                { borderColor: colors.border, backgroundColor: !selectedLine ? colors.accentSoft : colors.background }
-              ]}
-            >
-              <View style={[styles.allLinesIcon, { backgroundColor: colors.accentSoft }]}>
-                <Ionicons name="git-branch-outline" size={20} color={colors.accent} />
-              </View>
-              <View style={styles.choiceCopy}>
-                <Text style={[styles.choiceDestination, { color: colors.text }]}>Alle lijnen</Text>
-                <Text style={[styles.choiceStatus, { color: colors.textSoft }]}>Volledig halteoverzicht</Text>
-              </View>
-              {!selectedLine ? <Ionicons name="checkmark" size={20} color={colors.accent} /> : null}
-            </Pressable>
-
-            <FlatList
-              data={lineChoices}
-              keyExtractor={(choice) => choice.line}
-              style={styles.choiceList}
-              showsVerticalScrollIndicator={false}
-              renderItem={({ item }) => {
-                const selected = item.line === selectedLine;
-                return (
-                  <Pressable
-                    onPress={() => {
-                      setSelectedLine(item.line);
-                      setLineSheetOpen(false);
-                    }}
-                    style={[
-                      styles.choiceRow,
-                      {
-                        borderColor: colors.border,
-                        backgroundColor: selected ? colors.accentSoft : colors.background
-                      }
-                    ]}
-                  >
-                    <LijnBadge line={item.line} carrier={item.carrier} />
-                    <View style={styles.choiceCopy}>
-                      <Text style={[styles.choiceDestination, { color: colors.text }]} numberOfLines={1}>
-                        Lijn {item.line}
-                      </Text>
-                      <View style={styles.choiceMeta}>
-                        <View
-                          style={[
-                            styles.choiceDot,
-                            { backgroundColor: item.isLive ? colors.success : colors.textMuted }
-                          ]}
-                        />
-                        <Text
-                          style={[
-                            styles.choiceStatus,
-                            { color: item.isLive ? colors.success : colors.textSoft }
-                          ]}
-                        >
-                          {item.destinations.length > 1 ? `${item.destinations.length} richtingen · ` : ""}{item.isLive ? "Live" : "Dienstregeling"} · {item.nextTime}
-                        </Text>
-                      </View>
-                    </View>
-                    <Ionicons
-                      name={selected ? "checkmark" : "chevron-forward"}
-                      size={19}
-                      color={selected ? colors.accent : colors.textMuted}
-                    />
-                  </Pressable>
-                );
-              }}
-            />
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
@@ -416,16 +496,49 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 14.5, fontWeight: "900" },
   sectionCount: { fontSize: 11.5, fontWeight: "800" },
 
-  lineFilter: {
-    height: 38,
+  filterRow: { flexDirection: "row", gap: 7 },
+  selector: {
+    minHeight: 50,
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 9,
+    paddingVertical: 7,
     flexDirection: "row",
     alignItems: "center",
-    gap: 7
+    gap: 6
   },
-  lineFilterText: { flex: 1, minWidth: 0, fontSize: 12, fontWeight: "800" },
+  selectorLine: { flex: 1.02 },
+  selectorDirection: { flex: 1.18 },
+  selectorCopy: { flex: 1, minWidth: 0 },
+  selectorTopRow: { flexDirection: "row", alignItems: "center", gap: 5, minWidth: 0 },
+  selectorTitle: { flex: 1, minWidth: 0, fontSize: 11.5, lineHeight: 14, fontWeight: "900" },
+  selectorSub: { marginTop: 2, fontSize: 9.5, lineHeight: 11, fontWeight: "700" },
+
+  inlineMenu: {
+    marginTop: 1,
+    borderWidth: 1,
+    borderRadius: 13,
+    padding: 5
+  },
+  inlineOption: {
+    minHeight: 51,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 7,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
+  inlineIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  inlineOptionCopy: { flex: 1, minWidth: 0 },
+  inlineOptionTitle: { fontSize: 12.5, lineHeight: 15, fontWeight: "900" },
+  inlineOptionSub: { marginTop: 1, fontSize: 9.5, lineHeight: 11, fontWeight: "700" },
 
   listContent: { paddingHorizontal: 14, paddingBottom: 110 },
   emptyBox: {
@@ -438,64 +551,4 @@ const styles = StyleSheet.create({
   },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
 
-  modalRoot: { flex: 1, justifyContent: "flex-end" },
-  backdrop: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: "rgba(7, 16, 13, 0.42)"
-  },
-  sheet: {
-    maxHeight: "72%",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderWidth: 1,
-    paddingTop: 9,
-    paddingHorizontal: 14,
-    paddingBottom: 24
-  },
-  sheetHandle: {
-    width: 42,
-    height: 4,
-    borderRadius: 99,
-    alignSelf: "center",
-    marginBottom: 12
-  },
-  sheetHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 11
-  },
-  sheetTitle: { fontSize: 20, fontWeight: "900" },
-  sheetSubtitle: { marginTop: 2, fontSize: 12, fontWeight: "600" },
-  closeButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 99,
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  choiceList: { marginTop: 4 },
-  choiceRow: {
-    minHeight: 62,
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 11,
-    paddingVertical: 9,
-    marginBottom: 7,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10
-  },
-  allLinesIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 11,
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  choiceCopy: { flex: 1, minWidth: 0 },
-  choiceDestination: { fontSize: 14, fontWeight: "900" },
-  choiceMeta: { marginTop: 3, flexDirection: "row", alignItems: "center", gap: 5 },
-  choiceDot: { width: 7, height: 7, borderRadius: 99 },
-  choiceStatus: { fontSize: 11, fontWeight: "700" }
 });
