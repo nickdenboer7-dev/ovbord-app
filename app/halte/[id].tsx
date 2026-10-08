@@ -21,8 +21,8 @@ import {
 } from "react-native";
 import { getVervoerderStyle } from "../../constants/vervoerders";
 import { useApp } from "../../context/AppProvider";
-import { getHalte } from "../../lib/api";
-import { DepartureItem, HalteBoardData, Mode } from "../../types/api";
+import { getHalte, getRit } from "../../lib/api";
+import { DepartureItem, HalteBoardData, Mode, RitData } from "../../types/api";
 
 type Tab = "departures" | "arrivals" | "disruptions";
 
@@ -182,8 +182,8 @@ function selectionKey(id: string) {
 }
 
 function getStatus(row: Row) {
-  if (row.live) return { text: row.delay >= 1 ? `Live · +${row.delay} min` : "Live · op tijd", color: GREEN };
-  if (row.estimated) return { text: row.delay >= 1 ? `Geschat · +${row.delay} min` : "Geschat", color: "#D59A16" };
+  if (row.live) return { text: row.delay >= 1 ? `Live · +${row.delay} min` : "Live", color: GREEN };
+  if (row.estimated) return { text: row.delay >= 1 ? `Geschat · +${row.delay} min` : "Geschat", color: "#C18D1A" };
   return { text: "Dienstregeling", color: "#8A928E" };
 }
 
@@ -205,11 +205,20 @@ export default function HalteScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedTripId, setExpandedTripId] = useState<string | null>(null);
+  const [journey, setJourney] = useState<RitData | null>(null);
+  const [journeyLoading, setJourneyLoading] = useState(false);
+  const [journeyError, setJourneyError] = useState(false);
+  const [allJourneyStops, setAllJourneyStops] = useState(false);
 
   useEffect(() => {
     if (!id) return;
     let active = true;
     setSelectedLines([]);
+    setExpandedId(null);
+    setExpandedTripId(null);
+    setJourney(null);
     setReadyForId(null);
     AsyncStorage.getItem(selectionKey(id))
       .then((value) => {
@@ -272,6 +281,8 @@ export default function HalteScreen() {
     else if (selectedLines.length === 0) next = [norm];
     else if (selectedLines.includes(norm)) next = selectedLines.filter((x) => x !== norm);
     else next = [...selectedLines, norm];
+    setExpandedId(null);
+    setExpandedTripId(null);
     setSelectedLines(next);
     void AsyncStorage.setItem(selectionKey(id), JSON.stringify(next)).catch(() => {});
   };
@@ -288,8 +299,45 @@ export default function HalteScreen() {
     : disruptions.filter((d) => d.lines.length === 0 || d.lines.some((line) => selectedLines.includes(lineNorm(line)))),
     [disruptions, selectedLines]);
 
+  useEffect(() => {
+    if (!expandedTripId) {
+      setJourney(null);
+      setJourneyLoading(false);
+      setJourneyError(false);
+      return;
+    }
+    let active = true;
+    setJourneyLoading(true);
+    setJourneyError(false);
+    setJourney(null);
+    getRit(expandedTripId)
+      .then((result) => { if (active) setJourney(result); })
+      .catch(() => { if (active) setJourneyError(true); })
+      .finally(() => { if (active) setJourneyLoading(false); });
+    return () => { active = false; };
+  }, [expandedTripId]);
+
+  const expandRow = (row: Row) => {
+    if (!row.ritId) return;
+    if (expandedId === row.id) {
+      setExpandedId(null);
+      setExpandedTripId(null);
+    } else {
+      setExpandedId(row.id);
+      setExpandedTripId(row.ritId);
+    }
+    setAllJourneyStops(false);
+  };
+
   if (!fontsLoaded || (loading && !data)) {
-    return <View style={styles.center}><ActivityIndicator color={GREEN}/></View>;
+    return (
+      <View style={styles.overlay}>
+        <Pressable style={styles.scrim} onPress={() => router.back()} />
+        <View style={styles.root}>
+          <View style={styles.center}><ActivityIndicator color={GREEN}/></View>
+        </View>
+      </View>
+    );
   }
 
   const stop = data?.stop;
@@ -302,50 +350,128 @@ export default function HalteScreen() {
     const delayed = item.delay >= 1;
     const status = getStatus(item);
     const carrierStyle = getVervoerderStyle(item.carrier, item.line);
+    const expanded = expandedId === item.id;
     const countdown = item.countdown !== null && item.countdown >= 0 && item.countdown < 60
       ? item.countdown === 0 ? "nu" : `${item.countdown} min`
       : "";
+
+    const journeyStops = journey?.stops || [];
+    const stopNameNorm = String(stop?.name || "").toLowerCase().trim();
+    const stopIdx = journeyStops.findIndex((s) =>
+      (s.id && stop?.id && s.id === stop.id) ||
+      (stopNameNorm && s.name.toLowerCase().trim() === stopNameNorm)
+    );
+    const currentIdx = journeyStops.findIndex((s) => s.state === "current");
+    const focus = currentIdx >= 0 ? currentIdx : stopIdx >= 0 ? stopIdx : 0;
+    const from = Math.max(0, focus - 2);
+    const to = Math.min(journeyStops.length, Math.max(focus + 4, from + 6));
+    const shownStops = allJourneyStops ? journeyStops : journeyStops.slice(from, to);
+    const scheduled = currentIdx < 0 && !journeyStops.some((s) => s.state === "passed");
+
     return (
-      <Pressable
-        onPress={item.ritId ? () => router.push({ pathname: "/rit/[id]", params: { id: item.ritId! } }) : undefined}
-        disabled={!item.ritId}
-        accessibilityRole={item.ritId ? "button" : undefined}
-        style={({ pressed }) => [
-          styles.departureRow,
-          delayed && styles.delayRow,
-          pressed && { opacity: 0.66 },
-        ]}
-      >
-        <View style={styles.timeCell}>
-          <Text style={[styles.time, delayed && { color: RED }]}>{item.actual}</Text>
-          {delayed && <Text style={styles.oldTime}>{item.planned}</Text>}
-        </View>
-        <View style={styles.badgeCell}>
-          <View style={[styles.lineBadge, { backgroundColor: carrierStyle.bg }]}>
-            <Text style={[styles.lineBadgeText, { color: carrierStyle.text }]} numberOfLines={1}>{item.line}</Text>
+      <View style={styles.rowShell}>
+        <Pressable
+          onPress={() => expandRow(item)}
+          disabled={!item.ritId}
+          accessibilityRole={item.ritId ? "button" : undefined}
+          accessibilityLabel={`${item.line} naar ${item.direction}, ${item.actual}${item.ritId ? ", ritverloop tonen" : ""}`}
+          accessibilityState={item.ritId ? { expanded } : undefined}
+          style={({ pressed }) => [
+            styles.departureRow,
+            expanded && styles.rowExpanded,
+            pressed && { opacity: 0.74 },
+          ]}
+        >
+          <View style={[styles.railStripe, { backgroundColor: delayed ? "#D7882C" : item.live ? GREEN : "#C4D0C9" }]}/>
+          <View style={styles.timeCell}>
+            <Text style={[styles.time, delayed && { color: RED }]} numberOfLines={1}>{item.actual}</Text>
+            {delayed ? (
+              <Text style={styles.oldTime}>{item.planned}</Text>
+            ) : countdown ? (
+              <Text style={styles.timeRelative}>{countdown}</Text>
+            ) : null}
           </View>
-        </View>
-        <View style={styles.directionCell}>
-          <Text style={styles.direction} numberOfLines={1}>{item.direction}</Text>
-          <View style={styles.statusRow}>
-            <View style={[styles.statusDot, { backgroundColor: status.color }]}/>
-            <Text style={styles.statusText} numberOfLines={1}>{status.text}</Text>
+          <View style={styles.badgeCell}>
+            <View style={[styles.lineBadge, { backgroundColor: carrierStyle.bg }]}>
+              <Text style={[styles.lineBadgeText, { color: carrierStyle.text }]} numberOfLines={1}>{item.line}</Text>
+            </View>
           </View>
-        </View>
-        <Text style={[
-          styles.countdown,
-          { color: delayed ? RED : item.live ? GREEN : "#1B2420" },
-        ]} numberOfLines={1}>{countdown}</Text>
-      </Pressable>
+          <View style={styles.directionCell}>
+            <Text style={styles.direction} numberOfLines={2}>{item.direction}</Text>
+            <View style={styles.statusRow}>
+              <View style={[styles.statusDot, { backgroundColor: status.color }]}/>
+              <Text style={styles.statusText} numberOfLines={1}>{status.text}</Text>
+            </View>
+          </View>
+          {item.ritId ? (
+            <Ionicons name={expanded ? "chevron-up" : "chevron-forward"} size={18} color={MUTED}/>
+          ) : null}
+        </Pressable>
+
+        {expanded ? (
+          <View style={styles.journeyBox}>
+            <View style={styles.journeyTitleRow}>
+              <Ionicons name="git-branch-outline" size={16} color={GREEN}/>
+              <Text style={styles.journeyTitle}>Ritverloop · lijn {item.line}</Text>
+              <Pressable onPress={() => expandRow(item)} accessibilityLabel="Sluit ritverloop">
+                <Ionicons name="close" size={18} color={MUTED}/>
+              </Pressable>
+            </View>
+            {journeyLoading ? (
+              <View style={styles.journeyLoader}><ActivityIndicator size="small" color={GREEN}/><Text style={styles.journeyHint}>Rit ophalen...</Text></View>
+            ) : journeyError ? (
+              <Text style={styles.journeyHint}>Ritgegevens tijdelijk niet beschikbaar.</Text>
+            ) : journey ? (
+              <>
+                <Text style={styles.journeyInfo} numberOfLines={2}>
+                  {scheduled ? `Volgens dienstregeling · vertrek ${journeyStops[0]?.plannedTime || item.planned}` : "Actuele ritinformatie"}
+                  {` · ${journeyStops.length} haltes`}
+                </Text>
+                {from > 0 && !allJourneyStops ? <Text style={styles.journeyFold}>{from} eerdere haltes</Text> : null}
+                {shownStops.map((s, index) => {
+                  const current = s.state === "current";
+                  const atThisStop = Boolean(stopIdx >= 0 && s.id === journeyStops[stopIdx]?.id && s.name === journeyStops[stopIdx]?.name);
+                  const delay = typeof s.delayMinutes === "number" && s.delayMinutes >= 1 ? `+${s.delayMinutes} min` : "";
+                  return (
+                    <View key={`${s.id}-${index}`} style={[styles.journeyStop, current && styles.journeyStopCurrent]}>
+                      <Text style={styles.journeyClock}>{s.actualTime || s.plannedTime}</Text>
+                      <View style={[styles.journeyDot, (current || atThisStop) && styles.journeyDotCurrent]}/>
+                      <Text style={[styles.journeyStopText, (current || atThisStop) && styles.journeyStopTextFocus]} numberOfLines={2}>
+                        {s.name}
+                      </Text>
+                      {delay ? <Text style={styles.journeyDelay}>{delay}</Text> : null}
+                      {current ? <Text style={styles.journeyNow}>Nu</Text> : null}
+                    </View>
+                  );
+                })}
+                {to < journeyStops.length && !allJourneyStops ? (
+                  <Text style={styles.journeyFold}>{journeyStops.length - to} volgende haltes</Text>
+                ) : null}
+                {journeyStops.length > 6 ? (
+                  <Pressable style={styles.journeyMore} onPress={() => setAllJourneyStops((v) => !v)}>
+                    <Text style={styles.journeyMoreText}>
+                      {allJourneyStops ? "Toon minder haltes" : `Bekijk alle ${journeyStops.length} haltes`}
+                    </Text>
+                    <Ionicons name={allJourneyStops ? "chevron-up" : "chevron-down"} size={16} color={GREEN}/>
+                  </Pressable>
+                ) : null}
+              </>
+            ) : null}
+          </View>
+        ) : null}
+      </View>
     );
   };
 
   return (
-    <View style={styles.root}>
+    <View style={styles.overlay}>
+      <Pressable style={styles.scrim} onPress={() => router.back()} accessibilityLabel="Sluit halte"/>
+      <View style={styles.root}>
+      <View style={styles.handleOuter}><View style={styles.handle}/></View>
       <View style={styles.greenHeader}>
         <View style={styles.headerTop}>
           <Pressable onPress={() => router.back()} accessibilityLabel="Terug" style={styles.back}>
-            <Ionicons name="chevron-back" size={24} color="#FFFFFF"/>
+            <Ionicons name="chevron-back" size={24} color={DARK}/>
           </Pressable>
           <View style={styles.headCopy}>
             <Text style={styles.stopName} numberOfLines={2}>{stopName}</Text>
@@ -356,7 +482,7 @@ export default function HalteScreen() {
             accessibilityLabel="Favoriete halte"
             style={styles.star}
           >
-            <Ionicons name={favorite ? "star" : "star-outline"} size={25} color="#FFFFFF"/>
+            <Ionicons name={favorite ? "star" : "star-outline"} size={25} color={DARK}/>
           </Pressable>
         </View>
         <ScrollView
@@ -402,7 +528,7 @@ export default function HalteScreen() {
         ] as const).map(([key, label]) => (
           <Pressable
             key={key}
-            onPress={() => setTab(key)}
+            onPress={() => { setTab(key); setExpandedId(null); setExpandedTripId(null); }}
             style={[styles.tab, tab === key && styles.tabActive]}
           >
             <Text style={[styles.tabText, tab === key && styles.tabTextActive]}>{label}</Text>
@@ -451,78 +577,88 @@ export default function HalteScreen() {
           data={rows}
           keyExtractor={(item) => item.id}
           renderItem={renderRow}
+          extraData={`${expandedId}:${journeyLoading}:${allJourneyStops}:${Boolean(journey)}`}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.rows}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void reload(false, true)} tintColor={GREEN}/>}
-          ListHeaderComponent={
-            <>
-              {error ? <Text style={styles.error}>{error}</Text> : null}
-              <View style={styles.columnHeader}>
-                <Text style={[styles.columnTitle, styles.hTime]}>TIJD</Text>
-                <Text style={[styles.columnTitle, styles.hLine]}>LIJN</Text>
-                <Text style={[styles.columnTitle, styles.hDirection]}>RICHTING</Text>
-                <Text style={[styles.columnTitle, styles.hCountdown]}>VERTREK</Text>
-              </View>
-            </>
-          }
+          ListHeaderComponent={error ? <Text style={styles.error}>{error}</Text> : null}
           ListEmptyComponent={<Text style={styles.emptyText}>Geen {tab === "arrivals" ? "aankomsten" : "vertrekken"} voor deze selectie.</Text>}
         />
       )}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: BG },
-  center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: BG },
-  greenHeader: { backgroundColor: DARK, paddingTop: 48, paddingBottom: 10 },
-  headerTop: { paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 11 },
-  back: {
-    width: 44, height: 44, borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.12)",
-    alignItems: "center", justifyContent: "center",
+  overlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "transparent" },
+  scrim: { ...StyleSheet.absoluteFill, backgroundColor: "rgba(11, 34, 23, 0.46)" },
+  root: {
+    height: "94%", backgroundColor: BG,
+    borderTopLeftRadius: 23, borderTopRightRadius: 23,
+    overflow: "hidden",
   },
+  center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: BG },
+  handleOuter: { height: 13, justifyContent: "center", alignItems: "center" },
+  handle: { width: 34, height: 4, borderRadius: 9, backgroundColor: "#D5DFD8" },
+  greenHeader: { backgroundColor: "#FFFFFF", paddingTop: 13, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: "#E7EDE9" },
+  headerTop: { paddingHorizontal: 15, flexDirection: "row", alignItems: "center", gap: 10 },
+  back: { width: 36, height: 38, borderRadius: 10, backgroundColor: "#F0F4F1", alignItems: "center", justifyContent: "center" },
   headCopy: { flex: 1, minWidth: 0 },
-  stopName: { color: BG, fontFamily: FONT800, fontSize: 20, lineHeight: 24 },
-  stopSubtitle: { color: "#B9D3C4", fontFamily: FONT500, fontSize: 13, marginTop: 3 },
-  star: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-  chipsScroll: { marginTop: 14, maxHeight: 34 },
-  chipsInner: { paddingHorizontal: 16, gap: 8, alignItems: "center" },
-  chip: { height: 34, borderRadius: 18, paddingHorizontal: 12, borderWidth: 1, flexDirection: "row", alignItems: "center", gap: 7 },
-  chipActive: { backgroundColor: BG, borderColor: BG },
-  chipInactive: { backgroundColor: "transparent", borderColor: "rgba(255,255,255,0.28)" },
-  chipText: { fontFamily: FONT800, fontSize: 12 },
-  chipTextActive: { color: DARK },
-  chipTextInactive: { color: BG },
-  lineSquare: { width: 13, height: 13, borderRadius: 3 },
-  tabs: { flexDirection: "row", minHeight: 48, backgroundColor: BG, borderBottomColor: "#E3E8E5", borderBottomWidth: 1 },
-  tab: { flex: 1, minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, borderBottomWidth: 3, borderBottomColor: "transparent" },
+  stopName: { color: "#172920", fontFamily: FONT800, fontSize: 17.5, lineHeight: 21 },
+  stopSubtitle: { color: MUTED, fontFamily: FONT500, fontSize: 11, marginTop: 2 },
+  star: { width: 35, height: 38, alignItems: "center", justifyContent: "center" },
+  chipsScroll: { marginTop: 12, maxHeight: 33 },
+  chipsInner: { paddingHorizontal: 15, gap: 7, alignItems: "center" },
+  chip: { height: 32, borderRadius: 10, paddingHorizontal: 12, borderWidth: 1, flexDirection: "row", alignItems: "center", gap: 6 },
+  chipActive: { backgroundColor: GREEN, borderColor: GREEN },
+  chipInactive: { backgroundColor: "#FFFFFF", borderColor: "#DCE5DF" },
+  chipText: { fontFamily: FONT800, fontSize: 11.5 },
+  chipTextActive: { color: "#FFFFFF" },
+  chipTextInactive: { color: "#31483A" },
+  lineSquare: { width: 9, height: 9, borderRadius: 3 },
+  tabs: { flexDirection: "row", minHeight: 45, backgroundColor: BG, borderBottomColor: "#E9EFEB", borderBottomWidth: 1 },
+  tab: { flex: 1, minHeight: 45, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, borderBottomWidth: 2, borderBottomColor: "transparent" },
   tabActive: { borderBottomColor: GREEN },
-  tabText: { fontFamily: FONT700, fontSize: 13, color: "#6A7770" },
+  tabText: { fontFamily: FONT700, fontSize: 12.5, color: "#6A7770" },
   tabTextActive: { color: GREEN },
   countBubble: { borderRadius: 10, paddingHorizontal: 5, minWidth: 18, height: 18, backgroundColor: "#EAF3ED", alignItems: "center", justifyContent: "center" },
   countBubbleText: { fontFamily: FONT800, fontSize: 10, color: GREEN },
-  rows: { paddingBottom: 105 },
-  columnHeader: { height: 34, flexDirection: "row", alignItems: "center", paddingHorizontal: 16, backgroundColor: "#F9FAF9", borderBottomColor: "#E5EBE7", borderBottomWidth: 1 },
-  columnTitle: { fontFamily: FONT800, fontSize: 12, letterSpacing: 0.5, color: MUTED },
-  hTime: { width: 50 },
-  hLine: { width: 44 },
-  hDirection: { flex: 1 },
-  hCountdown: { width: 58, textAlign: "right" },
-  departureRow: { minHeight: 56, flexDirection: "row", alignItems: "center", paddingVertical: 9, paddingHorizontal: 16, borderBottomColor: "#E9EEEA", borderBottomWidth: StyleSheet.hairlineWidth, backgroundColor: BG },
-  delayRow: { backgroundColor: "#FBF3F2" },
-  timeCell: { width: 50, justifyContent: "center" },
-  time: { fontFamily: FONT800, fontSize: 17, color: "#17221B", fontVariant: ["tabular-nums"] },
-  oldTime: { color: "#7E8882", fontFamily: FONT500, fontSize: 11, textDecorationLine: "line-through", fontVariant: ["tabular-nums"], marginTop: 1 },
-  badgeCell: { width: 44, alignItems: "flex-start" },
+  rows: { paddingBottom: 45 },
+  rowShell: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "#E4ECE6" },
+  departureRow: { minHeight: 68, flexDirection: "row", alignItems: "center", paddingVertical: 9, paddingHorizontal: 12, backgroundColor: BG, gap: 5 },
+  rowExpanded: { backgroundColor: "#F5F9F6" },
+  railStripe: { width: 3, height: 41, borderRadius: 6, marginRight: 2 },
+  timeCell: { width: 55, justifyContent: "center", gap: 2 },
+  time: { fontFamily: FONT800, fontSize: 15.3, color: "#17221B", fontVariant: ["tabular-nums"], letterSpacing: -0.4 },
+  oldTime: { color: "#7E8882", fontFamily: FONT500, fontSize: 10.5, textDecorationLine: "line-through", fontVariant: ["tabular-nums"] },
+  timeRelative: { fontFamily: FONT700, fontSize: 10, color: MUTED },
+  badgeCell: { width: 38, alignItems: "flex-start" },
   lineBadge: { borderRadius: 6, minWidth: 30, maxWidth: 38, height: 24, paddingHorizontal: 4, alignItems: "center", justifyContent: "center" },
-  lineBadgeText: { fontFamily: FONT800, fontSize: 11, lineHeight: 15 },
+  lineBadgeText: { fontFamily: FONT800, fontSize: 11.5, lineHeight: 15 },
   directionCell: { flex: 1, minWidth: 0, justifyContent: "center" },
-  direction: { fontFamily: FONT700, fontSize: 14.5, color: "#13211A" },
-  statusRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 2 },
+  direction: { fontFamily: FONT700, fontSize: 13, lineHeight: 17, color: "#13211A" },
+  statusRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 3 },
   statusDot: { width: 6, height: 6, borderRadius: 6 },
-  statusText: { fontFamily: FONT500, fontSize: 11.5, color: "#68756D", flexShrink: 1 },
-  countdown: { width: 58, textAlign: "right", fontFamily: FONT800, fontSize: 12, fontVariant: ["tabular-nums"] },
+  statusText: { fontFamily: FONT500, fontSize: 10.8, color: "#68756D", flexShrink: 1 },
+  journeyBox: { borderTopWidth: 1, borderTopColor: "#E2EAE3", backgroundColor: "#F7FAF8", paddingHorizontal: 14, paddingTop: 11, paddingBottom: 13 },
+  journeyTitleRow: { flexDirection: "row", alignItems: "center", gap: 7 },
+  journeyTitle: { flex: 1, color: "#18382A", fontFamily: FONT800, fontSize: 12.5 },
+  journeyHint: { color: MUTED, fontFamily: FONT600, fontSize: 11.5, marginTop: 10 },
+  journeyLoader: { flexDirection: "row", alignItems: "center", gap: 9 },
+  journeyInfo: { marginTop: 5, marginBottom: 8, fontFamily: FONT600, color: MUTED, fontSize: 11 },
+  journeyStop: { minHeight: 35, flexDirection: "row", alignItems: "center", paddingVertical: 6, paddingHorizontal: 6, gap: 9, borderRadius: 8 },
+  journeyStopCurrent: { backgroundColor: "#E5F3E9" },
+  journeyClock: { width: 42, color: "#596D62", fontFamily: FONT700, fontSize: 11.5, fontVariant: ["tabular-nums"] },
+  journeyDot: { width: 9, height: 9, borderWidth: 2, borderColor: "#A8B9AF", borderRadius: 9 },
+  journeyDotCurrent: { backgroundColor: GREEN, borderColor: GREEN },
+  journeyStopText: { flex: 1, minWidth: 0, color: "#2E3E34", fontFamily: FONT600, fontSize: 11.5, lineHeight: 15 },
+  journeyStopTextFocus: { color: "#163E28", fontFamily: FONT800 },
+  journeyDelay: { color: RED, fontFamily: FONT800, fontSize: 10 },
+  journeyNow: { color: GREEN, fontFamily: FONT800, fontSize: 10 },
+  journeyFold: { fontFamily: FONT500, fontSize: 10.5, color: "#7B8A80", paddingVertical: 5, paddingLeft: 54 },
+  journeyMore: { alignSelf: "stretch", flexDirection: "row", alignItems: "center", justifyContent: "center", marginTop: 8, borderRadius: 9, backgroundColor: "#E9F2EC", paddingVertical: 10, gap: 6 },
+  journeyMoreText: { color: GREEN, fontFamily: FONT800, fontSize: 11.5 },
   emptyText: { color: MUTED, fontFamily: FONT600, fontSize: 13, padding: 18 },
   empty: { flexDirection: "row", alignItems: "center", padding: 12, gap: 8 },
   error: { paddingHorizontal: 16, paddingVertical: 8, color: RED, fontFamily: FONT600, fontSize: 12 },

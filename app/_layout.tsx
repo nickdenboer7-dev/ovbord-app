@@ -23,7 +23,7 @@ function RootNavigation() {
       <StatusBar style={resolvedScheme === "dark" ? "light" : "dark"} />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
         <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="halte/[id]" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="halte/[id]" options={{ presentation: "transparentModal", animation: "slide_from_bottom", contentStyle: { backgroundColor: "transparent" } }} />
         <Stack.Screen name="rit/[id]" options={{ animation: "slide_from_right" }} />
       </Stack>
     </ThemeProvider>
