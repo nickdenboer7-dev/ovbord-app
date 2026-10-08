@@ -1,33 +1,52 @@
-﻿{
-    "expo":  {
-                 "name":  "OVbord",
-                 "slug":  "ovbord-app",
-                 "scheme":  "ovbord",
-                 "version":  "1.0.0",
-                 "orientation":  "portrait",
-                 "userInterfaceStyle":  "automatic",
-                 "plugins":  [
-                                 "expo-router",
-                                 [
-                                     "expo-location",
-                                     {
-                                         "locationWhenInUsePermission":  "OVbord gebruikt je locatie om haltes in de buurt te tonen."
-                                     }
-                                 ]
-                             ],
-                 "experiments":  {
-                                     "typedRoutes":  true
-                                 },
-                 "ios":  {
-                             "supportsTablet":  false,
-                             "bundleIdentifier":  "nl.ovbord.app"
-                         },
-                 "android":  {
-                                 "package":  "nl.ovbord.app",
-                                 "versionCode":  1
-                             },
-                 "web":  {
-                             "bundler":  "metro"
-                         }
-             }
+{
+  "expo": {
+    "name": "OVbord",
+    "slug": "ovspot",
+    "scheme": "ovbord",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "plugins": [
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "OVbord gebruikt je locatie om haltes in de buurt te tonen."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "nl.ovbord.app"
+    },
+    "android": {
+      "package": "nl.ovbord.app",
+      "versionCode": 1,
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "879efc14-e217-4ba5-b9a0-468ef855b9ed"
+      }
+    },
+    "owner": "ovspots-team",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/879efc14-e217-4ba5-b9a0-468ef855b9ed"
+    }
+  }
 }

@@ -5,18 +5,21 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "channel": "development"
     },
     "preview": {
       "android": {
         "buildType": "apk"
       },
-      "distribution": "internal"
+      "distribution": "internal",
+      "channel": "preview"
     },
     "production": {
       "android": {
-        "buildType": "aab"
-      }
+        "buildType": "app-bundle"
+      },
+      "channel": "production"
     }
   }
 }
