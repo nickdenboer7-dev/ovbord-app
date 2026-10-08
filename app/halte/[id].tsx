@@ -1,554 +1,536 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  Manrope_500Medium,
+  Manrope_600SemiBold,
+  Manrope_700Bold,
+  Manrope_800ExtraBold,
+  useFonts,
+} from "@expo-google-fonts/manrope";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
-import { LijnBadge } from "../../components/LijnBadge";
-import { VertrekRegel } from "../../components/VertrekRegel";
-import { modaliteitColors } from "../../constants/vervoerders";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { getVervoerderStyle } from "../../constants/vervoerders";
 import { useApp } from "../../context/AppProvider";
 import { getHalte } from "../../lib/api";
 import { DepartureItem, HalteBoardData, Mode } from "../../types/api";
 
-type BoardTab = "departures" | "arrivals" | "disruptions";
+type Tab = "departures" | "arrivals" | "disruptions";
 
-type LineChoice = {
+type Row = {
+  id: string;
   line: string;
   carrier?: string;
-  isLive?: boolean;
-  nextTime: string;
-  destinations: string[];
+  direction: string;
+  planned: string;
+  actual: string;
+  delay: number;
+  live: boolean;
+  estimated: boolean;
+  countdown: number | null;
+  ritId?: string;
 };
 
-const modeLabel: Record<Mode, string> = {
-  train: "Trein",
-  metro: "Metro",
-  tram: "Tram",
-  bus: "Bus",
-  ferry: "Veer"
+type Disruption = {
+  id: string;
+  title: string;
+  description: string;
+  lines: string[];
 };
 
-export default function HalteDetailScreen() {
+type LineChoice = { line: string; carrier?: string };
+const DARK = "#143F2A";
+const GREEN = "#147A4A";
+const RED = "#B42318";
+const MUTED = "#68766F";
+const BG = "#FFFFFF";
+const FONT500 = "Manrope_500Medium";
+const FONT600 = "Manrope_600SemiBold";
+const FONT700 = "Manrope_700Bold";
+const FONT800 = "Manrope_800ExtraBold";
+
+const modeNames: Record<Mode, string> = {
+  bus: "Bushalte",
+  tram: "Tramhalte",
+  metro: "Metrostation",
+  train: "Treinstation",
+  ferry: "Veerhalte",
+};
+
+function clockMinutes(value: string) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(value);
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+}
+
+function clockWithDelay(planned: string, delay: number) {
+  const minutes = clockMinutes(planned);
+  if (minutes === null) return planned;
+  const total = ((minutes + delay) % 1440 + 1440) % 1440;
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
+
+function timeFromIso(value: unknown, fallback = "") {
+  if (typeof value !== "string" || !value) return fallback;
+  const iso = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(value);
+  if (iso) return iso[2];
+  const clock = /^(\d{1,2}:\d{2})/.exec(value);
+  return clock ? clock[1].padStart(5, "0") : fallback;
+}
+
+function countdownFromRelative(value: string): number | null {
+  const text = (value || "").trim().toLowerCase();
+  if (text === "nu" || text === "0 min") return 0;
+  const m = /(?:over\s+)?(\d+)\s*min/.exec(text);
+  return m ? Number(m[1]) : null;
+}
+
+function liveRow(item: DepartureItem, idx: number): Row {
+  const delay = Number.isFinite(item.delayMinutes) ? Math.max(0, item.delayMinutes || 0) : 0;
+  return {
+    id: `${item.id}:${idx}`,
+    line: item.line,
+    carrier: item.carrier,
+    direction: item.destination,
+    planned: item.plannedTime,
+    actual: delay > 0 ? clockWithDelay(item.plannedTime, delay) : item.plannedTime,
+    delay,
+    live: item.isLive === true,
+    estimated: item.isLive !== true && item.reliability !== "planned" && item.reliability !== "high",
+    countdown: countdownFromRelative(item.relativeText),
+    ritId: item.ritId,
+  };
+}
+
+function arrivalRow(item: any, idx: number): Row {
+  const planned = timeFromIso(
+    item?.planned_time || item?.planned_arrival || item?.arrival_time || item?.time,
+    "--:--"
+  );
+  const seconds = Number(item?.delay ?? item?.delay_seconds ?? 0);
+  const delay = Number.isFinite(seconds) && seconds > 0 && seconds <= 7200
+    ? Math.round(seconds / 60)
+    : 0;
+  const actual = timeFromIso(item?.effective_time, clockWithDelay(planned, delay));
+  const timestamp = typeof item?.effective_time === "string"
+    ? Date.parse(item.effective_time)
+    : NaN;
+  const left = Number.isFinite(timestamp)
+    ? Math.max(0, Math.ceil((timestamp - Date.now()) / 60000))
+    : null;
+  return {
+    id: String(item?.gtfs_trip_id || item?.trip_id || item?.journey_id || `arr-${idx}`) + ":" + idx,
+    line: String(item?.line || item?.line_number || "?"),
+    carrier: String(item?.carrier || item?.operator || ""),
+    direction: `van ${String(item?.origin || item?.from || item?.origin_name || "Herkomst onbekend")}`,
+    planned,
+    actual: delay > 0 ? actual : planned,
+    delay,
+    live: item?.live === true,
+    estimated: item?.live !== true && (item?.estimated_position === true || item?.realtime === true),
+    countdown: left,
+    ritId: String(item?.journey_id || item?.gtfs_trip_id || item?.trip_id || "") || undefined,
+  };
+}
+
+function lineNorm(line: string) { return String(line || "").trim().toUpperCase(); }
+
+function incidentRow(raw: any, idx: number): Disruption {
+  const lines = Array.isArray(raw?.lines)
+    ? raw.lines.map((line: unknown) => String(line))
+    : raw?.line ? [String(raw.line)] : [];
+  return {
+    id: String(raw?.id || `incident-${idx}`),
+    title: String(raw?.title || raw?.badge || "Reisinformatie"),
+    description: String(raw?.description || raw?.message || ""),
+    lines: Array.from(new Set(lines.filter(Boolean))),
+  };
+}
+
+async function loadExtra(id: string) {
+  const base = `https://ovbord.nl`;
+  const target = encodeURIComponent(id);
+  const load = async (path: string) => {
+    const response = await fetch(`${base}${path}`, { headers: { Accept: "application/json" } });
+    if (!response.ok) throw new Error(`OVbord API ${response.status}`);
+    return response.json();
+  };
+  const [arrivals, incidents] = await Promise.allSettled([
+    load(`/api/aankomsten/${target}`),
+    load(`/api/storingen/${target}`),
+  ]);
+  return {
+    arrivals: arrivals.status === "fulfilled" && Array.isArray(arrivals.value?.arrivals)
+      ? arrivals.value.arrivals.map(arrivalRow)
+      : [] as Row[],
+    disruptions: incidents.status === "fulfilled" && Array.isArray(incidents.value?.items)
+      ? incidents.value.items.map(incidentRow)
+      : [] as Disruption[],
+  };
+}
+
+function selectionKey(id: string) {
+  return `ovbord.halte.lines.v1:${id}`;
+}
+
+function getStatus(row: Row) {
+  if (row.live) return { text: row.delay >= 1 ? `Live · +${row.delay} min` : "Live · op tijd", color: GREEN };
+  if (row.estimated) return { text: row.delay >= 1 ? `Geschat · +${row.delay} min` : "Geschat", color: "#D59A16" };
+  return { text: "Dienstregeling", color: "#8A928E" };
+}
+
+export default function HalteScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { colors, toggleFavoriteStop, isFavoriteStop, addRecentStop } = useApp();
-  const [data, setData] = useState<HalteBoardData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<BoardTab>("departures");
-  const [openFilter, setOpenFilter] = useState<"line" | "direction" | null>(null);
-  const [selectedLine, setSelectedLine] = useState<string | null>(null);
-  const [selectedDirection, setSelectedDirection] = useState<string | null>(null);
   const router = useRouter();
+  const { toggleFavoriteStop, isFavoriteStop, addRecentStop } = useApp();
+  const recentRef = useRef(addRecentStop);
+  recentRef.current = addRecentStop;
+  const [fontsLoaded] = useFonts({
+    Manrope_500Medium, Manrope_600SemiBold, Manrope_700Bold, Manrope_800ExtraBold,
+  });
+  const [data, setData] = useState<HalteBoardData | null>(null);
+  const [arrivals, setArrivals] = useState<Row[]>([]);
+  const [disruptions, setDisruptions] = useState<Disruption[]>([]);
+  const [tab, setTab] = useState<Tab>("departures");
+  const [selectedLines, setSelectedLines] = useState<string[]>([]);
+  const [readyForId, setReadyForId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
     let active = true;
-
-    const load = async (showLoader = false) => {
-      try {
-        if (showLoader) setLoading(true);
-        const result = await getHalte(id);
+    setSelectedLines([]);
+    setReadyForId(null);
+    AsyncStorage.getItem(selectionKey(id))
+      .then((value) => {
         if (!active) return;
-        setData(result);
-        addRecentStop(result.stop);
-      } catch (error) {
-        console.error("Halte laden mislukt", error);
-      } finally {
-        if (active && showLoader) setLoading(false);
-      }
-    };
+        if (value) {
+          const parsed: unknown = JSON.parse(value);
+          setSelectedLines(Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : []);
+        }
+      })
+      .catch(() => { if (active) setSelectedLines([]); })
+      .finally(() => { if (active) setReadyForId(id); });
+    return () => { active = false; };
+  }, [id]);
 
-    void load(true);
-    const timer = setInterval(() => void load(false), 30000);
-    return () => {
-      active = false;
-      clearInterval(timer);
-    };
+  const reload = useCallback(async (initial = false, pull = false) => {
+    if (!id) return;
+    if (initial) setLoading(true);
+    if (pull) setRefreshing(true);
+    try {
+      const [board, extra] = await Promise.all([getHalte(id), loadExtra(id)]);
+      setData(board);
+      setArrivals(extra.arrivals);
+      setDisruptions(extra.disruptions);
+      setError(null);
+      if (initial) recentRef.current(board.stop);
+    } catch (e) {
+      setError("Kon haltegegevens niet ophalen. Trek omlaag om opnieuw te proberen.");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, [id]);
 
   useEffect(() => {
-    setSelectedLine(null);
-    setSelectedDirection(null);
-    setOpenFilter(null);
-  }, [tab]);
+    if (!id) return;
+    void reload(true);
+    const timer = setInterval(() => { void reload(); }, 30000);
+    return () => clearInterval(timer);
+  }, [id, reload]);
 
-  const baseItems = useMemo(() => {
-    if (!data) return [];
-    if (tab === "arrivals") return data.arrivals;
-    if (tab === "disruptions") {
-      return data.disruptions.map((disruption, index): DepartureItem => ({
-        id: `alert-${index}`,
-        line: "!",
-        destination: disruption,
-        plannedTime: "--:--",
-        relativeText: "Actieve storing",
-        reliability: "low",
-        trend: "flat",
-        carrier: "Default",
-        alert: disruption
-      }));
-    }
-    return data.departures;
-  }, [data, tab]);
-
+  const departures = useMemo(() => (data?.departures || []).map(liveRow), [data?.departures]);
   const lineChoices = useMemo<LineChoice[]>(() => {
-    if (tab === "disruptions") return [];
-
     const map = new Map<string, LineChoice>();
-    for (const item of baseItems) {
-      const line = String(item.line || "").trim();
-      if (!line) continue;
-
-      const existing = map.get(line);
-      if (!existing) {
-        map.set(line, {
-          line,
-          carrier: item.carrier,
-          isLive: item.isLive,
-          nextTime: item.plannedTime,
-          destinations: item.destination ? [item.destination] : []
-        });
-        continue;
-      }
-
-      if (item.isLive) existing.isLive = true;
-      if (item.destination && !existing.destinations.includes(item.destination)) {
-        existing.destinations.push(item.destination);
-      }
+    for (const row of [...departures, ...arrivals]) {
+      const normalized = lineNorm(row.line);
+      if (normalized && !map.has(normalized)) map.set(normalized, { line: row.line, carrier: row.carrier });
     }
-
-    return Array.from(map.values()).sort((a, b) =>
-      a.line.localeCompare(b.line, "nl", { numeric: true, sensitivity: "base" })
-    );
-  }, [baseItems, tab]);
-
-  useEffect(() => {
-    if (selectedLine && !lineChoices.some((choice) => choice.line === selectedLine)) {
-      setSelectedLine(null);
-      setSelectedDirection(null);
+    for (const line of data?.stop.lines || []) {
+      const normalized = lineNorm(line.line);
+      if (normalized && !map.has(normalized)) map.set(normalized, line);
     }
-  }, [lineChoices, selectedLine]);
+    return Array.from(map.values()).sort((a, b) => a.line.localeCompare(b.line, "nl", { numeric: true }));
+  }, [departures, arrivals, data?.stop.lines]);
 
-  const selectedChoice = lineChoices.find((choice) => choice.line === selectedLine);
-  const directionChoices = selectedChoice?.destinations ?? [];
+  const toggleLine = (line?: string) => {
+    if (!id || readyForId !== id) return;
+    const norm = line ? lineNorm(line) : "";
+    let next: string[];
+    if (!norm) next = [];
+    else if (selectedLines.length === 0) next = [norm];
+    else if (selectedLines.includes(norm)) next = selectedLines.filter((x) => x !== norm);
+    else next = [...selectedLines, norm];
+    setSelectedLines(next);
+    void AsyncStorage.setItem(selectionKey(id), JSON.stringify(next)).catch(() => {});
+  };
 
-  useEffect(() => {
-    if (selectedDirection && !directionChoices.includes(selectedDirection)) {
-      setSelectedDirection(null);
-    }
-  }, [directionChoices, selectedDirection]);
+  const rows = useMemo(() => {
+    const source = tab === "arrivals" ? arrivals : departures;
+    return selectedLines.length === 0
+      ? source
+      : source.filter((row) => selectedLines.includes(lineNorm(row.line)));
+  }, [tab, arrivals, departures, selectedLines]);
 
-  const activeItems = useMemo(() => {
-    if (tab === "disruptions") return baseItems;
-    return baseItems.filter((item) => {
-      if (selectedLine && item.line !== selectedLine) return false;
-      if (selectedDirection && item.destination !== selectedDirection) return false;
-      return true;
-    });
-  }, [baseItems, selectedLine, selectedDirection, tab]);
+  const scopedDisruptions = useMemo(() => selectedLines.length === 0
+    ? disruptions
+    : disruptions.filter((d) => d.lines.length === 0 || d.lines.some((line) => selectedLines.includes(lineNorm(line)))),
+    [disruptions, selectedLines]);
 
-  const transportSummary = useMemo(() => {
-    if (!data) return "";
-    const modes = Array.from(new Set([...data.departures, ...data.arrivals].map((item) => item.mode).filter(Boolean))) as Mode[];
-    return modes.length ? modes.map((mode) => modeLabel[mode]).join(" · ") : modeLabel[data.stop.mode];
-  }, [data]);
-
-  if (loading || !data) {
-    return (
-      <View style={[styles.center, { backgroundColor: colors.background }]}>
-        <ActivityIndicator color={colors.accent} />
-      </View>
-    );
+  if (!fontsLoaded || (loading && !data)) {
+    return <View style={styles.center}><ActivityIndicator color={GREEN}/></View>;
   }
 
-  const favorite = isFavoriteStop(data.stop.id);
-  const tabs: { key: BoardTab; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-    { key: "departures", label: "Vertrekken", icon: "arrow-up-circle-outline" },
-    { key: "arrivals", label: "Aankomsten", icon: "arrow-down-circle-outline" },
-    { key: "disruptions", label: "Storingen", icon: "warning-outline" }
-  ];
+  const stop = data?.stop;
+  const stopName = stop?.name || id || "Halte";
+  const city = stop?.city || stopName.split(",")[0];
+  const subtitle = `${modeNames[stop?.mode || "bus"]} · ${city}`;
+  const favorite = stop ? isFavoriteStop(stop.id) : false;
 
-  const hasLineChoice = tab !== "disruptions" && lineChoices.length > 1;
+  const renderRow = ({ item }: { item: Row }) => {
+    const delayed = item.delay >= 1;
+    const status = getStatus(item);
+    const carrierStyle = getVervoerderStyle(item.carrier, item.line);
+    const countdown = item.countdown !== null && item.countdown >= 0 && item.countdown < 60
+      ? item.countdown === 0 ? "nu" : `${item.countdown} min`
+      : "";
+    return (
+      <Pressable
+        onPress={item.ritId ? () => router.push({ pathname: "/rit/[id]", params: { id: item.ritId! } }) : undefined}
+        disabled={!item.ritId}
+        accessibilityRole={item.ritId ? "button" : undefined}
+        style={({ pressed }) => [
+          styles.departureRow,
+          delayed && styles.delayRow,
+          pressed && { opacity: 0.66 },
+        ]}
+      >
+        <View style={styles.timeCell}>
+          <Text style={[styles.time, delayed && { color: RED }]}>{item.actual}</Text>
+          {delayed && <Text style={styles.oldTime}>{item.planned}</Text>}
+        </View>
+        <View style={styles.badgeCell}>
+          <View style={[styles.lineBadge, { backgroundColor: carrierStyle.bg }]}>
+            <Text style={[styles.lineBadgeText, { color: carrierStyle.text }]} numberOfLines={1}>{item.line}</Text>
+          </View>
+        </View>
+        <View style={styles.directionCell}>
+          <Text style={styles.direction} numberOfLines={1}>{item.direction}</Text>
+          <View style={styles.statusRow}>
+            <View style={[styles.statusDot, { backgroundColor: status.color }]}/>
+            <Text style={styles.statusText} numberOfLines={1}>{status.text}</Text>
+          </View>
+        </View>
+        <Text style={[
+          styles.countdown,
+          { color: delayed ? RED : item.live ? GREEN : "#1B2420" },
+        ]} numberOfLines={1}>{countdown}</Text>
+      </Pressable>
+    );
+  };
 
   return (
-    <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <View style={styles.header}>
-        <View style={styles.headerRow}>
-          <Pressable
-            onPress={() => router.back()}
-            style={[styles.iconButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
-          >
-            <Ionicons name="chevron-back" size={22} color={colors.text} />
+    <View style={styles.root}>
+      <View style={styles.greenHeader}>
+        <View style={styles.headerTop}>
+          <Pressable onPress={() => router.back()} accessibilityLabel="Terug" style={styles.back}>
+            <Ionicons name="chevron-back" size={24} color="#FFFFFF"/>
           </Pressable>
-
-          <View style={styles.headerCopy}>
-            <View style={styles.stopTitleRow}>
-              <View style={[styles.modeDot, { backgroundColor: modaliteitColors[data.stop.mode] }]} />
-              <Text
-                style={[styles.title, data.stop.name.length > 28 ? styles.titleLong : null, { color: colors.text }]}
-                numberOfLines={2}
-              >
-                {data.stop.name}
-              </Text>
-            </View>
-            <Text style={[styles.subtitle, { color: colors.textSoft }]} numberOfLines={1}>
-              {[data.stop.city, transportSummary].filter(Boolean).join(" · ")}
-            </Text>
+          <View style={styles.headCopy}>
+            <Text style={styles.stopName} numberOfLines={2}>{stopName}</Text>
+            <Text style={styles.stopSubtitle} numberOfLines={1}>{subtitle}</Text>
           </View>
-
           <Pressable
-            accessibilityRole="button"
+            onPress={() => { if (stop) toggleFavoriteStop(stop); }}
             accessibilityLabel="Favoriete halte"
-            onPress={() => toggleFavoriteStop(data.stop)}
-            style={({ pressed }) => [styles.favoriteButton, { opacity: pressed ? 0.55 : 1 }]}
+            style={styles.star}
           >
-            <Ionicons
-              name={favorite ? "star" : "star-outline"}
-              size={25}
-              color={favorite ? colors.warning : colors.textSoft}
-            />
+            <Ionicons name={favorite ? "star" : "star-outline"} size={25} color="#FFFFFF"/>
           </Pressable>
         </View>
-
-        <View style={[styles.tabWrap, { backgroundColor: colors.surfaceAlt }]}>
-          {tabs.map((item) => {
-            const active = tab === item.key;
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.chipsScroll}
+          contentContainerStyle={styles.chipsInner}
+        >
+          <Pressable
+            onPress={() => toggleLine()}
+            style={[styles.chip, selectedLines.length === 0 ? styles.chipActive : styles.chipInactive]}
+          >
+            <Text style={[styles.chipText, selectedLines.length === 0 ? styles.chipTextActive : styles.chipTextInactive]}>
+              Alle lijnen
+            </Text>
+          </Pressable>
+          {lineChoices.map((line) => {
+            const active = selectedLines.includes(lineNorm(line.line));
+            const cs = getVervoerderStyle(line.carrier, line.line);
             return (
               <Pressable
-                key={item.key}
-                onPress={() => setTab(item.key)}
-                style={[styles.tabButton, { backgroundColor: active ? colors.accent : "transparent" }]}
+                key={lineNorm(line.line)}
+                onPress={() => toggleLine(line.line)}
+                style={[styles.chip, active ? styles.chipActive : styles.chipInactive]}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: active }}
               >
-                <Ionicons name={item.icon} size={14} color={active ? "#FFFFFF" : colors.textSoft} />
-                <Text style={[styles.tabButtonText, { color: active ? "#FFFFFF" : colors.textSoft }]}>
-                  {item.label}
+                <View style={[styles.lineSquare, { backgroundColor: cs.bg }]}/>
+                <Text style={[styles.chipText, active ? styles.chipTextActive : styles.chipTextInactive]}>
+                  {line.line}
                 </Text>
               </Pressable>
             );
           })}
-        </View>
+        </ScrollView>
       </View>
 
-      <View style={styles.sectionHead}>
-        <View style={styles.sectionTitleWrap}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>
-            {tab === "departures"
-              ? "Eerstvolgende vertrekken"
-              : tab === "arrivals"
-                ? "Eerstvolgende aankomsten"
-                : "Actuele storingen"}
-          </Text>
-          <Text style={[styles.sectionCount, { color: colors.textSoft }]}>{activeItems.length}</Text>
-        </View>
+      <View style={styles.tabs}>
+        {([
+          ["departures", "Vertrekken"],
+          ["arrivals", "Aankomsten"],
+          ["disruptions", "Storingen"],
+        ] as const).map(([key, label]) => (
+          <Pressable
+            key={key}
+            onPress={() => setTab(key)}
+            style={[styles.tab, tab === key && styles.tabActive]}
+          >
+            <Text style={[styles.tabText, tab === key && styles.tabTextActive]}>{label}</Text>
+            {key === "disruptions" && disruptions.length > 0 ? (
+              <View style={styles.countBubble}><Text style={styles.countBubbleText}>{disruptions.length}</Text></View>
+            ) : null}
+          </Pressable>
+        ))}
+      </View>
 
-        {hasLineChoice ? (
-          <>
-            <View style={styles.filterRow}>
-              <Pressable
-                onPress={() => setOpenFilter(openFilter === "line" ? null : "line")}
-                style={[
-                  styles.selector,
-                  styles.selectorLine,
-                  {
-                    backgroundColor: selectedLine ? colors.accentSoft : colors.surface,
-                    borderColor: selectedLine ? colors.accent : colors.border
-                  }
-                ]}
-              >
-                <View style={styles.selectorCopy}>
-                  <View style={styles.selectorTopRow}>
-                    {selectedChoice ? (
-                      <LijnBadge line={selectedChoice.line} carrier={selectedChoice.carrier} compact />
-                    ) : (
-                      <Ionicons name="git-branch-outline" size={16} color={colors.accent} />
-                    )}
-                    <Text style={[styles.selectorTitle, { color: colors.text }]} numberOfLines={1}>
-                      {selectedChoice ? `Lijn ${selectedChoice.line}` : "Alle lijnen"}
-                    </Text>
-                  </View>
-                  <Text style={[styles.selectorSub, { color: colors.textSoft }]} numberOfLines={1}>
-                    {selectedChoice
-                      ? `${selectedChoice.destinations.length} ${selectedChoice.destinations.length === 1 ? "richting" : "richtingen"}`
-                      : `${lineChoices.length} lijnen`}
-                  </Text>
+      {tab === "disruptions" ? (
+        <FlatList
+          data={scopedDisruptions}
+          keyExtractor={(item) => item.id}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void reload(false, true)} tintColor={GREEN}/>}
+          ListHeaderComponent={error ? <Text style={styles.error}>{error}</Text> : null}
+          ListEmptyComponent={
+            <View style={styles.empty}><Ionicons name="checkmark-circle-outline" size={22} color={GREEN}/><Text style={styles.emptyText}>Geen actuele storingen bekend.</Text></View>
+          }
+          renderItem={({ item }) => (
+            <View style={styles.incident}>
+              <View style={styles.incidentHead}>
+                <Ionicons name="warning-outline" color="#A96B0B" size={18}/>
+                <Text style={styles.incidentTitle}>{item.title}</Text>
+              </View>
+              {item.description && item.description !== item.title ? (
+                <Text style={styles.incidentDescription}>{item.description}</Text>
+              ) : null}
+              {item.lines.length > 0 ? (
+                <View style={styles.incidentLines}>
+                  {item.lines.map((line) => {
+                    const cs = getVervoerderStyle(undefined, line);
+                    return (
+                      <View key={line} style={[styles.incidentLine, { backgroundColor: cs.bg }]}>
+                        <Text style={[styles.incidentLineText, { color: cs.text }]}>{line}</Text>
+                      </View>
+                    );
+                  })}
                 </View>
-                <Ionicons
-                  name={openFilter === "line" ? "chevron-up" : "chevron-down"}
-                  size={15}
-                  color={colors.textSoft}
-                />
-              </Pressable>
-
-              <Pressable
-                disabled={!selectedLine}
-                onPress={() => selectedLine && setOpenFilter(openFilter === "direction" ? null : "direction")}
-                style={[
-                  styles.selector,
-                  styles.selectorDirection,
-                  {
-                    backgroundColor: colors.surface,
-                    borderColor: colors.border,
-                    opacity: selectedLine ? 1 : 0.45
-                  }
-                ]}
-              >
-                <View style={styles.selectorCopy}>
-                  <View style={styles.selectorTopRow}>
-                    <Ionicons name="navigate-outline" size={15} color={selectedLine ? colors.accent : colors.textMuted} />
-                    <Text style={[styles.selectorTitle, { color: colors.text }]} numberOfLines={1}>
-                      {selectedDirection || "Alle richtingen"}
-                    </Text>
-                  </View>
-                  <Text style={[styles.selectorSub, { color: colors.textSoft }]} numberOfLines={1}>
-                    {selectedLine
-                      ? `${directionChoices.length} ${directionChoices.length === 1 ? "richting" : "richtingen"}`
-                      : "Kies eerst lijn"}
-                  </Text>
-                </View>
-                <Ionicons
-                  name={openFilter === "direction" ? "chevron-up" : "chevron-down"}
-                  size={15}
-                  color={colors.textSoft}
-                />
-              </Pressable>
+              ) : null}
             </View>
-
-            {openFilter === "line" ? (
-              <View style={[styles.inlineMenu, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Pressable
-                  onPress={() => {
-                    setSelectedLine(null);
-                    setSelectedDirection(null);
-                    setOpenFilter(null);
-                  }}
-                  style={[
-                    styles.inlineOption,
-                    { backgroundColor: !selectedLine ? colors.accentSoft : "transparent" }
-                  ]}
-                >
-                  <View style={[styles.inlineIcon, { backgroundColor: colors.accentSoft }]}>
-                    <Ionicons name="git-branch-outline" size={17} color={colors.accent} />
-                  </View>
-                  <View style={styles.inlineOptionCopy}>
-                    <Text style={[styles.inlineOptionTitle, { color: colors.text }]}>Alle lijnen</Text>
-                    <Text style={[styles.inlineOptionSub, { color: colors.textSoft }]}>Volledig halteoverzicht</Text>
-                  </View>
-                  {!selectedLine ? <Ionicons name="checkmark" size={18} color={colors.accent} /> : null}
-                </Pressable>
-
-                {lineChoices.map((choice) => {
-                  const selected = choice.line === selectedLine;
-                  return (
-                    <Pressable
-                      key={choice.line}
-                      onPress={() => {
-                        setSelectedLine(choice.line);
-                        setSelectedDirection(null);
-                        setOpenFilter(null);
-                      }}
-                      style={[
-                        styles.inlineOption,
-                        { backgroundColor: selected ? colors.accentSoft : "transparent" }
-                      ]}
-                    >
-                      <LijnBadge line={choice.line} carrier={choice.carrier} compact />
-                      <View style={styles.inlineOptionCopy}>
-                        <Text style={[styles.inlineOptionTitle, { color: colors.text }]}>Lijn {choice.line}</Text>
-                        <Text style={[styles.inlineOptionSub, { color: colors.textSoft }]}>
-                          {choice.destinations.length} {choice.destinations.length === 1 ? "richting" : "richtingen"}
-                          {choice.isLive ? " · Live" : ""}
-                        </Text>
-                      </View>
-                      {selected ? (
-                        <Ionicons name="checkmark" size={18} color={colors.accent} />
-                      ) : (
-                        <Ionicons name="chevron-forward" size={17} color={colors.textMuted} />
-                      )}
-                    </Pressable>
-                  );
-                })}
+          )}
+        />
+      ) : (
+        <FlatList
+          data={rows}
+          keyExtractor={(item) => item.id}
+          renderItem={renderRow}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.rows}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void reload(false, true)} tintColor={GREEN}/>}
+          ListHeaderComponent={
+            <>
+              {error ? <Text style={styles.error}>{error}</Text> : null}
+              <View style={styles.columnHeader}>
+                <Text style={[styles.columnTitle, styles.hTime]}>TIJD</Text>
+                <Text style={[styles.columnTitle, styles.hLine]}>LIJN</Text>
+                <Text style={[styles.columnTitle, styles.hDirection]}>RICHTING</Text>
+                <Text style={[styles.columnTitle, styles.hCountdown]}>VERTREK</Text>
               </View>
-            ) : null}
-
-            {openFilter === "direction" && selectedLine ? (
-              <View style={[styles.inlineMenu, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Pressable
-                  onPress={() => {
-                    setSelectedDirection(null);
-                    setOpenFilter(null);
-                  }}
-                  style={[
-                    styles.inlineOption,
-                    { backgroundColor: !selectedDirection ? colors.accentSoft : "transparent" }
-                  ]}
-                >
-                  <View style={[styles.inlineIcon, { backgroundColor: colors.accentSoft }]}>
-                    <Ionicons name="navigate-outline" size={17} color={colors.accent} />
-                  </View>
-                  <View style={styles.inlineOptionCopy}>
-                    <Text style={[styles.inlineOptionTitle, { color: colors.text }]}>Alle richtingen</Text>
-                    <Text style={[styles.inlineOptionSub, { color: colors.textSoft }]}>Lijn {selectedLine}</Text>
-                  </View>
-                  {!selectedDirection ? <Ionicons name="checkmark" size={18} color={colors.accent} /> : null}
-                </Pressable>
-
-                {directionChoices.map((destination) => {
-                  const selected = destination === selectedDirection;
-                  return (
-                    <Pressable
-                      key={destination}
-                      onPress={() => {
-                        setSelectedDirection(destination);
-                        setOpenFilter(null);
-                      }}
-                      style={[
-                        styles.inlineOption,
-                        { backgroundColor: selected ? colors.accentSoft : "transparent" }
-                      ]}
-                    >
-                      <View style={[styles.inlineIcon, { backgroundColor: colors.surfaceAlt }]}>
-                        <Ionicons name="arrow-forward" size={16} color={colors.textSoft} />
-                      </View>
-                      <View style={styles.inlineOptionCopy}>
-                        <Text style={[styles.inlineOptionTitle, { color: colors.text }]} numberOfLines={2}>
-                          {destination}
-                        </Text>
-                      </View>
-                      {selected ? (
-                        <Ionicons name="checkmark" size={18} color={colors.accent} />
-                      ) : (
-                        <Ionicons name="chevron-forward" size={17} color={colors.textMuted} />
-                      )}
-                    </Pressable>
-                  );
-                })}
-              </View>
-            ) : null}
-          </>
-        ) : null}
-      </View>
-
-      <FlatList
-        data={activeItems}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
-        renderItem={({ item }) => (
-          <VertrekRegel
-            item={item}
-            onPress={item.ritId ? () => router.push({ pathname: "/rit/[id]", params: { id: item.ritId! } }) : undefined}
-          />
-        )}
-        ListEmptyComponent={
-          <View style={[styles.emptyBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Ionicons name="checkmark-circle-outline" size={24} color={colors.textMuted} />
-            <Text style={{ color: colors.textSoft }}>Geen gegevens beschikbaar.</Text>
-          </View>
-        }
-      />
-
+            </>
+          }
+          ListEmptyComponent={<Text style={styles.emptyText}>Geen {tab === "arrivals" ? "aankomsten" : "vertrekken"} voor deze selectie.</Text>}
+        />
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
-  header: { paddingTop: 48, paddingHorizontal: 14, paddingBottom: 8, gap: 11 },
-  headerRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  headerCopy: { flex: 1, minWidth: 0 },
-  iconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 13,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center"
+  root: { flex: 1, backgroundColor: BG },
+  center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: BG },
+  greenHeader: { backgroundColor: DARK, paddingTop: 48, paddingBottom: 10 },
+  headerTop: { paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 11 },
+  back: {
+    width: 44, height: 44, borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    alignItems: "center", justifyContent: "center",
   },
-  favoriteButton: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "transparent"
-  },
-  stopTitleRow: { flexDirection: "row", alignItems: "center", gap: 7 },
-  modeDot: { width: 11, height: 11, borderRadius: 99 },
-  title: {
-    fontSize: 20,
-    fontWeight: "900",
-    flex: 1,
-    lineHeight: 22,
-    letterSpacing: -0.35
-  },
-  titleLong: { fontSize: 18, lineHeight: 20 },
-  subtitle: { marginTop: 3, fontSize: 11.5, fontWeight: "700" },
-  tabWrap: { borderRadius: 13, padding: 3, flexDirection: "row", gap: 2 },
-  tabButton: {
-    flex: 1,
-    minHeight: 37,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 4,
-    borderRadius: 10
-  },
-  tabButtonText: { fontWeight: "900", fontSize: 11.5 },
-
-  sectionHead: { paddingHorizontal: 14, paddingTop: 6, paddingBottom: 7, gap: 7 },
-  sectionTitleWrap: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" },
-  sectionTitle: { fontSize: 14.5, fontWeight: "900" },
-  sectionCount: { fontSize: 11.5, fontWeight: "800" },
-
-  filterRow: { flexDirection: "row", gap: 7 },
-  selector: {
-    minHeight: 50,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 9,
-    paddingVertical: 7,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6
-  },
-  selectorLine: { flex: 1.02 },
-  selectorDirection: { flex: 1.18 },
-  selectorCopy: { flex: 1, minWidth: 0 },
-  selectorTopRow: { flexDirection: "row", alignItems: "center", gap: 5, minWidth: 0 },
-  selectorTitle: { flex: 1, minWidth: 0, fontSize: 11.5, lineHeight: 14, fontWeight: "900" },
-  selectorSub: { marginTop: 2, fontSize: 9.5, lineHeight: 11, fontWeight: "700" },
-
-  inlineMenu: {
-    marginTop: 1,
-    borderWidth: 1,
-    borderRadius: 13,
-    padding: 5
-  },
-  inlineOption: {
-    minHeight: 51,
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 7,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8
-  },
-  inlineIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 9,
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  inlineOptionCopy: { flex: 1, minWidth: 0 },
-  inlineOptionTitle: { fontSize: 12.5, lineHeight: 15, fontWeight: "900" },
-  inlineOptionSub: { marginTop: 1, fontSize: 9.5, lineHeight: 11, fontWeight: "700" },
-
-  listContent: { paddingHorizontal: 14, paddingBottom: 110 },
-  emptyBox: {
-    borderWidth: 1,
-    borderRadius: 16,
-    padding: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10
-  },
-  center: { flex: 1, alignItems: "center", justifyContent: "center" },
-
+  headCopy: { flex: 1, minWidth: 0 },
+  stopName: { color: BG, fontFamily: FONT800, fontSize: 20, lineHeight: 24 },
+  stopSubtitle: { color: "#B9D3C4", fontFamily: FONT500, fontSize: 13, marginTop: 3 },
+  star: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  chipsScroll: { marginTop: 14, maxHeight: 34 },
+  chipsInner: { paddingHorizontal: 16, gap: 8, alignItems: "center" },
+  chip: { height: 34, borderRadius: 18, paddingHorizontal: 12, borderWidth: 1, flexDirection: "row", alignItems: "center", gap: 7 },
+  chipActive: { backgroundColor: BG, borderColor: BG },
+  chipInactive: { backgroundColor: "transparent", borderColor: "rgba(255,255,255,0.28)" },
+  chipText: { fontFamily: FONT800, fontSize: 12 },
+  chipTextActive: { color: DARK },
+  chipTextInactive: { color: BG },
+  lineSquare: { width: 13, height: 13, borderRadius: 3 },
+  tabs: { flexDirection: "row", minHeight: 48, backgroundColor: BG, borderBottomColor: "#E3E8E5", borderBottomWidth: 1 },
+  tab: { flex: 1, minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, borderBottomWidth: 3, borderBottomColor: "transparent" },
+  tabActive: { borderBottomColor: GREEN },
+  tabText: { fontFamily: FONT700, fontSize: 13, color: "#6A7770" },
+  tabTextActive: { color: GREEN },
+  countBubble: { borderRadius: 10, paddingHorizontal: 5, minWidth: 18, height: 18, backgroundColor: "#EAF3ED", alignItems: "center", justifyContent: "center" },
+  countBubbleText: { fontFamily: FONT800, fontSize: 10, color: GREEN },
+  rows: { paddingBottom: 105 },
+  columnHeader: { height: 34, flexDirection: "row", alignItems: "center", paddingHorizontal: 16, backgroundColor: "#F9FAF9", borderBottomColor: "#E5EBE7", borderBottomWidth: 1 },
+  columnTitle: { fontFamily: FONT800, fontSize: 12, letterSpacing: 0.5, color: MUTED },
+  hTime: { width: 50 },
+  hLine: { width: 44 },
+  hDirection: { flex: 1 },
+  hCountdown: { width: 58, textAlign: "right" },
+  departureRow: { minHeight: 56, flexDirection: "row", alignItems: "center", paddingVertical: 9, paddingHorizontal: 16, borderBottomColor: "#E9EEEA", borderBottomWidth: StyleSheet.hairlineWidth, backgroundColor: BG },
+  delayRow: { backgroundColor: "#FBF3F2" },
+  timeCell: { width: 50, justifyContent: "center" },
+  time: { fontFamily: FONT800, fontSize: 17, color: "#17221B", fontVariant: ["tabular-nums"] },
+  oldTime: { color: "#7E8882", fontFamily: FONT500, fontSize: 11, textDecorationLine: "line-through", fontVariant: ["tabular-nums"], marginTop: 1 },
+  badgeCell: { width: 44, alignItems: "flex-start" },
+  lineBadge: { borderRadius: 6, minWidth: 30, maxWidth: 38, height: 24, paddingHorizontal: 4, alignItems: "center", justifyContent: "center" },
+  lineBadgeText: { fontFamily: FONT800, fontSize: 11, lineHeight: 15 },
+  directionCell: { flex: 1, minWidth: 0, justifyContent: "center" },
+  direction: { fontFamily: FONT700, fontSize: 14.5, color: "#13211A" },
+  statusRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 2 },
+  statusDot: { width: 6, height: 6, borderRadius: 6 },
+  statusText: { fontFamily: FONT500, fontSize: 11.5, color: "#68756D", flexShrink: 1 },
+  countdown: { width: 58, textAlign: "right", fontFamily: FONT800, fontSize: 12, fontVariant: ["tabular-nums"] },
+  emptyText: { color: MUTED, fontFamily: FONT600, fontSize: 13, padding: 18 },
+  empty: { flexDirection: "row", alignItems: "center", padding: 12, gap: 8 },
+  error: { paddingHorizontal: 16, paddingVertical: 8, color: RED, fontFamily: FONT600, fontSize: 12 },
+  incident: { paddingHorizontal: 16, paddingVertical: 15, borderBottomColor: "#E3E8E5", borderBottomWidth: StyleSheet.hairlineWidth },
+  incidentHead: { flexDirection: "row", alignItems: "flex-start", gap: 7 },
+  incidentTitle: { fontFamily: FONT800, fontSize: 14, flex: 1, color: "#1C2821" },
+  incidentDescription: { fontFamily: FONT500, fontSize: 12, lineHeight: 19, color: "#63716A", marginTop: 6 },
+  incidentLines: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 },
+  incidentLine: { minWidth: 28, borderRadius: 5, paddingHorizontal: 6, height: 21, alignItems: "center", justifyContent: "center" },
+  incidentLineText: { fontFamily: FONT800, fontSize: 11 },
 });
