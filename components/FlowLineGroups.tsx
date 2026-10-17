@@ -1,0 +1,189 @@
+import { Ionicons } from "@expo/vector-icons";
+import React, { useMemo } from "react";
+import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { useApp } from "../context/AppProvider";
+import type { DepartureItem } from "../types/api";
+import {effectiveDepartureClock} from "../lib/format";
+import { departurePresentation } from "../lib/departurePresentation";
+import { LijnBadge } from "./LijnBadge";
+import { favoriteLineKey } from "../lib/favoriteLines";
+
+type Direction = { destination: string; key: string; departures: DepartureItem[] };
+type Group = { line: string; carrier: string; directions: Direction[]; total: number };
+type Props = {
+  /** Favourite line keys (favoriteLineKey): their cards get a filled star. */
+  favoriteKeys?: ReadonlySet<string>;
+  onToggleFavorite?: (line: string, carrier: string) => void;
+  departures: DepartureItem[];
+  onOpenDeparture: (item: DepartureItem) => void;
+  onSelectLine: (line: string) => void;
+};
+
+/** One card per line, direction rows and real times only. No invented occupancy/GPS. */
+export function FlowLineGroups({ departures, onOpenDeparture, onSelectLine, favoriteKeys, onToggleFavorite }: Props) {
+  const { colors, resolvedScheme } = useApp();
+  const groups = useMemo<Group[]>(() => {
+    const byLine = new Map<string, { line: string; carrier: string; byDirection: Map<string, Direction>; total: number }>();
+    for (const dep of departures) {
+      const line = String(dep.line || "?").trim();
+      const carrier = String(dep.carrier || "").trim();
+      const lineKey = [line.toLowerCase(), carrier.toLowerCase()].join(":");
+      let grp = byLine.get(lineKey);
+      if (!grp) {
+        grp = { line, carrier, byDirection: new Map(), total: 0 };
+        byLine.set(lineKey, grp);
+      }
+      const destination = String(dep.destination || "Bestemming onbekend").trim();
+      const directionKey = destination.toLocaleLowerCase("nl");
+      let direction = grp.byDirection.get(directionKey);
+      if (!direction) {
+        direction = { destination, key: lineKey + "/" + directionKey, departures: [] };
+        grp.byDirection.set(directionKey, direction);
+      }
+      direction.departures.push(dep);
+      grp.total++;
+    }
+    return [...byLine.values()]
+      .sort((a, b) => a.line.localeCompare(b.line, "nl", { numeric: true }))
+      .map((grp) => ({
+        line: grp.line, carrier: grp.carrier, total: grp.total,
+        directions: [...grp.byDirection.values()].sort((a,b)=>a.destination.localeCompare(b.destination,"nl"))
+      }));
+  }, [departures]);
+  const directionsCount = groups.reduce((n, g) => n + g.directions.length, 0);
+  function directionSummary(rows: DepartureItem[]) {
+    const times: number[]=[];
+    let previous=-1;
+    let day=0;
+    for(const dep of rows){
+      if (dep.cancelled === true || dep.departed === true) continue;
+      const match=/^(\d{1,2}):(\d{2})$/.exec(effectiveDepartureClock(dep));
+      if(!match)continue;
+      const clock=Number(match[1])*60+Number(match[2]);
+      if(previous>=0 && clock+day*1440<previous-600)day++;
+      const value=clock+day*1440;
+      if(value>=previous){times.push(value);previous=value;}
+    }
+    const gaps=times.slice(1).map((v,i)=>v-times[i]).filter(n=>n>0&&n<=180).sort((a,b)=>a-b);
+    const median=gaps.length>=2?(gaps.length%2===1?gaps[(gaps.length-1)/2]:(gaps[gaps.length/2-1]+gaps[gaps.length/2])/2):null;
+    const activeRows = rows.filter(dep => dep.cancelled !== true && dep.departed !== true);
+    return {last:activeRows.length?effectiveDepartureClock(activeRows[activeRows.length-1]):null,
+      frequency:median===null?null:Math.max(5,Math.round(median/5)*5)};
+  }
+
+  return (
+    <FlatList
+      data={groups}
+      keyExtractor={(group) => group.line + "/" + group.carrier}
+      contentContainerStyle={styles.list}
+      showsVerticalScrollIndicator={false}
+      ListHeaderComponent={
+        <View style={styles.intro}>
+          <Text style={[styles.title, { color: colors.text }]}>Lijnen op deze halte</Text>
+          <Text style={[styles.subtitle, { color: colors.textSoft }]}>
+            {groups.length} lijnen · {directionsCount} richtingen · kies een vertrektijd
+          </Text>
+        </View>
+      }
+      ListEmptyComponent={<Text style={[styles.empty, { color: colors.textSoft }]}>Geen geplande vertrekken beschikbaar.</Text>}
+      renderItem={({ item: group }) => (
+        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={styles.header}>
+            <Pressable
+              style={styles.headerMain}
+              onPress={() => onSelectLine(group.line)}
+              accessibilityRole="button"
+              accessibilityLabel={`Alle vertrekken van lijn ${group.line} tonen`}
+            >
+              <LijnBadge line={group.line} carrier={group.carrier} tone="flow" />
+              <View style={styles.headerText}>
+                <Text style={[styles.lineCaption, { color: colors.text }]}>Lijn {group.line}</Text>
+                <Text style={[styles.carrier, { color: colors.textSoft }]}>{group.carrier || "Vervoerder onbekend"} · {group.total} vertrekken</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+            </Pressable>
+            {onToggleFavorite ? (() => {
+              const favorite = Boolean(favoriteKeys?.has(favoriteLineKey(group.line, group.carrier)));
+              return (
+                <Pressable onPress={() => onToggleFavorite(group.line, group.carrier)} hitSlop={6} accessibilityRole="button"
+                  accessibilityLabel={(favorite ? "Verwijder favoriete lijn " : "Bewaar als favoriete lijn ") + group.line}
+                  accessibilityState={{ selected: favorite }} style={styles.star}>
+                  <Ionicons name={favorite ? "star" : "star-outline"} size={21} color={favorite ? colors.warning : colors.textSoft} />
+                </Pressable>
+              );
+            })() : null}
+          </View>
+          {group.directions.map((direction, index) => (
+            <View key={direction.key} style={[styles.direction, { borderTopColor: colors.border }]}>
+              <Text style={[styles.directionName, { color: colors.text }]} numberOfLines={2}>Richting {direction.destination}</Text>
+              <Text style={[styles.frequency,{color:colors.textSoft}]}>
+                {(()=>{const summary=directionSummary(direction.departures);return [
+                  summary.last ? "Laatste vertrek "+summary.last : "",
+                  summary.frequency ? "ca. elke "+summary.frequency+" min" : ""
+                ].filter(Boolean).join(" · ");})()}
+              </Text>
+              <View style={styles.departureTimes}>
+                {direction.departures.slice(0, 4).map((dep, i) => {
+                  const { cancelled, clock: expected } = departurePresentation(dep);
+                  const departed = !cancelled && dep.departed === true;
+                  const delayed = !cancelled && !departed && typeof dep.delayMinutes === "number" && dep.delayMinutes > 0;
+                  const early = !cancelled && !departed && typeof dep.delayMinutes === "number" && dep.delayMinutes < 0;
+                  return (
+                    <Pressable
+                      key={dep.id + ":" + i}
+                      disabled={!dep.ritId || departed}
+                      accessibilityRole={dep.ritId && !departed ? "button" : undefined}
+                      accessibilityLabel={departed ? "Lijn " + group.line + " richting " + direction.destination + ", vertrokken" : cancelled ? "Lijn " + group.line + " richting " + direction.destination + ", " + expected + ", rijdt niet" + (dep.ritId ? ", rit openen" : "") : "Lijn " + group.line + " richting " + direction.destination + ", " + expected + ", rit openen"}
+                      onPress={() => onOpenDeparture(dep)}
+                      style={[styles.timeChip, { backgroundColor: cancelled ? (resolvedScheme === "dark" ? colors.dangerSoft : "#FFF4F3") : colors.surfaceSoft, borderColor: cancelled ? colors.danger : colors.border }]}
+                    >
+                      <Text style={[styles.timeText, { color: cancelled ? colors.danger : departed ? colors.textMuted : colors.text }, (cancelled || departed) && {textDecorationLine:"line-through"}]}>{expected}</Text>
+                      {delayed || early ? <Text style={[styles.delta, { color: delayed ? colors.danger : colors.accentText }]}>
+                        {delayed ? "+" : "−"}{Math.abs(dep.delayMinutes || 0)}m
+                      </Text> : null}
+                      {cancelled ? <Text style={{color:colors.danger,fontSize:9,fontWeight:"900"}}>Rijdt niet</Text> : departed ? <Text style={{color:colors.textMuted,fontSize:9,fontWeight:"800"}}>Vertrokken</Text> : dep.liveDataStale === true ? <Text style={{color:colors.warning,fontSize:9,fontWeight:"800"}}>Live-info oud</Text> : dep.isLive === true ? <View style={[styles.dot, { backgroundColor: colors.success }]} /> : null}
+                    </Pressable>
+                  );
+                })}
+                {direction.departures.length > 4 ? (
+                  <Pressable
+                    onPress={() => onSelectLine(group.line)}
+                    accessibilityRole="button"
+                    style={styles.more}
+                  >
+                    <Text style={[styles.moreText, { color: colors.accentText }]}>+{direction.departures.length - 4}</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+    />
+  );
+}
+
+const styles = StyleSheet.create({
+  list: { paddingHorizontal: 12, paddingBottom: 32, gap: 12 },
+  intro: { paddingTop: 16, paddingBottom: 4, gap: 5 },
+  title: { fontSize: 17, fontWeight: "900" },
+  subtitle: { fontSize: 11, lineHeight: 16 },
+  empty: { textAlign: "center", marginTop: 30, fontSize: 12 },
+  card: { borderRadius: 13, borderWidth: 1, overflow: "hidden" },
+  header: { minHeight: 54, paddingHorizontal: 12, paddingVertical: 9, flexDirection: "row", alignItems: "center", gap: 9 },
+  headerMain: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 9 },
+  star: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  headerText: { flex: 1, minWidth: 0, gap: 2 },
+  lineCaption: { fontSize: 13, fontWeight: "800" },
+  carrier: { fontSize: 10.5 },
+  direction: { borderTopWidth: 1, paddingHorizontal: 12, paddingVertical: 10, gap: 8 },
+  directionName: { fontSize: 12, fontWeight: "700" },
+  departureTimes: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
+  frequency:{fontSize:11,fontWeight:"600"},
+  timeChip: { minHeight: 37, paddingHorizontal: 9, borderRadius: 8, borderWidth: 1, flexDirection: "row", alignItems: "center", gap: 4 },
+  timeText: { fontSize: 12.5, fontWeight: "800", fontVariant: ["tabular-nums"] },
+  delta: { fontSize: 9.5, fontWeight: "900" },
+  dot: { width: 6, height: 6, borderRadius: 3 },
+  more: { justifyContent: "center", paddingHorizontal: 7, minHeight: 37 },
+  moreText: { fontSize: 11, fontWeight: "900" }
+});

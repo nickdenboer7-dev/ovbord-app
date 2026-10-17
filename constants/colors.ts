@@ -13,6 +13,8 @@ export const themes = {
     textSoft: "#5D6A62",
     textMuted: "#7B857F",
     accent: "#1D6F42",
+    /** Green for text and icons; identical to accent in light mode. */
+    accentText: "#1D6F42",
     accentSoft: "#DDF2E6",
     danger: "#D92B2B",
     dangerSoft: "#FCE6E6",
@@ -36,6 +38,8 @@ export const themes = {
     textSoft: "#BBC5BE",
     textMuted: "#8E9791",
     accent: "#1D6F42",
+    /** Lighter green: #1D6F42 text on dark surfaces is only ~3:1 contrast. */
+    accentText: "#4DD17C",
     accentSoft: "#1B3223",
     danger: "#FF5E5E",
     dangerSoft: "#341919",

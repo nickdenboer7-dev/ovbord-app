@@ -3,7 +3,7 @@
     "name": "OVbord",
     "slug": "ovspot",
     "scheme": "ovbord",
-    "version": "1.0.0",
+    "version": "1.0.3",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "plugins": [
@@ -24,7 +24,7 @@
     },
     "android": {
       "package": "nl.ovbord.app",
-      "versionCode": 1,
+      "versionCode": 4,
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",

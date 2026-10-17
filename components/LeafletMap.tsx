@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { WebView } from "react-native-webview";
+import { mapFitKey } from "../lib/mapFit";
 
 export type LeafletPoint = { latitude: number; longitude: number };
 export type LeafletMarker = {
@@ -18,7 +19,9 @@ type Props = {
   center?: { lat: number; lon: number };
 };
 
-const TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+// PDOK BRT-Achtergrondkaart (Kadaster, CC BY 4.0): same tiles as the trip page, meant for app use.
+// OpenStreetMap's public tile servers are not intended for app traffic.
+const TILE_URL = "https://service.pdok.nl/brt/achtergrondkaart/wmts/v2_0/pastel/EPSG:3857/{z}/{x}/{y}.png";
 
 const HTML = `<!doctype html>
 <html>
@@ -35,12 +38,14 @@ html,body,#map{width:100%;height:100%;margin:0;padding:0;background:#f5f7f5;over
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 (function(){
-  var map = L.map('map', { zoomControl: true, attributionControl: true, preferCanvas: true }).setView([52.0907,5.1214], 11);
-  L.tileLayer('${TILE_URL}', { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
+  // Netherlands overview until there is something to frame.
+  var map = L.map('map', { zoomControl: true, attributionControl: true, preferCanvas: true }).setView([52.2,5.3], 7);
+  L.tileLayer('${TILE_URL}', { maxZoom: 19, maxNativeZoom: 17, minZoom: 6, attribution: 'Kaart &copy; Kadaster' }).addTo(map);
   var route = L.polyline([], { color:'#1D6F42', weight:5, opacity:.9 }).addTo(map);
   var markerLayer = L.layerGroup().addTo(map);
   var vehicleLayer = L.layerGroup().addTo(map);
-  var firstData = true;
+  // Re-frame only when the framed content changes (fitKey from React Native), not on every refresh.
+  var lastFitKey = "";
 
   function safeColor(value, fallback){ return /^#[0-9a-fA-F]{6}$/.test(value || '') ? value : fallback; }
   function update(payload){
@@ -60,8 +65,9 @@ html,body,#map{width:100%;height:100%;margin:0;padding:0;background:#f5f7f5;over
         .bindTooltip('Voertuig', { direction:'top' }).addTo(vehicleLayer);
     }
 
-    if(firstData){
-      firstData = false;
+    var fitKey = typeof payload.fitKey === "string" ? payload.fitKey : "";
+    if(fitKey && fitKey !== lastFitKey){
+      lastFitKey = fitKey;
       var bounds = [];
       latlngs.forEach(function(p){ bounds.push(p); });
       (payload.markers || []).forEach(function(m){ if(Number.isFinite(m.lat) && Number.isFinite(m.lon)) bounds.push([m.lat,m.lon]); });
@@ -88,7 +94,8 @@ const WEBVIEW_SOURCE = { html: HTML };
 export function LeafletMap({ polyline = [], markers = [], vehicle, center }: Props) {
   const ref = useRef<WebView>(null);
   const [ready, setReady] = useState(false);
-  const payload = useMemo(() => JSON.stringify({ polyline, markers, vehicle, center }), [polyline, markers, vehicle, center]);
+  const payload = useMemo(() => JSON.stringify({ polyline, markers, vehicle, center,
+    fitKey: mapFitKey(markers, center, polyline.length) }), [polyline, markers, vehicle, center]);
 
   useEffect(() => {
     if (!ready) return;

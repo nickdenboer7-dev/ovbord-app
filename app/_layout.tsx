@@ -2,6 +2,8 @@ import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React from "react";
 import { AppProvider, useApp } from "../context/AppProvider";
+import { FavoritesLiveProvider } from "../context/FavoritesLive";
+import { FlowNavigationProvider } from "../context/FlowNavigation";
 
 function RootNavigation() {
   const { resolvedScheme, colors } = useApp();
@@ -23,7 +25,6 @@ function RootNavigation() {
       <StatusBar style={resolvedScheme === "dark" ? "light" : "dark"} />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
         <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="halte/[id]" options={{ presentation: "transparentModal", animation: "slide_from_bottom", contentStyle: { backgroundColor: "transparent" } }} />
         <Stack.Screen name="rit/[id]" options={{ animation: "slide_from_right" }} />
       </Stack>
     </ThemeProvider>
@@ -33,7 +34,7 @@ function RootNavigation() {
 export default function RootLayout() {
   return (
     <AppProvider>
-      <RootNavigation />
+      <FlowNavigationProvider><FavoritesLiveProvider><RootNavigation /></FavoritesLiveProvider></FlowNavigationProvider>
     </AppProvider>
   );
 }
