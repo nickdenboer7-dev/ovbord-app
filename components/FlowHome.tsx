@@ -43,7 +43,7 @@ function shortStopName(name: string): string {
 
 /** One persistent screen for search, stop boards, inline journeys and intermediate stops. */
 export function FlowHome() {
-  const { colors, recentStops, favoriteStops, favoriteJourneys, addRecentStop, toggleFavoriteStop, isFavoriteStop, manualCity, setManualCity } = useApp();
+  const { colors, resolvedScheme, recentStops, favoriteStops, favoriteJourneys, addRecentStop, toggleFavoriteStop, isFavoriteStop, manualCity, setManualCity } = useApp();
   const { screens, showStop, searchRequest } = useFlowNavigation();
   const { boards: favoriteBoards, refreshFailure: favoritesFailure, refresh: refreshFavorites, stopsKey: favoritesKey } = useFavoritesLive();
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -238,28 +238,35 @@ export function FlowHome() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      {!showingBoard ? <View style={[styles.top, { paddingTop: Math.max(insets.top, 24) + 16, backgroundColor: colors.surface, borderBottomColor: colors.border },
+      {!showingBoard ? <View style={[styles.top, { paddingTop: Math.max(insets.top, 24) + 16, backgroundColor: resolvedScheme === "dark" ? "#123C64" : "#175FAD", borderBottomColor: "transparent" },
         !searchOpen && styles.topCalm]}>
         <View style={styles.brandLine}>
-          <Text style={[styles.brand, { color: colors.accentText }]} accessibilityRole="header">OVbord</Text>
+          <Text style={[styles.brand, { color: "#FFFFFF" }]} accessibilityRole="header">OVbord</Text>
           <Pressable onPress={searchOpen ? closeSearch : openSearch} accessibilityRole="button"
             accessibilityLabel={searchOpen ? "Zoeken sluiten" : "Zoek een halte, station of rit"} hitSlop={6} style={styles.searchButton}>
-            <Ionicons name={searchOpen ? "close" : "search"} size={24} color={colors.text} />
+            <Ionicons name={searchOpen ? "close" : "search"} size={24} color="#FFFFFF" />
           </Pressable>
         </View>
-        {searchOpen ? <View style={[styles.search, { backgroundColor: colors.background, borderColor: colors.border }]}>
-          <Ionicons name="search" size={18} color={colors.textSoft} />
+        {!searchOpen ? (
+          <Pressable onPress={openSearch} accessibilityRole="button" accessibilityLabel="Zoek halte, station of rit"
+            style={styles.searchPreview}>
+            <Ionicons name="search" size={19} color="#5D6D82" />
+            <Text numberOfLines={1} style={styles.searchPreviewText}>Zoek halte, station, lijn of bestemming</Text>
+          </Pressable>
+        ) : null}
+        {searchOpen ? <View style={[styles.search, { backgroundColor: "#FFFFFF", borderColor: "#D8E3F1" }]}>
+          <Ionicons name="search" size={18} color="#5D6D82" />
           <TextInput
             ref={inputRef}
             value={query}
             autoFocus
             onChangeText={(value) => { setQuery(value); if (!value.trim()) setSearchFilter("alles"); }}
             placeholder="Zoek halte, station of rit"
-            placeholderTextColor={colors.textMuted}
+            placeholderTextColor="#64748B"
             returnKeyType="search"
             // The field has a fixed height: grow with the system font, but not without limit.
             maxFontSizeMultiplier={1.3}
-            style={[styles.searchInput, { color: colors.text }]}
+            style={[styles.searchInput, { color: "#10233D" }]}
           />
           {query ? (
             <Pressable accessibilityLabel="Zoekopdracht wissen" onPress={() => { setQuery(""); setSearchFilter("alles"); }}>
@@ -557,7 +564,10 @@ const styles = StyleSheet.create({
   caption: { fontSize: 10.5, marginTop: 1 },
   beta: { paddingHorizontal: 7, paddingVertical: 4, borderRadius: 6 },
   betaText: { fontSize: 8.5, fontWeight: "900" },
-  search: { borderWidth: 1, borderRadius: 10, height: 42, flexDirection: "row", alignItems: "center", paddingHorizontal: 11, gap: 8, marginBottom: 7 },
+  searchPreview: { backgroundColor: "#F8FBFF", borderRadius: 14, minHeight: 46, flexDirection: "row",
+    alignItems: "center", gap: 9, paddingHorizontal: 14, marginBottom: 10 },
+  searchPreviewText: { flex: 1, minWidth: 0, color: "#5D6D82", fontSize: 14 },
+  search: { borderWidth: 1, borderRadius: 12, height: 46, flexDirection: "row", alignItems: "center", paddingHorizontal: 11, gap: 8, marginBottom: 10 },
   searchInput: { flex: 1, minWidth: 0, fontSize: 14, paddingVertical: 0 },
   switchRow: { flexDirection: "row" },
   cityBar: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 7, paddingBottom: 7 },

@@ -323,8 +323,8 @@ function TimeLine({ journey, liveLocation, showAll, onShowAll, boarding, onOpenS
       const isAlight = index === alightIndex;
       // After the alighting stop the rest of the route is shown lighter.
       const afterAlight = alightIndex >= 0 && index > alightIndex;
-      const railAbove = passed || (atStop && !isAlight) ? GRAY_RAIL : afterAlight ? c.afterAlightRail : c.green;
-      const railBelow = passed || atStop ? (atStop ? c.green : GRAY_RAIL) : afterAlight || isAlight ? c.afterAlightRail : c.green;
+      const railAbove = passed || (atStop && !isAlight) ? GRAY_RAIL : afterAlight ? c.afterAlightRail : c.blue;
+      const railBelow = passed || atStop ? (atStop ? c.blue : GRAY_RAIL) : afterAlight || isAlight ? c.afterAlightRail : c.blue;
       const selectable = Boolean(onChooseAlight) && index >= minAlightIndex;
       const skip = !passed && Boolean(skipped?.has(String(stop.id)));
       const label = timelineStopLabel({ name: stop.name, clock: timeOf(stop, passed), delayMinutes: stop.delayMinutes, platform,
@@ -343,6 +343,7 @@ function TimeLine({ journey, liveLocation, showAll, onShowAll, boarding, onOpenS
         styles.timelineRow,
         passed && styles.passedRow,
         atStop && styles.timelineRowAtVehicle,
+        isNext && !isAlight && !atStop && styles.timelineRowNext,
         between && styles.timelineRowWithVehicle,
         choosing && !selectable && styles.timelineRowDisabled,
         pressed && styles.timelineRowPressed
@@ -359,11 +360,11 @@ function TimeLine({ journey, liveLocation, showAll, onShowAll, boarding, onOpenS
         </View>
         <View style={styles.timelineRail}>
           {index > 0 ? <View style={[styles.railTop, { backgroundColor: railAbove }]}/> : null}
-          {atStop ? <View style={[styles.railVehicle, { backgroundColor: lastKnown ? c.muted : c.green }]}>
+          {atStop ? <View style={[styles.railVehicle, { backgroundColor: lastKnown ? c.muted : c.blue }]}>
             <Ionicons name={icon} size={14} color="#FFFFFF"/>
           </View> : isAlight ? <View style={[styles.railAlight, { borderColor: c.alightTagText }]}>
             <View style={[styles.railAlightDot, { backgroundColor: c.alightTagText }]}/>
-          </View> : <View style={[styles.railNode, { borderColor: passed ? GRAY_RAIL : afterAlight ? c.afterAlightRail : c.green,
+          </View> : <View style={[styles.railNode, { borderColor: passed ? GRAY_RAIL : afterAlight ? c.afterAlightRail : c.blue,
             backgroundColor: passed ? GRAY_RAIL : c.railFill }]}>
             {passed ? <Ionicons name="checkmark" size={8} color="#FFFFFF"/> : null}
           </View>}
@@ -379,6 +380,7 @@ function TimeLine({ journey, liveLocation, showAll, onShowAll, boarding, onOpenS
               accessibilityLabel={onFocusVehicle ? vehicleNoun(journey.mode) + " is hier. Volg op de kaart" : undefined}
               style={[styles.nowTag, lastKnown && styles.tagMuted]}>{lastKnown ? "Laatst hier" : "Nu hier"}</Text> : null}
           </View>
+          {isNext && !atStop && !isAlight && !isBoarding && !skip ? <Text style={styles.nextTag}>Volgende halte</Text> : null}
           {/* One small line under the name, as in OVinfo. */}
           {isAlight ? <Text style={styles.alightSub}>Je stapt hier uit</Text>
             : isBoarding && !passed && !atStop ? <Text style={styles.boardingSub}>Je stapt hier in</Text>
@@ -766,16 +768,16 @@ export default function RitScreen() {
 
   return <View style={styles.page}>
     <Stack.Screen options={{ headerShown: false }} />
-    <ExpoStatusBar style={c.statusBar} />
+    <ExpoStatusBar style="light" />
     <View style={[styles.header, { paddingTop: Platform.OS === "android" ? NativeStatusBar.currentHeight || 24 : 30 }]}>
-      <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel={boardingName ? "Terug naar haltebord" : "Terug"} style={styles.headerButton}><Ionicons name="arrow-back" color={c.text} size={25}/></Pressable>
+      <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel={boardingName ? "Terug naar haltebord" : "Terug"} style={styles.headerButton}><Ionicons name="arrow-back" color="#FFFFFF" size={25}/></Pressable>
       <View style={styles.headerBadge}><LijnBadge line={line} carrier={carrier} tone="flow" /></View>
       <View style={styles.headerTitles} accessibilityRole="header"><Text maxFontSizeMultiplier={1.2} style={[styles.headerTitle, destination.length > 18 && styles.headerTitleLong]} numberOfLines={3}><Text style={styles.headerNaar}>naar </Text>{destination}</Text></View>
       {journey ? <Pressable onPress={toggleMap} accessibilityRole="button" accessibilityLabel={mapOpen ? "Kaart sluiten" : "Op kaart"}
         accessibilityState={{ expanded: mapOpen }} style={styles.headerButton}>
-        <Ionicons name={mapOpen ? "list-outline" : "map-outline"} color={c.text} size={22}/>
+        <Ionicons name={mapOpen ? "list-outline" : "map-outline"} color="#FFFFFF" size={22}/>
       </Pressable> : null}
-      <MenuButton onPress={() => setMenuOpen(true)} color={c.text} label="Meer opties voor deze rit" />
+      <MenuButton onPress={() => setMenuOpen(true)} color="#FFFFFF" label="Meer opties voor deze rit" />
     </View>
     {loading && !journey ? <View style={styles.center}><ActivityIndicator color={c.blue}/><Text style={styles.message}>Ritverloop ophalen…</Text></View> : !journey ? <View style={styles.center}><Text style={styles.message}>{error || (otherTrip ? otherTripMessage(otherTrip, { line: expectedLine, destination: fallbackDestination }) : ritUnavailableMessage(failure))}</Text>{otherTrip ? <Pressable onPress={() => router.replace({ pathname: "/rit/[id]", params: { id: tripId, line: otherTrip.line, destination: otherTrip.destination, carrier: otherTrip.carrier || "" } })} accessibilityRole="button" accessibilityLabel="Huidige rit van deze bus bekijken" style={styles.otherTripLink}><Text style={styles.otherTripLinkText}>Huidige rit van deze bus bekijken</Text></Pressable> : null}<Pressable onPress={() => setRetry((x) => x + 1)} accessibilityRole="button" accessibilityLabel="Ritverloop opnieuw laden" style={styles.retry}><Ionicons name="refresh" color="#FFFFFF" size={17}/><Text style={styles.retryText}>Opnieuw proberen</Text></Pressable>{failure === "offline" && !error ? <Text style={styles.offlineHint}>OVbord probeert het automatisch opnieuw zodra er verbinding is.</Text> : null}</View> :
     <ScrollView ref={scrollRef} style={styles.scroll}
@@ -932,13 +934,13 @@ export default function RitScreen() {
 function makeStyles(c: RitColors) {
   return StyleSheet.create({
   page: { flex: 1, backgroundColor: c.page },
-  header: { backgroundColor: c.surface, flexDirection: "row", alignItems: "center", paddingBottom: 10, paddingHorizontal: 6, minHeight: 76 },
+  header: { backgroundColor: c.statusBar === "dark" ? "#175FAD" : "#123C64", flexDirection: "row", alignItems: "center", paddingBottom: 10, paddingHorizontal: 6, minHeight: 76 },
   headerButton: { width: 39, height: 42, alignItems: "center", justifyContent: "center" },
   headerBadge: { minWidth: 36, marginLeft: 2, marginRight: 10 },
   headerTitles: { flex: 1, minWidth: 0 },
-  headerTitle: { color: c.text, fontSize: 20, lineHeight: 25, fontWeight: "900" },
+  headerTitle: { color: "#FFFFFF", fontSize: 20, lineHeight: 25, fontWeight: "900" },
   headerTitleLong: { fontSize: 17, lineHeight: 21 },
-  headerNaar: { fontWeight: "500", color: c.muted },
+  headerNaar: { fontWeight: "500", color: "#DDEEFF" },
   headerSub: { color: c.muted, fontSize: 12, marginTop: 2 },
   center: { flex: 1, justifyContent: "center", alignItems: "center", padding: 25, gap: 16 },
   message: { fontSize: 14, color: c.muted, textAlign: "center" },
@@ -1047,6 +1049,7 @@ function makeStyles(c: RitColors) {
   timelineRow: { position: "relative", flexDirection: "row", alignItems: "center", minHeight: 42, paddingHorizontal: 12 },
   timelineRowWithVehicle: { zIndex: 2 },
   timelineRowAtVehicle: { minHeight: 50 },
+  timelineRowNext: { backgroundColor: c.statusBar === "dark" ? "#FFF6E3" : "#362B1D" },
   passedRow: { minHeight: 36 },
   passedName: { color: c.passedName, fontWeight: "400" },
   timelineImportantName: { fontWeight: "800", fontSize: 15.5 },
@@ -1054,7 +1057,7 @@ function makeStyles(c: RitColors) {
   afterAlightText: { color: c.passedName },
   alightTime: { color: c.alightTagText, fontWeight: "900" },
   alightName: { color: c.alightTagText, fontWeight: "900", fontSize: 15.5 },
-  nextTag: { backgroundColor: c.nextTagBg, color: c.nextTagText, fontSize: 10, fontWeight: "800",
+  nextTag: { backgroundColor: c.statusBar === "dark" ? "#FCE6B5" : "#4B3820", color: c.statusBar === "dark" ? "#865300" : "#FFD58A", fontSize: 10, fontWeight: "800",
     paddingHorizontal: 7, paddingVertical: 3, borderRadius: 10, overflow: "hidden" },
   boardingRow:{backgroundColor:c.boardingRowBg},
   boardingTag:{backgroundColor:c.boardingTagBg,color:c.boardingTagText,fontSize:11,fontWeight:"800",paddingHorizontal:8,paddingVertical:3,borderRadius:10,overflow:"hidden"},
@@ -1074,7 +1077,7 @@ function makeStyles(c: RitColors) {
   railAlightDot: { width: 9, height: 9, borderRadius: 5 },
   // Centred on the rail: row padding 12 + time column 64 + half the rail (15) - half the marker (12).
   vehicleOnRail: { position: "absolute", left: 79, bottom: -12, width: 24, height: 24, borderRadius: 12,
-    backgroundColor: c.green, borderWidth: 2, borderColor: c.vehicleRing, justifyContent: "center",
+    backgroundColor: c.blue, borderWidth: 2, borderColor: c.vehicleRing, justifyContent: "center",
     alignItems: "center", zIndex: 4 },
   timelineLabel: { flex: 1, paddingLeft: 10, minWidth: 0, justifyContent: "center", paddingVertical: 3 },
   timelineName: { flexShrink: 1, fontSize: 14.5, color: c.text, fontWeight: "500" },

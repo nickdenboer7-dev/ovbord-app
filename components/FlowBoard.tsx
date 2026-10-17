@@ -299,19 +299,19 @@ export function FlowBoard({ stop, initialBoard, initialLine, onBack, visible = t
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <View style={[styles.head, { paddingTop: Math.max(insets.top, 24) + 12, backgroundColor: colors.surface }]}>
+      <View style={[styles.head, { paddingTop: Math.max(insets.top, 24) + 12, backgroundColor: resolvedScheme === "dark" ? "#123C64" : "#175FAD" }]}>
         <View style={styles.headRow}>
           <Pressable onPress={onBack} accessibilityRole="button" accessibilityLabel="Terug" style={styles.back}>
-            <Ionicons name="arrow-back" size={22} color={colors.text} />
+            <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
           </Pressable>
-          <Text maxFontSizeMultiplier={1.2} style={[styles.title, { color: colors.text }]} numberOfLines={3} accessibilityRole="header">{board?.stop.name || stop.name}</Text>
+          <Text maxFontSizeMultiplier={1.2} style={[styles.title, { color: "#FFFFFF" }]} numberOfLines={3} accessibilityRole="header">{board?.stop.name || stop.name}</Text>
           <Pressable onPress={() => toggleFavoriteStop(board?.stop || stop)} accessibilityRole="button"
             accessibilityLabel={isFavoriteStop(board?.stop.id || stop.id) ? "Verwijder favoriete halte" : "Bewaar als favoriete halte"}
             accessibilityState={{ selected: isFavoriteStop(board?.stop.id || stop.id) }} style={styles.back}>
             <Ionicons name={isFavoriteStop(board?.stop.id || stop.id) ? "star" : "star-outline"} size={24}
-              color={isFavoriteStop(board?.stop.id || stop.id) ? colors.warning : colors.textSoft} />
+              color={isFavoriteStop(board?.stop.id || stop.id) ? "#FFD86B" : "#FFFFFF"} />
           </Pressable>
-          <MenuButton onPress={() => setMenuOpen(true)} color={colors.text} label="Meer opties voor deze halte" />
+          <MenuButton onPress={() => setMenuOpen(true)} color="#FFFFFF" label="Meer opties voor deze halte" />
         </View>
         {/* Two tabs, as in OVinfo; arrivals only where the feed has them. */}
         <View style={styles.segments} accessibilityRole="tablist">
@@ -319,8 +319,8 @@ export function FlowBoard({ stop, initialBoard, initialLine, onBack, visible = t
             const active = tab === value;
             return (
               <Pressable key={value} onPress={() => selectTab(value)} accessibilityRole="tab" accessibilityState={{ selected: active }}
-                style={[styles.segment, { backgroundColor: active ? (resolvedScheme === "dark" ? "#E7ECE8" : "#34425A") : colors.surfaceSoft }]}>
-                <Text style={[styles.segmentText, { color: active ? (resolvedScheme === "dark" ? "#101411" : "#FFFFFF") : colors.text }]}>{label}</Text>
+                style={[styles.segment, { backgroundColor: active ? "#FFFFFF" : "#FFFFFF22" }]}>
+                <Text style={[styles.segmentText, { color: active ? "#14518B" : "#FFFFFF" }]}>{label}</Text>
               </Pressable>
             );
           })}
@@ -524,11 +524,11 @@ export function FlowBoard({ stop, initialBoard, initialLine, onBack, visible = t
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  head: { paddingHorizontal: 6, paddingBottom: 12 },
+  head: { paddingHorizontal: 6, paddingBottom: 13 },
   headRow: { flexDirection: "row", alignItems: "center", gap: 2 },
   back: { width: 40, height: 44, justifyContent: "center", alignItems: "center" },
   title: { flex: 1, minWidth: 0, fontSize: 21, lineHeight: 26, fontWeight: "800", letterSpacing: -0.3, marginLeft: 2 },
-  segments: { flexDirection: "row", gap: 8, paddingHorizontal: 10, marginTop: 10 },
+  segments: { flexDirection: "row", gap: 7, paddingHorizontal: 10, marginTop: 13 },
   segment: { minHeight: 38, paddingHorizontal: 18, borderRadius: 19, alignItems: "center", justifyContent: "center" },
   segmentText: { fontSize: 14, fontWeight: "700" },
   // In the flow under the list, not floating over it: it never covers a departure.
