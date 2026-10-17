@@ -292,7 +292,9 @@ test("badges by kind of transport, tabs and search on the board", () => {
 
 test("trip page: one bar that follows the trip and a simple menu", () => {
   const rit = read("app/rit/[id].tsx");
-  assert.match(rit, />Je stapt in bij</);
+  // V5.6.1: the boarding bar is gone; the boarding stop is shown in the timeline.
+  assert.doesNotMatch(rit, /Je stapt in bij/);
+  assert.doesNotMatch(rit, /openStopBoard\(boardingStop\)/);
   assert.match(rit, /"Je stapt uit bij" : alightLine\.detail/);
   assert.match(rit, />Je stapt hier uit</);
   assert.match(rit, />Vertrokken</);
@@ -300,8 +302,9 @@ test("trip page: one bar that follows the trip and a simple menu", () => {
   assert.match(rit, /title="Meer acties voor deze rit"/);
   assert.match(rit, /description: "Rit-ID: " \+ tripId/);
   assert.match(rit, /checked: vibrate, group: 1/);
-  // Tapping your stop opens its board; tapping the alighting bar changes it.
-  assert.match(rit, /onPress=\{\(\) => openStopBoard\(boardingStop\)\}/);
+  // Every stop in the timeline opens its board; tapping the alighting bar changes it.
+  assert.match(rit, /onOpenStop=\{openStopBoard\}/);
+  assert.match(rit, /onPress=\{\(\) => \{ if \(!choosing\) onOpenStop\(stop\); else if \(selectable\) onChooseAlight\?\.\(stop, index\); \}\}/);
   assert.match(rit, /onPress=\{canChooseAlight \? startChoosingAlight : undefined\}/);
   assert.match(rit, /"Toon alle haltes \(" \+ journey\.stops\.length \+ "\)"/);
   const menu = read("components/OverflowMenu.tsx");
