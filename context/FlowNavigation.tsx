@@ -5,7 +5,8 @@ import { loadJourneyStopBoard } from "../lib/stopBoardLookup";
 import type { HalteBoardData, JourneyStop, Mode, StopSummary } from "../types/api";
 
 /** initialLine: a board line filter key to preselect (e.g. when opening a favourite trip). */
-export type FlowScreen = { key: number; stop: StopSummary; initialBoard?: HalteBoardData; initialLine?: string };
+export type FlowScreen = { key: number; stop: StopSummary; initialBoard?: HalteBoardData;
+  initialLine?: string; returnTrip?: Record<string, string> & { id: string } };
 export type ShowStopOptions = { line?: string; carrier?: string };
 /** Boards stay mounted for instant Back; cap the stack so long trip↔stop chains do not grow memory forever. */
 export const MAX_FLOW_SCREENS = 8;
@@ -15,7 +16,7 @@ type FlowContextValue = {
   pendingStopError: string | null;
   clearPendingError: () => void;
   showStop: (stop: StopSummary, options?: ShowStopOptions) => void;
-  followJourneyStop: (stop: JourneyStop, mode: Mode) => void;
+  followJourneyStop: (stop: JourneyStop, mode: Mode, returnTrip?: Record<string, string> & { id: string }) => void;
   back: () => void;
   close: () => void;
   /** Close the boards and open the search on Start (the search bar on a board). */
@@ -41,7 +42,7 @@ export function FlowNavigationProvider({ children }: { children: React.ReactNode
     const initialLine = options?.line ? boardLineFilterKey(options.line, options.carrier) : undefined;
     setScreens([{ key: ++nextScreenKey, stop, initialLine }]);
   }, [cancelPending]);
-  const followJourneyStop = useCallback((stop: JourneyStop, mode: Mode) => {
+  const followJourneyStop = useCallback((stop: JourneyStop, mode: Mode, returnTrip?: Record<string, string> & { id: string }) => {
     if (!stop.name) return;
     const sequence = ++pendingSequence.current;
     setPendingStopError(null);
@@ -53,8 +54,10 @@ export function FlowNavigationProvider({ children }: { children: React.ReactNode
         if (sequence !== pendingSequence.current) return;
         setScreens((previous) => {
           if (sequence !== pendingSequence.current) return previous;
-          if (previous.length && previous[previous.length - 1].stop.id === board.stop.id) return previous;
-          return [...previous, { key: ++nextScreenKey, stop: { ...board.stop, mode: board.stop.mode || mode }, initialBoard: board }]
+          // A fresh journey link must be added even when this stop is already open.
+          // Back from that new screen returns to the selected trip, not another board.
+          if (!returnTrip && previous.length && previous[previous.length - 1].stop.id === board.stop.id) return previous;
+          return [...previous, { key: ++nextScreenKey, stop: { ...board.stop, mode: board.stop.mode || mode }, initialBoard: board, returnTrip }]
             .slice(-MAX_FLOW_SCREENS);
         });
         setPendingStopError(null);

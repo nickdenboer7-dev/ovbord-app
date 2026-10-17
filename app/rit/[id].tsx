@@ -327,7 +327,13 @@ function TimeLine({ journey, liveLocation, showAll, onShowAll, boarding, onOpenS
       const railBelow = passed || atStop ? (atStop ? c.blue : GRAY_RAIL) : afterAlight || isAlight ? c.afterAlightRail : c.blue;
       const selectable = Boolean(onChooseAlight) && index >= minAlightIndex;
       const skip = !passed && Boolean(skipped?.has(String(stop.id)));
-      const label = timelineStopLabel({ name: stop.name, clock: timeOf(stop, passed), delayMinutes: stop.delayMinutes, platform,
+      // A boarding stop's clock is its DEPARTURE, not the earlier arrival time.
+      // Other stops retain their existing arrival/actual-time semantics.
+      const stopClock = isBoarding && !passed
+        ? (isTime(stop.expectedDepartureTime) ? stop.expectedDepartureTime! :
+          isTime(stop.plannedDepartureTime) ? stop.plannedDepartureTime! : timeOf(stop, passed))
+        : timeOf(stop, passed);
+      const label = timelineStopLabel({ name: stop.name, clock: stopClock, delayMinutes: stop.delayMinutes, platform,
         passed, vehicleHere: atStop, next: isNext, boarding: isBoarding, alight: isAlight, last, lastKnown, skipped: skip });
       // Tap opens the stop board; a long press (or tapping while choosing) picks the alighting stop.
       return <Pressable key={stop.id + "-" + index}
@@ -338,7 +344,9 @@ function TimeLine({ journey, liveLocation, showAll, onShowAll, boarding, onOpenS
         accessibilityState={{ disabled: choosing && !selectable, selected: isAlight }}
         accessibilityLabel={choosing ? (selectable ? "Kies " + stop.name + " als uitstaphalte" : stop.name + ", niet te kiezen")
           : label + ". Vertrekbord openen"}
-        accessibilityHint={selectable && !choosing ? "Lang indrukken om als uitstaphalte te kiezen" : undefined}
+        accessibilityHint={choosing ? undefined : selectable
+          ? "Tik voor het haltebord; lang indrukken om als uitstaphalte te kiezen"
+          : "Tik om het haltebord te openen"}
         style={({ pressed }) => [
         styles.timelineRow,
         passed && styles.passedRow,
@@ -352,7 +360,7 @@ function TimeLine({ journey, liveLocation, showAll, onShowAll, boarding, onOpenS
           <View style={styles.timelineActualLine}>
             {/* The time column has a fixed width (the vehicle marker is positioned from it): cap large system fonts. */}
             <Text maxFontSizeMultiplier={1.25} style={[styles.timelineTime, passed && styles.passedText, afterAlight && styles.afterAlightText,
-              (isBoarding || isNext || atStop) && !passed && styles.timelineImportantTime, isAlight && styles.alightTime]}>{timeOf(stop,passed)}</Text>
+              (isBoarding || isNext || atStop) && !passed && styles.timelineImportantTime, isAlight && styles.alightTime]}>{stopClock}</Text>
             {delay && !passed ? <Text maxFontSizeMultiplier={1.25} style={[styles.delayText, { color: delay.startsWith("+") ? c.red : c.green }]}>{delay}</Text> : null}
           </View>
           {platform && !passed ? <Text maxFontSizeMultiplier={1.25} style={[styles.timelinePlatform, stop.platformChanged && styles.timelinePlatformChanged]}
@@ -383,9 +391,9 @@ function TimeLine({ journey, liveLocation, showAll, onShowAll, boarding, onOpenS
           {isNext && !atStop && !isAlight && !isBoarding && !skip ? <Text style={styles.nextTag}>Volgende halte</Text> : null}
           {/* One small line under the name, as in OVinfo. */}
           {isAlight ? <Text style={styles.alightSub}>Je stapt hier uit</Text>
-            : isBoarding && !passed && !atStop ? <Text style={styles.boardingSub}>Je stapt hier in</Text>
             : passed ? <Text style={styles.passedSub}>Vertrokken</Text> : null}
         </View>
+        {!choosing ? <Ionicons name="chevron-forward" size={16} color={passed ? c.passedName : c.muted} /> : null}
         {between ? <Pressable onPress={onFocusVehicle} disabled={!onFocusVehicle} hitSlop={10} style={[styles.vehicleOnRail, lastKnown && { backgroundColor: c.muted }]}
           accessibilityRole={onFocusVehicle ? "button" : undefined}
           accessibilityLabel={vehicleNoun(journey.mode) + (lastKnown ? " was" : " is") + " tussen deze halte en de volgende" + (onFocusVehicle ? ". Volg op de kaart" : "")}>
@@ -715,11 +723,16 @@ export default function RitScreen() {
     setRefreshing(true);
     try { await refreshTripRef.current(); } finally { setRefreshing(false); }
   }
-  /** Open the departure board of a stop on this trip, in the Start tab. */
+  /** Open any stop board, remembering which exact trip Back should restore. */
   function openStopBoard(stop: JourneyStop) {
-    // Trip pages can stack (transfers, "Volg bus"): return to the tabs in one step, without passing earlier trips.
+    const returnTrip: Record<string, string> & { id: string } = { id: tripId };
+    for (const [key, value] of Object.entries(params)) {
+      const textValue = single(value as string | string[] | undefined);
+      if (textValue) returnTrip[key] = textValue;
+    }
+    // Drop stacked trip routes before opening the board, as before.
     if (router.canDismiss()) router.dismissAll(); else if (router.canGoBack()) router.back(); else router.replace("/");
-    followJourneyStop(stop, journey?.mode || "bus");
+    followJourneyStop(stop, journey?.mode || "bus", returnTrip);
   }
   function startChoosingAlight() {
     setChoosingAlight(true);
@@ -794,28 +807,14 @@ export default function RitScreen() {
           <Text style={styles.continuationLink}>Volg bus</Text>
         </Pressable>
       </View> : null}
-      {/* One bar that follows the trip: where you get on, then where you get off. */}
+      {/* Only cancellations or an optional alighting reminder above the timeline; boarding is shown in the list. */}
       {cancelled ? <View style={[styles.tripBar, styles.tripBarCancelled]} accessibilityRole="alert">
         <Ionicons name="close-circle" size={22} color={c.red}/>
         <View style={styles.summaryBody}>
           <Text style={[styles.tripBarMain, { color: c.red }]}>Deze rit rijdt niet</Text>
           <Text style={styles.tripBarLabel}>{positionSub}</Text>
         </View>
-      </View> : boardingLine && boardingStop ? <Pressable onPress={() => openStopBoard(boardingStop)} accessibilityRole="button"
-        accessibilityLabel={"Je stapt in bij " + boardingLine.name + ", " + boardingLine.clock + (boardingLine.countdown ? ", " + boardingLine.countdown : "") +
-          (boardingLine.detail ? ", " + boardingLine.detail : "") + ". Vertrekbord openen"}
-        style={({ pressed }) => [styles.tripBar, styles.tripBarBoarding, pressed && styles.stopRowPressed]}>
-        <Ionicons name="location" size={22} color={lastKnown ? c.muted : c.green}/>
-        <View style={styles.summaryBody}>
-          <Text style={styles.tripBarLabel}>Je stapt in bij</Text>
-          <Text style={styles.tripBarMain}>
-            <Text style={styles.stopRowName}>{boardingLine.name}</Text>{" · " + boardingLine.clock}
-            {boardingLine.delay ? <Text style={{ color: boardingLine.delay.startsWith("+") ? c.red : c.green, fontWeight: "800" }}>{" " + boardingLine.delay}</Text> : null}
-            {boardingLine.countdown ? " · " + boardingLine.countdown : ""}
-          </Text>
-        </View>
-        <Ionicons name="chevron-forward" size={20} color={c.muted}/>
-      </Pressable> : alightStop && alightLine ? <Pressable onPress={canChooseAlight ? startChoosingAlight : undefined} disabled={!canChooseAlight}
+      </View> : alightStop && alightLine ? <Pressable onPress={canChooseAlight ? startChoosingAlight : undefined} disabled={!canChooseAlight}
         accessibilityRole={canChooseAlight ? "button" : undefined} accessibilityLiveRegion="polite"
         accessibilityLabel={"Je stapt uit bij " + alightLine.name + ", " + alightLine.clock + (alightLine.countdown ? ", " + alightLine.countdown : "") +
           (alightLine.detail ? ", " + alightLine.detail : "") + (canChooseAlight ? ". Uitstaphalte wijzigen" : "")}

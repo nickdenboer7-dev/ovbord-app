@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import React, { useCallback } from "react";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { ActivityIndicator, Pressable, Text } from "react-native";
 import { useApp } from "../context/AppProvider";
 import { BackHandler, StyleSheet, View } from "react-native";
@@ -11,16 +11,24 @@ import { FlowBoard } from "./FlowBoard";
 export function FlowWorkspace() {
   const { screens, back, pendingStopName, pendingStopError, clearPendingError } = useFlowNavigation();
   const { colors } = useApp();
+  const router = useRouter();
+  const goBack = useCallback(() => {
+    const current = screens[screens.length - 1];
+    back();
+    if (current?.returnTrip?.id) {
+      router.push({ pathname: "/rit/[id]", params: current.returnTrip });
+    }
+  }, [back, router, screens]);
 
   // OVBORD_FLOW4_FOCUS_BACK: do not swallow Android Back while /rit/[id] is the focused screen.
   useFocusEffect(useCallback(() => {
     if (screens.length === 0) return;
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
-      back();
+      goBack();
       return true;
     });
     return () => subscription.remove();
-  }, [screens.length, back]));
+  }, [screens.length, goBack]));
   return (
     <View style={styles.workspace}>
       {screens.map((screen, index) => {
@@ -38,7 +46,7 @@ export function FlowWorkspace() {
               initialBoard={screen.initialBoard}
               initialLine={screen.initialLine}
               visible={visible}
-              onBack={back}
+              onBack={goBack}
             />
           </View>
         );
