@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
+import { StatusBar as ExpoStatusBar } from "expo-status-bar";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Keyboard, Linking, Pressable, RefreshControl, SectionList, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
 import { largeText } from "../lib/textScale";
@@ -180,6 +181,10 @@ export function FlowHome() {
   const showingBoard = screens.length > 0 && !finding;
   // "Mijn ritten": saved trips with their next departures, at the top of the nearby list.
   const showMine = !finding && tab === "nabij" && favoriteJourneys.length > 0;
+  // The header of Start and of the stop boards is blue: white clock and icons while this tab is in view.
+  // Rendered only while focused, so Favorieten and Meer keep the colours of the theme.
+  const [focused, setFocused] = useState(true);
+  useFocusEffect(useCallback(() => { setFocused(true); return () => setFocused(false); }, []));
   useFocusEffect(useCallback(() => {
     if (favoriteJourneys.length) void refreshFavorites();
     let active = true;
@@ -238,6 +243,7 @@ export function FlowHome() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
+      {focused ? <ExpoStatusBar style="light" /> : null}
       {!showingBoard ? <View style={[styles.top, { paddingTop: Math.max(insets.top, 24) + 16, backgroundColor: resolvedScheme === "dark" ? "#123C64" : "#175FAD", borderBottomColor: "transparent" },
         !searchOpen && styles.topCalm]}>
         <View style={styles.brandLine}>
