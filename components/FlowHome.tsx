@@ -181,9 +181,10 @@ export function FlowHome() {
   const showingBoard = screens.length > 0 && !finding;
   // "Mijn ritten": saved trips with their next departures, at the top of the nearby list.
   const showMine = !finding && tab === "nabij" && favoriteJourneys.length > 0;
-  // The header of Start and of the stop boards is blue: white clock and icons while this tab is in view.
-  // Rendered only while focused, so Favorieten and Meer keep the colours of the theme.
+  // V5.6.2: Start has a light header (dark clock and icons in light mode); an open stop board keeps its
+  // blue header with white icons. Rendered only while focused, so Favorieten and Meer follow the theme.
   const [focused, setFocused] = useState(true);
+  const statusBarStyle = showingBoard || resolvedScheme === "dark" ? "light" : "dark";
   useFocusEffect(useCallback(() => { setFocused(true); return () => setFocused(false); }, []));
   useFocusEffect(useCallback(() => {
     if (favoriteJourneys.length) void refreshFavorites();
@@ -243,43 +244,51 @@ export function FlowHome() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      {focused ? <ExpoStatusBar style="light" /> : null}
-      {!showingBoard ? <View style={[styles.top, { paddingTop: Math.max(insets.top, 24) + 16, backgroundColor: resolvedScheme === "dark" ? "#123C64" : "#175FAD", borderBottomColor: "transparent" },
-        !searchOpen && styles.topCalm]}>
+      {focused ? <ExpoStatusBar style={statusBarStyle} /> : null}
+      {!showingBoard ? <View style={[styles.top, { paddingTop: Math.max(insets.top, 24) + 10, backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
         <View style={styles.brandLine}>
-          <Text style={[styles.brand, { color: "#FFFFFF" }]} accessibilityRole="header">OVbord</Text>
-          <Pressable onPress={searchOpen ? closeSearch : openSearch} accessibilityRole="button"
-            accessibilityLabel={searchOpen ? "Zoeken sluiten" : "Zoek een halte, station of rit"} hitSlop={6} style={styles.searchButton}>
-            <Ionicons name={searchOpen ? "close" : "search"} size={24} color="#FFFFFF" />
-          </Pressable>
+          {/* Small brand mark: the app icon idea in a few dp, no decorative surface. */}
+          <View style={[styles.brandMark, { backgroundColor: colors.accent }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+            <Ionicons name="bus" size={15} color="#FFFFFF" />
+          </View>
+          <Text style={[styles.brand, { color: colors.accentText }]} accessibilityRole="header" maxFontSizeMultiplier={1.2}>OVbord</Text>
         </View>
-        {!searchOpen ? (
-          <Pressable onPress={openSearch} accessibilityRole="button" accessibilityLabel="Zoek halte, station of rit"
-            style={styles.searchPreview}>
-            <Ionicons name="search" size={19} color="#5D6D82" />
-            <Text numberOfLines={1} style={styles.searchPreviewText}>Zoek halte, station, lijn of bestemming</Text>
-          </Pressable>
-        ) : null}
-        {searchOpen ? <View style={[styles.search, { backgroundColor: "#FFFFFF", borderColor: "#D8E3F1" }]}>
-          <Ionicons name="search" size={18} color="#5D6D82" />
-          <TextInput
-            ref={inputRef}
-            value={query}
-            autoFocus
-            onChangeText={(value) => { setQuery(value); if (!value.trim()) setSearchFilter("alles"); }}
-            placeholder="Zoek halte, station of rit"
-            placeholderTextColor="#64748B"
-            returnKeyType="search"
-            // The field has a fixed height: grow with the system font, but not without limit.
-            maxFontSizeMultiplier={1.3}
-            style={[styles.searchInput, { color: "#10233D" }]}
-          />
-          {query ? (
-            <Pressable accessibilityLabel="Zoekopdracht wissen" onPress={() => { setQuery(""); setSearchFilter("alles"); }}>
-              <Ionicons name="close-circle" size={19} color={colors.textSoft} />
+        {/* One calm search field, always in the same place: a tap opens the search with recent stops. */}
+        <View style={styles.searchLine}>
+          {!searchOpen ? (
+            <Pressable onPress={openSearch} accessibilityRole="button" accessibilityLabel="Zoek een halte, station of rit"
+              style={({ pressed }) => [styles.search, { backgroundColor: pressed ? colors.surfaceAlt : colors.inputBg }]}>
+              <Ionicons name="search" size={18} color={colors.textSoft} />
+              <Text numberOfLines={1} maxFontSizeMultiplier={1.3} style={[styles.searchPlaceholder, { color: colors.textMuted }]}>Zoek halte, station of rit</Text>
+            </Pressable>
+          ) : (
+            <View style={[styles.search, { backgroundColor: colors.inputBg }]}>
+              <Ionicons name="search" size={18} color={colors.textSoft} />
+              <TextInput
+                ref={inputRef}
+                value={query}
+                autoFocus
+                onChangeText={(value) => { setQuery(value); if (!value.trim()) setSearchFilter("alles"); }}
+                placeholder="Zoek halte, station of rit"
+                placeholderTextColor={colors.textMuted}
+                returnKeyType="search"
+                // The field has a fixed height: grow with the system font, but not without limit.
+                maxFontSizeMultiplier={1.3}
+                style={[styles.searchInput, { color: colors.text }]}
+              />
+              {query ? (
+                <Pressable accessibilityLabel="Zoekopdracht wissen" onPress={() => { setQuery(""); setSearchFilter("alles"); }} hitSlop={8}>
+                  <Ionicons name="close-circle" size={19} color={colors.textMuted} />
+                </Pressable>
+              ) : null}
+            </View>
+          )}
+          {searchOpen ? (
+            <Pressable onPress={closeSearch} accessibilityRole="button" accessibilityLabel="Zoeken sluiten" hitSlop={6} style={styles.searchCancel}>
+              <Text maxFontSizeMultiplier={1.3} style={[styles.searchCancelText, { color: colors.accentText }]}>Sluiten</Text>
             </Pressable>
           ) : null}
-        </View> : null}
+        </View>
         {query.trim() ? <View style={[styles.searchFilters, { borderTopColor: colors.border }]}>
           {(["alles", "haltes", "ritten"] as const).map((choice) => (
             <Pressable key={choice} accessibilityRole="button" accessibilityState={{ selected: searchFilter === choice }}
@@ -317,7 +326,7 @@ export function FlowHome() {
                 {showTrip && activeTrip ? (() => {
                   const tripLine = activeTripLine(activeTrip);
                   return (
-                    <View style={[styles.tripCard, { backgroundColor: colors.accentSoft }]}>
+                    <View style={[styles.tripCard, { backgroundColor: colors.accentSoft, borderColor: colors.border }]}>
                       <Pressable onPress={() => openActiveTrip(activeTrip)} accessibilityRole="button"
                         accessibilityLabel={tripLine.lead + "lijn " + tripLine.line + tripLine.text + ". Ritverloop openen"}
                         style={styles.tripMain}>
@@ -334,14 +343,15 @@ export function FlowHome() {
                   );
                 })() : null}
                 {showMine ? (
-                  <View style={[styles.mine, { backgroundColor: colors.surface }]}>
-                    <View style={styles.mineHeading}>
+                  <View>
+                    <View style={styles.headingRow}>
                       <Text style={[styles.listTitle, { color: colors.text }]} accessibilityRole="header">Mijn ritten</Text>
                       <Pressable accessibilityRole="button" accessibilityLabel="Alle favorieten openen" hitSlop={8}
                         onPress={() => router.navigate("/favorieten")}>
-                        <Text style={{ color: colors.accentText, fontSize: 12, fontWeight: "800" }}>Alle favorieten</Text>
+                        <Text style={[styles.headingLink, { color: colors.accentText }]}>Alle favorieten</Text>
                       </Pressable>
                     </View>
+                    <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                     {favoriteJourneys.slice(0, 3).map((item, index, shown) => {
                       const entry = favoriteBoards[item.stop.id];
                       const rows = entry?.board ? favoriteJourneyDepartures(entry.board.departures, item, nowMs) : [];
@@ -370,6 +380,7 @@ export function FlowHome() {
                         </Pressable>
                       );
                     })}
+                    </View>
                   </View>
                 ) : null}
                 <View style={styles.headingRow}>
@@ -387,7 +398,7 @@ export function FlowHome() {
                   <View style={styles.cityOptions}>
                     {(manualCity || useUtrechtExample) ? <Pressable accessibilityRole="button" accessibilityLabel="Terug naar GPS"
                       onPress={() => { setManualCity(null); setUseUtrechtExample(false); setShowCities(false); setNearbyRetry((n) => n + 1); }}
-                      style={[styles.cityChoice, { borderColor: colors.border }]}>
+                      style={[styles.cityChoice, { borderColor: colors.border, backgroundColor: colors.surface }]}>
                       <Ionicons name="navigate-outline" size={14} color={colors.accentText} />
                       <Text style={{ color: colors.accentText, fontSize: 12, fontWeight: "800" }}>Gebruik GPS</Text>
                     </Pressable> : null}
@@ -472,7 +483,7 @@ export function FlowHome() {
                 ) : null}
               </View>
             )}
-            renderItem={({ item }) => {
+            renderItem={({ item, index }) => {
               if (item.kind === "rit") {
                 const journey = item.journey;
                 return (
@@ -503,20 +514,27 @@ export function FlowHome() {
               }
               const stop = item.stop;
               if (!finding && tab === "nabij") {
-                // Nearby: name and walking time only; the departures are one tap away.
+                // Nearby: one card of compact rows. The name without the city; walking time underneath.
+                const first = index === 0;
+                const last = index === data.length - 1;
+                const city = stop.name.includes(", ") ? stop.name.split(", ")[0] : stop.city;
                 return (
                   <Pressable accessibilityRole="button" accessibilityLabel={"Open halte " + stop.name + (stop.walkMinutes ? ", " + stop.walkMinutes + " minuten lopen" : "") + (isFavoriteStop(stop.id) ? ", favoriete halte" : "")}
                     onPress={() => openStop(stop)}
-                    style={({ pressed }) => [styles.nearRow, { backgroundColor: pressed ? colors.surfaceSoft : colors.surface, borderBottomColor: colors.border }]}>
-                    <Ionicons name="location-outline" size={22} color={colors.textSoft} />
+                    style={({ pressed }) => [styles.nearRow, { backgroundColor: pressed ? colors.surfaceSoft : colors.surface, borderColor: colors.border },
+                      first && styles.cardFirst, last && styles.cardLast,
+                      !last && { borderBottomWidth: StyleSheet.hairlineWidth }]}>
+                    <View style={[styles.nearIcon, { backgroundColor: colors.accentSoft }]}>
+                      <Ionicons name={`${vehicleIcon(stop.mode)}-outline`} size={16} color={colors.accentText} />
+                    </View>
                     <View style={styles.stopContent}>
-                      <Text style={[styles.stopTitle, { color: colors.text }]} numberOfLines={2}>{stop.name}</Text>
+                      <Text style={[styles.nearName, { color: colors.text }]} numberOfLines={2}>{shortStopName(stop.name)}</Text>
                       <Text style={[styles.stopSubtitle, { color: colors.textSoft }]} numberOfLines={1}>
-                        {stop.walkMinutes ? `${stop.walkMinutes} min lopen` : stop.city || "In de buurt"}
+                        {[city, stop.walkMinutes ? `${stop.walkMinutes} min lopen` : ""].filter(Boolean).join(" · ") || "In de buurt"}
                       </Text>
                     </View>
-                    {isFavoriteStop(stop.id) ? <Ionicons name="star" size={15} color={colors.warning} /> : null}
-                    <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+                    {isFavoriteStop(stop.id) ? <Ionicons name="star" size={14} color={colors.warning} /> : null}
+                    <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
                   </Pressable>
                 );
               }
@@ -562,32 +580,39 @@ export function FlowHome() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  top: { borderBottomWidth: 1, paddingHorizontal: 15 },
-  topCalm: { borderBottomWidth: 0 },
-  brandLine: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingBottom: 10 },
-  brand: { fontSize: 25, fontWeight: "900", letterSpacing: -0.6 },
-  searchButton: { width: 42, height: 42, alignItems: "center", justifyContent: "center" },
+  top: { borderBottomWidth: StyleSheet.hairlineWidth, paddingHorizontal: 16, paddingBottom: 12 },
+  brandLine: { flexDirection: "row", alignItems: "center", gap: 9, paddingBottom: 12 },
+  brandMark: { width: 28, height: 28, borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  brand: { fontSize: 23, fontWeight: "900", letterSpacing: -0.6 },
   caption: { fontSize: 10.5, marginTop: 1 },
   beta: { paddingHorizontal: 7, paddingVertical: 4, borderRadius: 6 },
   betaText: { fontSize: 8.5, fontWeight: "900" },
-  searchPreview: { backgroundColor: "#F8FBFF", borderRadius: 14, minHeight: 46, flexDirection: "row",
-    alignItems: "center", gap: 9, paddingHorizontal: 14, marginBottom: 10 },
-  searchPreviewText: { flex: 1, minWidth: 0, color: "#5D6D82", fontSize: 14 },
-  search: { borderWidth: 1, borderRadius: 12, height: 46, flexDirection: "row", alignItems: "center", paddingHorizontal: 11, gap: 8, marginBottom: 10 },
+  searchLine: { flexDirection: "row", alignItems: "center", gap: 10 },
+  search: { flex: 1, minWidth: 0, borderRadius: 12, height: 44, flexDirection: "row", alignItems: "center", paddingHorizontal: 12, gap: 8 },
+  searchPlaceholder: { flex: 1, minWidth: 0, fontSize: 14 },
+  searchCancel: { minHeight: 44, justifyContent: "center" },
+  searchCancelText: { fontSize: 14, fontWeight: "800" },
   searchInput: { flex: 1, minWidth: 0, fontSize: 14, paddingVertical: 0 },
   switchRow: { flexDirection: "row" },
   cityBar: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 7, paddingBottom: 7 },
   cityChoice: { borderWidth: 1, borderRadius: 8, minHeight: 32, paddingHorizontal: 9, flexDirection: "row", gap: 5, alignItems: "center", justifyContent: "center" },
-  cityOptions: { flexDirection: "row", flexWrap: "wrap", gap: 6, paddingHorizontal: 15, paddingBottom: 8 },
-  searchFilters: { flexDirection: "row", gap: 7, paddingBottom: 6, borderTopWidth: 1, paddingTop: 7 },
+  cityOptions: { flexDirection: "row", flexWrap: "wrap", gap: 6, paddingHorizontal: 12, paddingBottom: 10 },
+  searchFilters: { flexDirection: "row", gap: 7, marginTop: 10 },
   searchFilter: { flex: 1, minHeight: 32, borderRadius: 7, alignItems: "center", justifyContent: "center" },
   switchButton: { flex: 1, alignItems: "center", paddingVertical: 11, borderBottomWidth: 2 },
   switchText: { fontSize: 12.5, fontWeight: "800" },
   listLayer: { flex: 1 }, boardLayer: { flex: 1 }, hidden: { display: "none" },
   listContent: { paddingBottom: 40 },
-  headingRow: { paddingHorizontal: 15, paddingTop: 18, paddingBottom: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  headingRow: { paddingHorizontal: 16, paddingTop: 18, paddingBottom: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
   headingLink: { fontSize: 12.5, fontWeight: "800" },
-  nearRow: { minHeight: 64, paddingHorizontal: 15, paddingVertical: 10, flexDirection: "row", alignItems: "center", gap: 13, borderBottomWidth: StyleSheet.hairlineWidth },
+  // One card for "Haltes in de buurt": the rows share the side borders, the first and last are rounded.
+  card: { marginHorizontal: 12, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, overflow: "hidden" },
+  nearRow: { marginHorizontal: 12, minHeight: 54, paddingHorizontal: 12, paddingVertical: 8, flexDirection: "row", alignItems: "center", gap: 11,
+    borderLeftWidth: StyleSheet.hairlineWidth, borderRightWidth: StyleSheet.hairlineWidth },
+  cardFirst: { borderTopWidth: StyleSheet.hairlineWidth, borderTopLeftRadius: 14, borderTopRightRadius: 14 },
+  cardLast: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomLeftRadius: 14, borderBottomRightRadius: 14 },
+  nearIcon: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
+  nearName: { fontSize: 15, fontWeight: "700", lineHeight: 19 },
   quickArea: { paddingHorizontal: 15, paddingVertical: 10, borderBottomWidth: 1, gap: 7 },
   quickTitle: { fontSize: 11, fontWeight: "800" },
   quickLinks: { flexDirection: "row", gap: 8 },
@@ -610,11 +635,9 @@ const styles = StyleSheet.create({
   emptyActions: { marginTop: 20, gap: 10, alignItems: "center" },
   emptyAction: { minHeight: 44, paddingHorizontal: 16, paddingVertical: 12, borderWidth: 1, borderRadius: 10 },
   exampleBanner: { marginHorizontal: 15, marginBottom: 8, padding: 12, borderRadius: 8 },
-  mine: { paddingBottom: 4 },
-  mineHeading: { paddingHorizontal: 15, paddingTop: 18, paddingBottom: 6, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   mineMain: { minHeight: 60, paddingHorizontal: 15, paddingVertical: 10, flexDirection: "row", alignItems: "center", gap: 11 },
   mineDirection: { fontSize: 15, fontWeight: "700" },
-  tripCard: { marginHorizontal: 12, marginTop: 6, borderRadius: 12, flexDirection: "row", alignItems: "center", paddingLeft: 12 },
+  tripCard: { marginHorizontal: 12, marginTop: 12, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center", paddingLeft: 12 },
   tripMain: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 12 },
   tripText: { flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: "600" },
   tripStrong: { fontWeight: "900" },

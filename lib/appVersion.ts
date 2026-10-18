@@ -27,3 +27,15 @@ export function describeUpdate(info: UpdateInfo): { label: string; detail: strin
     .filter(Boolean).join(" · ");
   return { label: "Update van " + when, detail };
 }
+
+/**
+ * Rows for Instellingen: version, update, channel and, for a loaded OTA update, the short
+ * update id. The channel is shown for the built-in version too, so a tester sees "preview".
+ */
+export function updateInfoRows(info: UpdateInfo, version: string): { label: string; value: string }[] {
+  const rows = [{ label: "Versie", value: version }, { label: "Update", value: describeUpdate(info).label }];
+  if (info.isDev) return rows;
+  rows.push({ label: "Kanaal", value: info.channel || "onbekend" });
+  if (info.isEnabled && !info.isEmbeddedLaunch && info.updateId) rows.push({ label: "Update-ID", value: info.updateId.slice(0, 8) });
+  return rows;
+}
