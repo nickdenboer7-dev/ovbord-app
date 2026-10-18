@@ -15,6 +15,14 @@ function str(value: any, fallback = "") {
   return value === null || value === undefined ? fallback : String(value);
 }
 
+/** The vehicle (wagon) number from /api/rit, when present: digits and letters only, at most 10. */
+function vehicleNumberOf(raw: any, vehicle: any): string | undefined {
+  const value = first(vehicle?.vehicle_number, vehicle?.vehicleNumber, vehicle?.number,
+    raw?.vehicle_number, raw?.vehicleNumber, typeof raw?.vehicle === "string" || typeof raw?.vehicle === "number" ? raw.vehicle : undefined);
+  const text = value === undefined || value === null ? "" : String(value).trim();
+  return /^[A-Za-z0-9-]{1,10}$/.test(text) ? text : undefined;
+}
+
 function num(value: any, fallback?: number) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -405,6 +413,7 @@ export function normalizeRit(id: string, raw: any): RitData {
     mode: pickMode(raw),
     live: raw?.live === true,
     vehicle: vLat !== undefined && vLon !== undefined ? { lat: vLat, lon: vLon } : undefined,
+    vehicleNumber: vehicleNumberOf(raw, vehicle),
     gpsAgeSeconds,
     delaySeconds: journeyDelaySeconds,
     shape: Array.isArray(shape) ? shape : undefined,

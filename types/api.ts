@@ -113,6 +113,8 @@ export interface RitData {
   mode: Mode;
   live?: boolean;
   vehicle?: { lat: number; lon: number };
+  /** Vehicle (wagon) number, when the feed has one; shown next to the position. */
+  vehicleNumber?: string;
   /** GPS age from the /api/rit response, in seconds; undefined is NOT live. */
   gpsAgeSeconds?: number;
   /** Current journey-wide delay in seconds; undefined is unknown (not zero). */

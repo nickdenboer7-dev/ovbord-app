@@ -3,10 +3,12 @@ import { StyleSheet, Text, View } from "react-native";
 import { getVervoerderStyle, inferCarrierFromLine } from "../constants/vervoerders";
 import { compactTrainLineLabel } from "../lib/trainLineLabel";
 import { modeBadgeColors } from "../lib/lineColors";
+import { accentGreen } from "../constants/colors";
 import type { Mode } from "../types/api";
 
-/** tone "mode": a colour per kind of transport (metro red, tram and bus blue); give the mode. */
-type Props = { line: string; carrier?: string; compact?: boolean; tone?: "carrier" | "flow" | "mode"; mode?: Mode };
+/** tone "mode": a colour per kind of transport (metro red, tram and bus blue); give the mode.
+ * tone "accent": OVbord green, for the white trip header (V5.7). */
+type Props = { line: string; carrier?: string; compact?: boolean; tone?: "carrier" | "flow" | "mode" | "accent"; mode?: Mode };
 
 export function LijnBadge({ line, carrier, compact = false, tone = "carrier", mode }: Props) {
   const resolvedCarrier = inferCarrierFromLine(line, carrier);
@@ -19,14 +21,14 @@ export function LijnBadge({ line, carrier, compact = false, tone = "carrier", mo
       style={[
         styles.badge,
         {
-          backgroundColor: byMode ? byMode.bg : tone === "flow" ? "#1767D2" : palette.bg,
+          backgroundColor: byMode ? byMode.bg : tone === "flow" ? "#1767D2" : tone === "accent" ? accentGreen : palette.bg,
           minHeight: compact ? 27 : 32,
           paddingHorizontal: compact ? 8 : 10
         }
       ]}
     >
       <Text
-        style={[styles.text, { color: byMode ? byMode.text : tone === "flow" ? "#FFFFFF" : palette.text, fontSize: compact ? 12.5 : 13.5 }]}
+        style={[styles.text, { color: byMode ? byMode.text : tone === "flow" || tone === "accent" ? "#FFFFFF" : palette.text, fontSize: compact ? 12.5 : 13.5 }]}
         numberOfLines={1}
         // Badges sit in fixed rows next to times: grow with the system font, but not without limit.
         maxFontSizeMultiplier={1.3}

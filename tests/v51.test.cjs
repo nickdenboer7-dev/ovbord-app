@@ -91,7 +91,8 @@ test("trip page: notices and transfers are collapsible, transfers open when the 
   const rit = read("app/rit/[id].tsx");
   assert.match(rit, /disruptionSummary\(line, disruptions\)/);
   assert.match(rit, /transfersOpen \?\? \(alightState\.status === "next" \|\| alightState\.status === "at"\)/);
-  assert.match(rit, /showAll, alightIndex\)/);
+  // V5.7: the timeline always shows every stop (no window around the alighting stop any more).
+  assert.match(rit, /const visible = stops;/);
   assert.doesNotMatch(rit, /disruptions\.slice\(0, 3\)\.map/);
   assert.match(read("components/RitTransfers.tsx"), /accessibilityState=\{\{ expanded \}\}/);
 });

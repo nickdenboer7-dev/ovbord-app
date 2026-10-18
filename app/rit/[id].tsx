@@ -22,11 +22,11 @@ import {shiftClock} from "../../lib/format";
 import { journeyExtras } from "../../lib/flowLiveDetails";
 import { disruptionSummary } from "../../lib/haltebordV4";
 import { linesConflict } from "../../lib/flowRitQuality";
-import { minutesUntilArrival, visibleTimelineWindow } from "../../lib/ritRedesign";
+import { minutesUntilArrival } from "../../lib/ritRedesign";
 import { alightingState, arrivalShareText, clockRemainingMs, findAlightingIndex, recallAlighting, rememberAlighting, scheduleIndex } from "../../lib/alighting";
 import { clearActiveTrip, loadTripSnapshot, saveActiveTrip, saveTripSnapshot } from "../../lib/activeTripStore";
 import { TRIP_SNAPSHOT_INTERVAL_MS, usableTripSnapshot } from "../../lib/tripSnapshot";
-import { alightAlertKey, alightRow, boardingProgress, markAlightAlert, noticeStopsText, positionHeadline, skippedStopIds, timelineStopLabel } from "../../lib/ritProgress";
+import { alightAlertKey, alightRow, boardingProgress, markAlightAlert, noticeStopsText, onTheWayText, positionHeadline, skippedStopIds, timelineStopLabel } from "../../lib/ritProgress";
 import { loadAlightVibration, saveAlightVibration, vibrateForAlighting } from "../../lib/alightAlert";
 import { MenuButton, OverflowMenu } from "../../components/OverflowMenu";
 import type { MenuItem } from "../../components/OverflowMenu";
@@ -264,12 +264,10 @@ function platformLabel(stop: JourneyStop, mode: RitData["mode"]): string {
   return stop.platform ? (mode === "train" ? "Spoor " : "Perron ") + stop.platform : "";
 }
 
-function TimeLine({ journey, liveLocation, showAll, onShowAll, boarding, onOpenStop, lastKnown = false,
-  alightIndex = -1, choosing = false, minAlightIndex = 1, onChooseAlight, onFocusVehicle, skipped }: {
+function TimeLine({ journey, liveLocation, boarding, onOpenStop, lastKnown = false,
+  alightIndex = -1, choosing = false, minAlightIndex = 1, onChooseAlight, onFocusVehicle, skipped, onRowLayout }: {
   journey: RitData;
   liveLocation: { kind: "at" | "between"; index: number } | null | undefined;
-  showAll: boolean;
-  onShowAll: () => void;
   boarding: BoardingHint;
   onOpenStop: (stop: JourneyStop) => void;
   /** Last refresh failed: position tags describe the last known state. */
@@ -285,25 +283,21 @@ function TimeLine({ journey, liveLocation, showAll, onShowAll, boarding, onOpenS
   onFocusVehicle?: () => void;
   /** Stops the vehicle skips according to a notice ("Halte vervalt"). */
   skipped?: ReadonlySet<string>;
+  /** Where each row sits in the timeline, for scrolling to the vehicle once. */
+  onRowLayout?: (index: number, y: number) => void;
 }) {
   const { c, styles } = useRitTheme();
   const stops = journey.stops;
   const boardingIndex = findBoardingIndex(stops, boarding);
-  // While choosing where to get off, the list starts just before the first stop that can be chosen.
-  const shown = visibleTimelineWindow(stops.length, boardingIndex, liveLocation, showAll, alightIndex);
-  const { start, end } = choosing ? { start: Math.max(0, minAlightIndex - 2), end: stops.length } : shown;
-  const visible = stops.slice(start, end);
+  // V5.7: every stop, always, in one continuous list. Opening scrolls once to the vehicle;
+  // choosing where to get off scrolls to the first stop that can be chosen. Nothing is hidden.
+  const visible = stops;
+  const start = 0;
   const nextIndex = verifiedNextStopIndex(liveLocation || null, stops.length);
   const GRAY_RAIL = c.grayRail;
   const icon = vehicleIcon(journey.mode);
 
   return <View style={styles.timeLine}>
-    {start > 0 ? <Pressable style={styles.hiddenStops} onPress={onShowAll} accessibilityRole="button"
-      accessibilityLabel={start + " voorgaande haltes tonen"}>
-      <Ionicons name="chevron-up" size={15} color={c.muted}/>
-      <Text style={styles.hiddenText}>{start} {start === 1 ? "halte" : "haltes"} eerder
-        {liveLocation && liveLocation.index < start ? " · " + vehicleNoun(journey.mode).toLocaleLowerCase("nl") + (lastKnown ? " was daar" : " rijdt daar") : ""}</Text>
-    </Pressable> : null}
     {visible.map((stop, offset) => {
       const index = start + offset;
       // The backend's schedule-derived "passed/current" states aren't GPS observations.
@@ -323,8 +317,8 @@ function TimeLine({ journey, liveLocation, showAll, onShowAll, boarding, onOpenS
       const isAlight = index === alightIndex;
       // After the alighting stop the rest of the route is shown lighter.
       const afterAlight = alightIndex >= 0 && index > alightIndex;
-      const railAbove = passed || (atStop && !isAlight) ? GRAY_RAIL : afterAlight ? c.afterAlightRail : c.blue;
-      const railBelow = passed || atStop ? (atStop ? c.blue : GRAY_RAIL) : afterAlight || isAlight ? c.afterAlightRail : c.blue;
+      const railAbove = passed || (atStop && !isAlight) ? GRAY_RAIL : afterAlight ? c.afterAlightRail : c.green;
+      const railBelow = passed || atStop ? (atStop ? c.green : GRAY_RAIL) : afterAlight || isAlight ? c.afterAlightRail : c.green;
       const selectable = Boolean(onChooseAlight) && index >= minAlightIndex;
       const skip = !passed && Boolean(skipped?.has(String(stop.id)));
       // A boarding stop's clock is its DEPARTURE, not the earlier arrival time.
@@ -337,6 +331,7 @@ function TimeLine({ journey, liveLocation, showAll, onShowAll, boarding, onOpenS
         passed, vehicleHere: atStop, next: isNext, boarding: isBoarding, alight: isAlight, last, lastKnown, skipped: skip });
       // Tap opens the stop board; a long press (or tapping while choosing) picks the alighting stop.
       return <Pressable key={stop.id + "-" + index}
+        onLayout={onRowLayout ? (event: LayoutChangeEvent) => onRowLayout(index, event.nativeEvent.layout.y) : undefined}
         onPress={() => { if (!choosing) onOpenStop(stop); else if (selectable) onChooseAlight?.(stop, index); }}
         onLongPress={selectable && !choosing ? () => onChooseAlight?.(stop, index) : undefined}
         disabled={choosing && !selectable}
@@ -368,11 +363,11 @@ function TimeLine({ journey, liveLocation, showAll, onShowAll, boarding, onOpenS
         </View>
         <View style={styles.timelineRail}>
           {index > 0 ? <View style={[styles.railTop, { backgroundColor: railAbove }]}/> : null}
-          {atStop ? <View style={[styles.railVehicle, { backgroundColor: lastKnown ? c.muted : c.blue }]}>
+          {atStop ? <View style={[styles.railVehicle, { backgroundColor: lastKnown ? c.muted : c.green }]}>
             <Ionicons name={icon} size={14} color="#FFFFFF"/>
           </View> : isAlight ? <View style={[styles.railAlight, { borderColor: c.alightTagText }]}>
             <View style={[styles.railAlightDot, { backgroundColor: c.alightTagText }]}/>
-          </View> : <View style={[styles.railNode, { borderColor: passed ? GRAY_RAIL : afterAlight ? c.afterAlightRail : c.blue,
+          </View> : <View style={[styles.railNode, { borderColor: passed ? GRAY_RAIL : afterAlight ? c.afterAlightRail : c.green,
             backgroundColor: passed ? GRAY_RAIL : c.railFill }]}>
             {passed ? <Ionicons name="checkmark" size={8} color="#FFFFFF"/> : null}
           </View>}
@@ -444,9 +439,12 @@ export default function RitScreen() {
   const [retry, setRetry] = useState(0);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [fetchedAt, setFetchedAt] = useState(() => Date.now());
-  const [showAll, setShowAll] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
+  /** Opening the trip scrolls once to the vehicle (or the boarding stop); never again by itself. */
+  const autoScrolled = useRef(false);
+  const timelineTop = useRef<number | null>(null);
+  const rowY = useRef<Record<number, number>>({});
   const [infoOpen,setInfoOpen]=useState(false);
   /** Where the user gets off; remembered per trip while the app runs. */
   const [alighting, setAlighting] = useState<SavedAlighting | null>(() => recallAlighting(tripId));
@@ -471,8 +469,10 @@ export default function RitScreen() {
   useEffect(() => {
     let active = true;
     const seq = ++activeRequest.current;
-    setShowAll(false);
     setMapOpen(false);
+    autoScrolled.current = false;
+    timelineTop.current = null;
+    rowY.current = {};
     setAlighting(recallAlighting(tripId));
     setChoosingAlight(false);
     setTransfersOpen(null);
@@ -686,12 +686,11 @@ export default function RitScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripId, hasTrip, ended, savedAlighting, alightClock, endClock]);
   const [mapFollowStart, setMapFollowStart] = useState(false);
-  // The timeline keeps the alighting stop in view, so the remaining stops are the focus.
-  const remainingAfterWindow = journey ? visibleTimelineWindow(journey.stops.length, boardingIndex, verifiedLive, showAll, alightIndex).hiddenFollowing : 0;
   const transfersExpanded = transfersOpen ?? (alightState.status === "next" || alightState.status === "at");
   const alertSummary = disruptionSummary(line, disruptions);
   // One position card: where the vehicle is, and one line that follows the trip.
-  const headline = journey ? positionHeadline({ ended, placeText, live: Boolean(journey.live), cancelled }) : "";
+  const headline = journey ? positionHeadline({ ended, placeText: onTheWayText(placeText), live: Boolean(journey.live), cancelled }) : "";
+  const vehicleLabel = journey && info.busNumber ? vehicleNoun(journey.mode) + " " + info.busNumber : "";
   const positionSub = cancelled ? (cancellation.source === "haltebord"
       ? "Het vertrekbord meldt deze rit als uitgevallen. Kijk daar voor een alternatief."
       : "De vervoerder meldt deze rit als uitgevallen. Kijk op het vertrekbord voor een alternatief.")
@@ -703,6 +702,25 @@ export default function RitScreen() {
     minutes: boardingRemaining === null ? null : Math.ceil(boardingRemaining / 60000),
     state: boardingState, platform: boardingPlatform, note: departureNote, lastKnown }) : null;
   const alertWarning = disruptions.some((notice) => notice.severity === "warning");
+  /** Scrolls so that a stop sits a few rows below the top; false while its position is not known yet. */
+  function scrollToStop(index: number, animated: boolean): boolean {
+    const top = timelineTop.current;
+    const y = rowY.current[index];
+    if (top === null || y === undefined) return false;
+    const target = Math.max(0, top + y - 140);
+    requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: target, animated }));
+    return true;
+  }
+  // Where the page opens: the verified vehicle, otherwise the boarding stop. Never a guessed position.
+  const scrollTarget = verifiedLive ? verifiedLive.index : boardingIndex;
+  function autoScroll() {
+    if (autoScrolled.current || mapOpen || choosingAlight || scrollTarget < 0) return;
+    if (scrollToStop(scrollTarget, false)) autoScrolled.current = true;
+  }
+  function onRowLayout(index: number, y: number) {
+    rowY.current[index] = y;
+    if (index === scrollTarget) autoScroll();
+  }
   function toggleMap() { setMapFollowStart(false); setMapOpen((open) => !open); scrollRef.current?.scrollTo({ y: 0, animated: true }); }
   /** Tapping the vehicle in the timeline: open the map following it. */
   function focusVehicle() { setMapFollowStart(true); setMapOpen(true); scrollRef.current?.scrollTo({ y: 0, animated: true }); }
@@ -737,17 +755,16 @@ export default function RitScreen() {
   function startChoosingAlight() {
     setChoosingAlight(true);
     setMapOpen(false);
-    // The banner and the stops to choose from sit at the top of the page.
-    scrollRef.current?.scrollTo({ y: 0, animated: true });
+    autoScrolled.current = true;
+    // A temporary mode: the banner stays under the header; the list scrolls to the first stop that can be chosen.
+    setTimeout(() => { scrollToStop(Math.max(0, minAlightIndex - 1), true); }, 60);
   }
   function chooseAlight(stop: JourneyStop, index: number) {
     const value = { id: stop.id, name: stop.name, index };
     setAlighting(value);
     rememberAlighting(tripId, value);
     setChoosingAlight(false);
-    setShowAll(false);
     setTransfersOpen(null);
-    scrollRef.current?.scrollTo({ y: 0, animated: true });
   }
   function clearAlight() {
     setAlighting(null);
@@ -781,23 +798,33 @@ export default function RitScreen() {
 
   return <View style={styles.page}>
     <Stack.Screen options={{ headerShown: false }} />
-    <ExpoStatusBar style="light" />
+    <ExpoStatusBar style={c.statusBar} />
     <View style={[styles.header, { paddingTop: Platform.OS === "android" ? NativeStatusBar.currentHeight || 24 : 30 }]}>
-      <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel={boardingName ? "Terug naar haltebord" : "Terug"} style={styles.headerButton}><Ionicons name="arrow-back" color="#FFFFFF" size={25}/></Pressable>
-      <View style={styles.headerBadge}><LijnBadge line={line} carrier={carrier} tone="flow" /></View>
+      <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel={boardingName ? "Terug naar haltebord" : "Terug"} style={styles.headerButton}><Ionicons name="arrow-back" color={c.text} size={25}/></Pressable>
+      <View style={styles.headerBadge}><LijnBadge line={line} carrier={carrier} tone="accent" /></View>
       <View style={styles.headerTitles} accessibilityRole="header"><Text maxFontSizeMultiplier={1.2} style={[styles.headerTitle, destination.length > 18 && styles.headerTitleLong]} numberOfLines={3}><Text style={styles.headerNaar}>naar </Text>{destination}</Text></View>
       {journey ? <Pressable onPress={toggleMap} accessibilityRole="button" accessibilityLabel={mapOpen ? "Kaart sluiten" : "Op kaart"}
         accessibilityState={{ expanded: mapOpen }} style={styles.headerButton}>
-        <Ionicons name={mapOpen ? "list-outline" : "map-outline"} color="#FFFFFF" size={22}/>
+        <Ionicons name={mapOpen ? "list-outline" : "map-outline"} color={c.text} size={22}/>
       </Pressable> : null}
-      <MenuButton onPress={() => setMenuOpen(true)} color="#FFFFFF" label="Meer opties voor deze rit" />
+      <MenuButton onPress={() => setMenuOpen(true)} color={c.text} label="Meer opties voor deze rit" />
     </View>
-    {loading && !journey ? <View style={styles.center}><ActivityIndicator color={c.blue}/><Text style={styles.message}>Ritverloop ophalen…</Text></View> : !journey ? <View style={styles.center}><Text style={styles.message}>{error || (otherTrip ? otherTripMessage(otherTrip, { line: expectedLine, destination: fallbackDestination }) : ritUnavailableMessage(failure))}</Text>{otherTrip ? <Pressable onPress={() => router.replace({ pathname: "/rit/[id]", params: { id: tripId, line: otherTrip.line, destination: otherTrip.destination, carrier: otherTrip.carrier || "" } })} accessibilityRole="button" accessibilityLabel="Huidige rit van deze bus bekijken" style={styles.otherTripLink}><Text style={styles.otherTripLinkText}>Huidige rit van deze bus bekijken</Text></Pressable> : null}<Pressable onPress={() => setRetry((x) => x + 1)} accessibilityRole="button" accessibilityLabel="Ritverloop opnieuw laden" style={styles.retry}><Ionicons name="refresh" color="#FFFFFF" size={17}/><Text style={styles.retryText}>Opnieuw proberen</Text></Pressable>{failure === "offline" && !error ? <Text style={styles.offlineHint}>OVbord probeert het automatisch opnieuw zodra er verbinding is.</Text> : null}</View> :
+    {/* Choosing where to get off is a temporary mode: this bar stays in view while the list scrolls. */}
+    {choosingAlight && journey && !mapOpen ? <View style={styles.chooseBanner} accessibilityRole="alert">
+      <Ionicons name="flag-outline" color={c.alightTagText} size={17}/>
+      <Text style={styles.chooseBannerText}>Tik op de halte waar je uitstapt</Text>
+      <Pressable onPress={() => setChoosingAlight(false)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Kiezen annuleren">
+        <Text style={styles.chooseCancel}>Annuleren</Text>
+      </Pressable>
+    </View> : null}
+    {loading && !journey ? <View style={styles.center}><ActivityIndicator color={c.green}/><Text style={styles.message}>Ritverloop ophalen…</Text></View> : !journey ? <View style={styles.center}><Text style={styles.message}>{error || (otherTrip ? otherTripMessage(otherTrip, { line: expectedLine, destination: fallbackDestination }) : ritUnavailableMessage(failure))}</Text>{otherTrip ? <Pressable onPress={() => router.replace({ pathname: "/rit/[id]", params: { id: tripId, line: otherTrip.line, destination: otherTrip.destination, carrier: otherTrip.carrier || "" } })} accessibilityRole="button" accessibilityLabel="Huidige rit van deze bus bekijken" style={styles.otherTripLink}><Text style={styles.otherTripLinkText}>Huidige rit van deze bus bekijken</Text></Pressable> : null}<Pressable onPress={() => setRetry((x) => x + 1)} accessibilityRole="button" accessibilityLabel="Ritverloop opnieuw laden" style={styles.retry}><Ionicons name="refresh" color="#FFFFFF" size={17}/><Text style={styles.retryText}>Opnieuw proberen</Text></Pressable>{failure === "offline" && !error ? <Text style={styles.offlineHint}>OVbord probeert het automatisch opnieuw zodra er verbinding is.</Text> : null}</View> :
     <ScrollView ref={scrollRef} style={styles.scroll}
       contentContainerStyle={[styles.content, { paddingBottom: Math.max(24, insets.bottom + 12) }]}
       showsVerticalScrollIndicator={false}
+      // Once the user scrolls, the page never jumps to the vehicle by itself.
+      onScrollBeginDrag={() => { autoScrolled.current = true; }}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void pullToRefresh()}
-        colors={[c.blue]} tintColor={c.blue} progressBackgroundColor={c.surface} />}>
+        colors={[c.green]} tintColor={c.green} progressBackgroundColor={c.surface} />}>
       {continuation ? <View style={styles.continuationBanner} accessibilityRole="alert">
         <Ionicons name="arrow-redo-outline" color={c.navy} size={20}/>
         <Text style={styles.continuationText}>{continuationText(continuation.rit, continuation.firstDeparture)}</Text>
@@ -807,34 +834,22 @@ export default function RitScreen() {
           <Text style={styles.continuationLink}>Volg bus</Text>
         </Pressable>
       </View> : null}
-      {/* Only cancellations or an optional alighting reminder above the timeline; boarding is shown in the list. */}
+      {/* Above the timeline only what needs attention: a cancellation, or the alighting stop being next.
+          The alighting stop itself is marked in the list; choosing it is under ⋮ (V5.7: no permanent bar). */}
       {cancelled ? <View style={[styles.tripBar, styles.tripBarCancelled]} accessibilityRole="alert">
         <Ionicons name="close-circle" size={22} color={c.red}/>
         <View style={styles.summaryBody}>
           <Text style={[styles.tripBarMain, { color: c.red }]}>Deze rit rijdt niet</Text>
           <Text style={styles.tripBarLabel}>{positionSub}</Text>
         </View>
-      </View> : alightStop && alightLine ? <Pressable onPress={canChooseAlight ? startChoosingAlight : undefined} disabled={!canChooseAlight}
-        accessibilityRole={canChooseAlight ? "button" : undefined} accessibilityLiveRegion="polite"
-        accessibilityLabel={"Je stapt uit bij " + alightLine.name + ", " + alightLine.clock + (alightLine.countdown ? ", " + alightLine.countdown : "") +
-          (alightLine.detail ? ", " + alightLine.detail : "") + (canChooseAlight ? ". Uitstaphalte wijzigen" : "")}
-        style={({ pressed }) => [styles.tripBar, styles.tripBarAlight, alightActive && styles.tripBarAlightActive, pressed && styles.stopRowPressed]}>
-        <Ionicons name={`${vehicleIcon(journey.mode)}-outline`} size={22} color={lastKnown ? c.muted : c.alightTagText}/>
-        <View style={styles.summaryBody}>
-          <Text style={[styles.tripBarLabel, alightActive && { color: c.alightTagText, fontWeight: "800" }]}>
-            {alightState.status === "approaching" ? "Je stapt uit bij" : alightLine.detail}</Text>
-          <Text style={styles.tripBarMain}>
-            <Text style={styles.stopRowName}>{alightLine.name}</Text>{" · " + alightLine.clock}
-            {alightLine.countdown ? " · " + alightLine.countdown : ""}
-          </Text>
-        </View>
-        {canChooseAlight ? <Ionicons name="chevron-forward" size={20} color={c.muted}/> : null}
-      </Pressable> : canChooseAlight && !choosingAlight ? <Pressable onPress={startChoosingAlight} accessibilityRole="button"
-        accessibilityLabel="Kies waar je uitstapt" style={({ pressed }) => [styles.tripBar, styles.tripBarAlight, pressed && styles.stopRowPressed]}>
-        <Ionicons name="flag-outline" size={22} color={c.alightTagText}/>
-        <Text style={[styles.tripBarMain, styles.stopRowChoose]}>Kies waar je uitstapt</Text>
-        <Ionicons name="chevron-forward" size={20} color={c.muted}/>
-      </Pressable> : null}
+      </View> : alightLine && (alightState.status === "next" || alightState.status === "at") ? <View style={styles.alightWarning}
+        accessibilityRole="alert" accessibilityLiveRegion="polite"
+        accessibilityLabel={alightLine.detail + ": " + alightLine.name + ", " + alightLine.clock}>
+        <Ionicons name="flag" size={17} color={lastKnown ? c.muted : c.alightTagText}/>
+        <Text style={[styles.alightWarningText, lastKnown && { color: c.muted }]}>
+          <Text style={styles.positionLineStrong}>{alightLine.detail}</Text>{" · " + alightLine.name + " · " + alightLine.clock}
+        </Text>
+      </View> : null}
       {/* The user's own stops are named when a notice says the vehicle skips them. */}
       {[boardingStop && boardingLine ? boardingStop : null, alightStop && alightState.status !== "passed" ? alightStop : null]
         .filter((stop): stop is JourneyStop => Boolean(stop) && skipped.has(String(stop!.id)) && !cancelled)
@@ -844,9 +859,10 @@ export default function RitScreen() {
         </View>)}
       {/* Where the vehicle is: one small line; the vehicle itself is in the timeline. */}
       {!cancelled ? <Pressable onPress={verifiedLive ? focusVehicle : toggleMap} accessibilityRole="button"
-        accessibilityLabel={headline + ". " + positionSub + ". Op kaart"} style={styles.vehicleLine}>
-        <Ionicons name={lastKnown ? "cloud-offline-outline" : gpsFresh ? "radio-outline" : "time-outline"} size={15} color={gpsFresh && !lastKnown ? c.green : c.muted}/>
+        accessibilityLabel={(vehicleLabel ? vehicleLabel + ". " : "") + headline + ". " + positionSub + ". Op kaart"} style={styles.vehicleLine}>
+        <Ionicons name={lastKnown ? "cloud-offline-outline" : verifiedLive ? "radio-outline" : "time-outline"} size={15} color={verifiedLive && !lastKnown ? c.green : c.muted}/>
         <Text style={styles.vehicleLineText} numberOfLines={2}>
+          {vehicleLabel ? <Text style={styles.vehicleNumber}>{vehicleLabel + "  "}</Text> : null}
           <Text style={styles.vehicleLineStrong}>{headline}</Text>{positionSub && positionSub !== headline ? " · " + positionSub.replace("Live GPS · ", "live ").replace(" geleden", "") : ""}
         </Text>
       </Pressable> : null}
@@ -896,16 +912,11 @@ export default function RitScreen() {
         </View> : null}
       </> : null}
       {failure ? <Text style={styles.refreshError}>{ritRefreshNotice(failure, fetchedAt)}</Text> : null}
-      {choosingAlight && !mapOpen ? <View style={styles.chooseBanner}>
-        <Ionicons name="flag-outline" color={c.alightTagText} size={17}/>
-        <Text style={styles.chooseBannerText}>Tik op de halte waar je uitstapt</Text>
-        <Pressable onPress={() => setChoosingAlight(false)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Kiezen annuleren">
-          <Text style={styles.chooseCancel}>Annuleren</Text>
-        </Pressable>
-      </View> : null}
-      {mapOpen ? null : <TimeLine journey={journey} liveLocation={verifiedLive} showAll={showAll} onShowAll={() => setShowAll((value) => !value)} boarding={boarding} onOpenStop={openStopBoard} lastKnown={lastKnown} onFocusVehicle={focusVehicle}
-        alightIndex={alightIndex} choosing={choosingAlight} minAlightIndex={minAlightIndex} onChooseAlight={canChooseAlight ? chooseAlight : undefined}
-        skipped={skipped}/>}
+      {mapOpen ? null : <View onLayout={(event: LayoutChangeEvent) => { timelineTop.current = event.nativeEvent.layout.y; autoScroll(); }}>
+        <TimeLine journey={journey} liveLocation={verifiedLive} boarding={boarding} onOpenStop={openStopBoard} lastKnown={lastKnown} onFocusVehicle={focusVehicle}
+          alightIndex={alightIndex} choosing={choosingAlight} minAlightIndex={minAlightIndex} onChooseAlight={canChooseAlight ? chooseAlight : undefined}
+          skipped={skipped} onRowLayout={onRowLayout}/>
+      </View>}
       {alightStop && !cancelled && alightState.status !== "passed" && !choosingAlight ? <RitTransfers stop={alightStop} arrivalClock={alightClock}
         expanded={transfersExpanded} onToggle={() => setTransfersOpen(!transfersExpanded)}
         tripId={tripId} line={line} destination={destination}
@@ -913,17 +924,7 @@ export default function RitScreen() {
         onOpenBoard={() => openStopBoard(alightStop)}/> : null}
       <Text style={styles.disclaimer}>Alleen bevestigde GPS verschijnt als live positie. Dienstregeling en verwachtingen kunnen wijzigen.</Text>
     </ScrollView>}
-    {journey && !mapOpen && !choosingAlight && (remainingAfterWindow > 0 || (showAll && journey.stops.length > 10)) ? (
-      <View style={[styles.timelineFooter, { paddingBottom: Math.max(8, insets.bottom + 4) }]}>
-        <Pressable style={styles.moreStopsButton} accessibilityRole="button"
-          accessibilityLabel={showAll ? "Minder haltes tonen" : "Alle " + journey.stops.length + " haltes tonen"}
-          onPress={() => setShowAll((value) => !value)}>
-          <Text style={styles.moreStopsText}>{showAll ? "Minder haltes" : "Toon alle haltes (" + journey.stops.length + ")"}</Text>
-          <Ionicons name={showAll ? "chevron-up" : "chevron-down"} color={c.blue} size={18}/>
-        </Pressable>
-      </View>
-    ) : null}
-    {/* Last child: the menu lies above the trip and the footer. */}
+    {/* Last child: the menu lies above the trip. */}
     <OverflowMenu open={menuOpen} onClose={() => setMenuOpen(false)} items={menuItems} title="Meer acties voor deze rit" />
   </View>;
 }
@@ -933,15 +934,15 @@ export default function RitScreen() {
 function makeStyles(c: RitColors) {
   return StyleSheet.create({
   page: { flex: 1, backgroundColor: c.page },
-  header: { backgroundColor: c.statusBar === "dark" ? "#175FAD" : "#123C64", flexDirection: "row", alignItems: "center", paddingBottom: 10, paddingHorizontal: 6, minHeight: 76 },
+  // V5.7: white header with a hairline; the green line badge is the accent.
+  header: { backgroundColor: c.surface, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.border,
+    flexDirection: "row", alignItems: "center", paddingBottom: 10, paddingHorizontal: 6, minHeight: 76 },
   headerButton: { width: 39, height: 42, alignItems: "center", justifyContent: "center" },
-  // A thin white edge: the blue line badge would otherwise disappear into the blue header.
-  headerBadge: { marginLeft: 2, marginRight: 10, borderWidth: 1.5, borderColor: "rgba(255,255,255,0.85)", borderRadius: 10.5,
-    overflow: "hidden" },
+  headerBadge: { marginLeft: 2, marginRight: 10 },
   headerTitles: { flex: 1, minWidth: 0 },
-  headerTitle: { color: "#FFFFFF", fontSize: 20, lineHeight: 25, fontWeight: "900" },
+  headerTitle: { color: c.text, fontSize: 20, lineHeight: 25, fontWeight: "900" },
   headerTitleLong: { fontSize: 17, lineHeight: 21 },
-  headerNaar: { fontWeight: "500", color: "#DDEEFF" },
+  headerNaar: { fontWeight: "500", color: c.muted },
   headerSub: { color: c.muted, fontSize: 12, marginTop: 2 },
   center: { flex: 1, justifyContent: "center", alignItems: "center", padding: 25, gap: 16 },
   message: { fontSize: 14, color: c.muted, textAlign: "center" },
@@ -978,6 +979,11 @@ function makeStyles(c: RitColors) {
   vehicleLine: { flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 16, paddingVertical: 6 },
   vehicleLineText: { flex: 1, color: c.muted, fontSize: 12.5, lineHeight: 17 },
   vehicleLineStrong: { color: c.text, fontWeight: "700" },
+  vehicleNumber: { color: c.muted, fontWeight: "800" },
+  // Shown only while the alighting stop is next or reached: a warning, not a permanent bar.
+  alightWarning: { flexDirection: "row", alignItems: "center", gap: 9, marginHorizontal: 12, marginTop: 8, marginBottom: 2,
+    paddingHorizontal: 12, paddingVertical: 9, borderRadius: 12, backgroundColor: c.alightRowBg },
+  alightWarningText: { flex: 1, color: c.alightTagText, fontSize: 13, lineHeight: 18 },
   timelineNameRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", columnGap: 7, rowGap: 3 },
   alightSub: { color: c.alightTagText, fontSize: 12.5, fontWeight: "600", marginTop: 1 },
   boardingSub: { color: c.green, fontSize: 12.5, fontWeight: "600", marginTop: 1 },
@@ -1008,11 +1014,6 @@ function makeStyles(c: RitColors) {
   summaryNextText: { flex: 1, color: c.text, fontSize: 11.5, fontWeight: "700" },
   summaryNextClock: { color: c.green, fontSize: 12, fontWeight: "800", fontVariant: ["tabular-nums"] },
   mapToggleText: { color: c.navy, fontSize: 11, fontWeight: "800" },
-  timelineFooter: { backgroundColor: c.surface, paddingTop: 8, paddingHorizontal: 12,
-    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.border },
-  moreStopsButton: { height: 44, borderRadius: 12, backgroundColor: c.stageNeutralBg,
-    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10 },
-  moreStopsText: { color: c.text, fontSize: 13, fontWeight: "700" },
   mapToggle: { minHeight: 36, paddingHorizontal: 11, borderWidth: 1, borderColor: c.toggleBorder,
     borderRadius: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: c.surface },
   map: { width: "100%", height: 230, backgroundColor: c.mapBg, overflow: "hidden", borderBottomWidth: 1, borderBottomColor: c.border },
@@ -1045,12 +1046,11 @@ function makeStyles(c: RitColors) {
   refreshError: { paddingHorizontal: 14, paddingVertical: 9, color: c.refreshError, fontSize: 11 },
   offlineHint: { fontSize: 12, color: c.muted, textAlign: "center", maxWidth: 280 },
   timeLine: { marginTop: 0 },
-  hiddenStops: { minHeight: 34, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
-  hiddenText: { color: c.muted, fontSize: 12, fontWeight: "600" },
   timelineRow: { position: "relative", flexDirection: "row", alignItems: "center", minHeight: 42, paddingHorizontal: 12 },
   timelineRowWithVehicle: { zIndex: 2 },
   timelineRowAtVehicle: { minHeight: 50 },
-  timelineRowNext: { backgroundColor: c.statusBar === "dark" ? "#FFF6E3" : "#362B1D" },
+  // The next stop: a subtle green row and label.
+  timelineRowNext: { backgroundColor: c.boardingRowBg },
   passedRow: { minHeight: 36 },
   passedName: { color: c.passedName, fontWeight: "400" },
   timelineImportantName: { fontWeight: "800", fontSize: 15.5 },
@@ -1058,7 +1058,7 @@ function makeStyles(c: RitColors) {
   afterAlightText: { color: c.passedName },
   alightTime: { color: c.alightTagText, fontWeight: "900" },
   alightName: { color: c.alightTagText, fontWeight: "900", fontSize: 15.5 },
-  nextTag: { backgroundColor: c.statusBar === "dark" ? "#FCE6B5" : "#4B3820", color: c.statusBar === "dark" ? "#865300" : "#FFD58A", fontSize: 10, fontWeight: "800",
+  nextTag: { backgroundColor: c.boardingTagBg, color: c.boardingTagText, fontSize: 10, fontWeight: "800",
     paddingHorizontal: 7, paddingVertical: 3, borderRadius: 10, overflow: "hidden", alignSelf: "flex-start", marginTop: 2 },
   boardingRow:{backgroundColor:c.boardingRowBg},
   boardingTag:{backgroundColor:c.boardingTagBg,color:c.boardingTagText,fontSize:11,fontWeight:"800",paddingHorizontal:8,paddingVertical:3,borderRadius:10,overflow:"hidden"},
@@ -1078,7 +1078,7 @@ function makeStyles(c: RitColors) {
   railAlightDot: { width: 9, height: 9, borderRadius: 5 },
   // Centred on the rail: row padding 12 + time column 64 + half the rail (15) - half the marker (12).
   vehicleOnRail: { position: "absolute", left: 79, bottom: -12, width: 24, height: 24, borderRadius: 12,
-    backgroundColor: c.blue, borderWidth: 2, borderColor: c.vehicleRing, justifyContent: "center",
+    backgroundColor: c.green, borderWidth: 2, borderColor: c.vehicleRing, justifyContent: "center",
     alignItems: "center", zIndex: 4 },
   timelineLabel: { flex: 1, paddingLeft: 10, minWidth: 0, justifyContent: "center", paddingVertical: 3 },
   timelineName: { flexShrink: 1, fontSize: 14.5, color: c.text, fontWeight: "500" },
@@ -1106,8 +1106,8 @@ function makeStyles(c: RitColors) {
   summaryAlightChoose: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 14, minHeight: 44,
     borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.summaryDivider },
   summaryAlightChooseText: { flex: 1, color: c.navy, fontSize: 12, fontWeight: "800" },
-  chooseBanner: { flexDirection: "row", alignItems: "center", gap: 8, marginHorizontal: 12, marginBottom: 8, padding: 11,
-    borderRadius: 11, backgroundColor: c.alightTagBg },
+  chooseBanner: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 14, paddingVertical: 10,
+    backgroundColor: c.alightTagBg, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.border },
   chooseBannerText: { flex: 1, color: c.text, fontSize: 12.5, fontWeight: "800" },
   chooseCancel: { color: c.navy, fontSize: 12, fontWeight: "800" },
   timelinePlatform: { color: c.muted, fontSize: 9.5, fontWeight: "700", marginTop: 1 },

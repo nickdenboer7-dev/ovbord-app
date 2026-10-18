@@ -4,6 +4,11 @@
  */
 
 /** Headline of the position card: where the vehicle is, or why that is not known. */
+/** V5.7: "Tussen A en B" from verified GPS reads as "Onderweg tussen A en B"; anything else is unchanged. */
+export function onTheWayText(placeText: string): string {
+  return placeText.startsWith("Tussen ") ? "Onderweg tussen " + placeText.slice("Tussen ".length) : placeText;
+}
+
 export function positionHeadline(input: { ended: boolean; placeText: string; live: boolean; cancelled: boolean }): string {
   if (input.cancelled) return "Deze rit rijdt niet";
   if (input.ended) return "Rit beëindigd";

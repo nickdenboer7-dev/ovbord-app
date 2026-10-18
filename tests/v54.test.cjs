@@ -233,7 +233,8 @@ test("the vehicle stays in view a few stops before the boarding stop", () => {
   assert.deepEqual(visibleTimelineWindow(35, 8, { kind: "at", index: 4 }, false), { start: 4, end: 14, hiddenFollowing: 21 });
   // Further away the window stays at the boarding stop; the hidden row says the vehicle is there.
   assert.deepEqual(visibleTimelineWindow(35, 10, { kind: "between", index: 2 }, false), { start: 8, end: 17, hiddenFollowing: 18 });
-  assert.match(read("app/rit/[id].tsx"), /liveLocation && liveLocation\.index < start \?/);
+  // V5.7: the trip page shows every stop and scrolls to the vehicle once, so no stops are hidden before it.
+  assert.doesNotMatch(read("app/rit/[id].tsx"), /styles\.hiddenStops/);
 });
 
 test("skipped stops come from the notice's stop IDs and are named", () => {
@@ -295,18 +296,20 @@ test("trip page: one bar that follows the trip and a simple menu", () => {
   // V5.6.1: the boarding bar is gone; the boarding stop is shown in the timeline.
   assert.doesNotMatch(rit, /Je stapt in bij/);
   assert.doesNotMatch(rit, /openStopBoard\(boardingStop\)/);
-  assert.match(rit, /"Je stapt uit bij" : alightLine\.detail/);
+  // V5.7: no permanent alighting bar; a warning only when the alighting stop is next or reached.
+  assert.match(rit, /alightLine && \(alightState\.status === "next" \|\| alightState\.status === "at"\) \? <View style=\{styles\.alightWarning\}/);
   assert.match(rit, />Je stapt hier uit</);
   assert.match(rit, />Vertrokken</);
   assert.match(rit, /<Text style=\{styles\.vehicleLineStrong\}>\{headline\}<\/Text>/);
   assert.match(rit, /title="Meer acties voor deze rit"/);
   assert.match(rit, /description: "Rit-ID: " \+ tripId/);
   assert.match(rit, /checked: vibrate, group: 1/);
-  // Every stop in the timeline opens its board; tapping the alighting bar changes it.
+  // Every stop in the timeline opens its board; the alighting stop is chosen under ⋮.
   assert.match(rit, /onOpenStop=\{openStopBoard\}/);
   assert.match(rit, /onPress=\{\(\) => \{ if \(!choosing\) onOpenStop\(stop\); else if \(selectable\) onChooseAlight\?\.\(stop, index\); \}\}/);
-  assert.match(rit, /onPress=\{canChooseAlight \? startChoosingAlight : undefined\}/);
-  assert.match(rit, /"Toon alle haltes \(" \+ journey\.stops\.length \+ "\)"/);
+  assert.match(rit, /label: alightStop \? "Uitstaphalte wijzigen" : "Kies waar je uitstapt", icon: "flag-outline", onPress: startChoosingAlight/);
+  // All stops are shown: no "Toon alle haltes" button.
+  assert.doesNotMatch(rit, /Toon alle haltes/);
   const menu = read("components/OverflowMenu.tsx");
   assert.match(menu, /sheet: \{ position: "absolute", left: 0, right: 0, bottom: 0,/);
   assert.match(menu, /<Switch value=\{item\.checked\}/);
@@ -320,7 +323,8 @@ test("large font and choosing the alighting stop", () => {
   // The theme setting comes first, so it is in view without scrolling.
   assert.ok(meer.indexOf(">Thema<") < meer.indexOf(">Favoriete haltes<"));
   const rit = read("app/rit/[id].tsx");
-  assert.match(rit, /choosing \? \{ start: Math\.max\(0, minAlightIndex - 2\), end: stops\.length \} : shown/);
+  // V5.7: choosing scrolls to the first stop that can be chosen; the earlier stops stay in the list.
+  assert.match(rit, /scrollToStop\(Math\.max\(0, minAlightIndex - 1\), true\)/);
   assert.doesNotMatch(rit, /setChoosingAlight\(true\);\s*setShowAll\(true\);/);
   assert.match(rit, /<Text maxFontSizeMultiplier=\{1\.2\} style=\{\[styles\.headerTitle/);
   const board = read("components/FlowBoard.tsx");

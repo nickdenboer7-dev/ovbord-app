@@ -5,11 +5,11 @@ const path = require("node:path");
 
 const read = (file) => fs.readFileSync(path.join(__dirname, "..", file), "utf8").replace(/\r\n/g, "\n");
 
-// V5.6 Concept C: blue headers on the stop board and the trip page (Start is white-green since V5.6.2).
-test("stop board and trip page have a blue header in light and dark mode", () => {
+// V5.6 Concept C: blue header on the stop board (Start is white-green since V5.6.2, the trip page since V5.7).
+test("the stop board has a blue header in light and dark mode", () => {
   assert.match(read("components/FlowBoard.tsx"), /resolvedScheme === "dark" \? "#123C64" : "#175FAD"/);
   assert.doesNotMatch(read("components/FlowHome.tsx"), /#175FAD|#123C64/);
-  assert.match(read("app/rit/[id].tsx"), /header: \{ backgroundColor: c\.statusBar === "dark" \? "#175FAD" : "#123C64"/);
+  assert.doesNotMatch(read("app/rit/[id].tsx"), /#175FAD|#123C64/);
 });
 
 test("the status bar has white icons on the blue headers", () => {
@@ -19,7 +19,8 @@ test("the status bar has white icons on the blue headers", () => {
   assert.match(home, /const statusBarStyle = showingBoard \|\| resolvedScheme === "dark" \? "light" : "dark";/);
   assert.match(home, /\{focused \? <ExpoStatusBar style=\{statusBarStyle\} \/> : null\}/);
   assert.match(home, /useFocusEffect\(useCallback\(\(\) => \{ setFocused\(true\); return \(\) => setFocused\(false\); \}, \[\]\)\)/);
-  assert.match(read("app/rit/[id].tsx"), /<ExpoStatusBar style="light" \/>/);
+  // V5.7: the trip page has a white header, so its status bar follows the theme.
+  assert.match(read("app/rit/[id].tsx"), /<ExpoStatusBar style=\{c\.statusBar\} \/>/);
   // Other screens follow the theme.
   assert.match(read("app/_layout.tsx"), /<StatusBar style=\{resolvedScheme === "dark" \? "light" : "dark"\} \/>/);
 });
@@ -30,8 +31,9 @@ test("the next-stop label is as wide as its text", () => {
   assert.match(rit, /<Text style=\{styles\.nextTag\}>Volgende halte<\/Text>/);
 });
 
-test("the line badge in the blue trip header has a white edge", () => {
-  assert.match(read("app/rit/[id].tsx"), /headerBadge: \{[^}]*borderWidth: 1\.5, borderColor: "rgba\(255,255,255,0\.85\)"/);
+// V5.7: on the white trip header the line badge is OVbord green (no edge needed any more).
+test("the line badge in the trip header is the green accent", () => {
+  assert.match(read("app/rit/[id].tsx"), /<LijnBadge line=\{line\} carrier=\{carrier\} tone="accent" \/>/);
 });
 
 test("live information stays green", () => {

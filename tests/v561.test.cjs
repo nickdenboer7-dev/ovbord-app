@@ -8,7 +8,8 @@ test("V5.6.1 removes the boarding banner, preserving cancellation and alighting"
   const rit = read("app/rit/[id].tsx");
   assert.doesNotMatch(rit, /Je stapt in bij/);
   assert.match(rit, /Deze rit rijdt niet/);
-  assert.match(rit, /Je stapt uit bij/);
+  // V5.7: the alighting stop is named in the timeline (and warned for when it is next), not in a bar.
+  assert.match(rit, /Je stapt hier uit/);
   assert.match(rit, /<TimeLine journey=/);
 });
 
