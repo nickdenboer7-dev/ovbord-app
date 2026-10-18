@@ -153,7 +153,8 @@ test("large system font: two-line names, smaller Buurtbord map, capped tab label
   assert.equal(largeText(1.3), true);
   assert.equal(largeText(1.5), true);
   assert.equal(largeText(undefined), false);
-  assert.match(read("components/DepartureLine.tsx"), /numberOfLines=\{large \? 2 : 1\}>\s*\{item\.destination\}/);
+  // V5.8: destinations get up to two lines regardless of font scale, not just at a large one.
+  assert.match(read("components/DepartureLine.tsx"), /numberOfLines=\{2\}>\s*\{item\.destination\}/);
   assert.match(read("components/FlowBoard.tsx"), /<DepartureLine /);
   const buurt = read("app/(tabs)/buurtbord.tsx");
   assert.match(buurt, /large && styles\.mapWrapLarge/);

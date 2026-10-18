@@ -5,18 +5,18 @@ const path = require("node:path");
 
 const read = (file) => fs.readFileSync(path.join(__dirname, "..", file), "utf8").replace(/\r\n/g, "\n");
 
-// V5.6 Concept C: blue header on the stop board (Start is white-green since V5.6.2, the trip page since V5.7).
-test("the stop board has a blue header in light and dark mode", () => {
-  assert.match(read("components/FlowBoard.tsx"), /resolvedScheme === "dark" \? "#123C64" : "#175FAD"/);
+// V5.8: the stop board gets the compact white-green header too; no blue headers remain anywhere.
+test("no screen uses the old blue header any more", () => {
+  assert.doesNotMatch(read("components/FlowBoard.tsx"), /#175FAD|#123C64/);
   assert.doesNotMatch(read("components/FlowHome.tsx"), /#175FAD|#123C64/);
   assert.doesNotMatch(read("app/rit/[id].tsx"), /#175FAD|#123C64/);
 });
 
-test("the status bar has white icons on the blue headers", () => {
+test("the status bar follows the theme on every white header", () => {
   const home = read("components/FlowHome.tsx");
   // Only while Start is the focused tab, so Favorieten and Meer keep the theme colours.
-  // V5.6.2: white on an open (blue) stop board, dark on the white Start header in light mode.
-  assert.match(home, /const statusBarStyle = showingBoard \|\| resolvedScheme === "dark" \? "light" : "dark";/);
+  // V5.8: the stop board is white too now, so it no longer forces white (light) icons.
+  assert.match(home, /const statusBarStyle = resolvedScheme === "dark" \? "light" : "dark";/);
   assert.match(home, /\{focused \? <ExpoStatusBar style=\{statusBarStyle\} \/> : null\}/);
   assert.match(home, /useFocusEffect\(useCallback\(\(\) => \{ setFocused\(true\); return \(\) => setFocused\(false\); \}, \[\]\)\)/);
   // V5.7: the trip page has a white header, so its status bar follows the theme.

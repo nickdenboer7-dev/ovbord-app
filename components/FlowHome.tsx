@@ -181,10 +181,10 @@ export function FlowHome() {
   const showingBoard = screens.length > 0 && !finding;
   // "Mijn ritten": saved trips with their next departures, at the top of the nearby list.
   const showMine = !finding && tab === "nabij" && favoriteJourneys.length > 0;
-  // V5.6.2: Start has a light header (dark clock and icons in light mode); an open stop board keeps its
-  // blue header with white icons. Rendered only while focused, so Favorieten and Meer follow the theme.
+  // V5.8: the stop board has a white header too (like Start), so the status bar simply follows
+  // the theme everywhere. Rendered only while focused, so Favorieten and Meer follow the theme.
   const [focused, setFocused] = useState(true);
-  const statusBarStyle = showingBoard || resolvedScheme === "dark" ? "light" : "dark";
+  const statusBarStyle = resolvedScheme === "dark" ? "light" : "dark";
   useFocusEffect(useCallback(() => { setFocused(true); return () => setFocused(false); }, []));
   useFocusEffect(useCallback(() => {
     if (favoriteJourneys.length) void refreshFavorites();

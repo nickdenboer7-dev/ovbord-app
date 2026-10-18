@@ -86,7 +86,13 @@ export function shiftClock(value: string, difference: number): string {
   const n=((Number(m[1])*60+Number(m[2])+Math.round(difference))%1440+1440)%1440;
   return String(Math.floor(n/60)).padStart(2,"0")+":"+String(n%60).padStart(2,"0");
 }
-export function effectiveDepartureClock(row: {plannedTime:string; expectedTime?:string; delayMinutes?:number}): string {
+export function effectiveDepartureClock(row: {plannedTime:string; expectedTime?:string; delayMinutes?:number; effectiveAt?:string}): string {
+  // V5.8: prefer the same absolute instant the countdown (departureCountdown) and the sort
+  // (departureTimeRemainingMs) already use, so the clock and the countdown never disagree.
+  if(row.effectiveAt){
+    const at=Date.parse(row.effectiveAt);
+    if(Number.isFinite(at))return formatDutchClock(at);
+  }
   if(row.expectedTime && row.expectedTime!=="--:--")return row.expectedTime;
   return typeof row.delayMinutes==="number" && row.delayMinutes!==0
     ?shiftClock(row.plannedTime,row.delayMinutes):row.plannedTime;

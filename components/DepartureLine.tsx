@@ -64,7 +64,7 @@ export function DepartureLine({ item, nowMs, onPress, stale = false, tooTight = 
         {/* The live icon sits inside the text: a Text that shrinks next to a sibling in a row was
             broken in the middle of a word on Android with a large font. */}
         <Text style={[styles.destination, list && styles.destinationList, { color: colors.text }]}
-          maxFontSizeMultiplier={wordFitScale(item.destination, bodyWidth, list ? 14.5 : 16, 1.5)} numberOfLines={large ? 2 : 1}>
+          maxFontSizeMultiplier={wordFitScale(item.destination, bodyWidth, list ? 14.5 : 16, 1.5)} numberOfLines={2}>
           {item.destination}{live ? <Text style={{ color: colors.success }}>{"  "}<Ionicons name="wifi" size={14} color={colors.success} /></Text> : null}
         </Text>
         {detail ? (

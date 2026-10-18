@@ -41,6 +41,26 @@ export function departureTimeRemainingMs(item: DepartureItem, nowMs: number): nu
   return delta;
 }
 
+/**
+ * Departures in ascending order of their real expected departure time (V5.8): a known
+ * effectiveAt or clock wins, exactly as departureTimeRemainingMs already resolves it, so this
+ * stays consistent with "Jouw lijnen" and every other place that already sorts this way.
+ * A departure time that cannot be determined sorts last. Equal or unknown times keep their
+ * original relative order (a stable sort). The input array itself is never mutated.
+ */
+export function sortBoardDepartures<T extends DepartureItem>(items: readonly T[], nowMs: number): T[] {
+  return items
+    .map((item, index) => ({ item, index, ms: departureTimeRemainingMs(item, nowMs) }))
+    .sort((a, b) => {
+      if (a.ms === null || b.ms === null) {
+        if (a.ms === null && b.ms === null) return a.index - b.index;
+        return a.ms === null ? 1 : -1;
+      }
+      return a.ms - b.ms || a.index - b.index;
+    })
+    .map((row) => row.item);
+}
+
 export function keepBoardDeparture(item: DepartureItem, nowMs: number): boolean {
   const remaining = departureTimeRemainingMs(item, nowMs);
   // If the feed supplies neither a usable date nor clock, do not invent a departure.

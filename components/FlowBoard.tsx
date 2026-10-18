@@ -14,7 +14,7 @@ import { useSmartRefresh } from "../lib/useSmartRefresh";
 import { departureKey } from "../lib/flowRitQuality";
 import { hasAvailableArrivals } from "../lib/arrivalAvailability";
 import { isNextServiceDay } from "../lib/format";
-import { boardDepartureIdentity, departureTimeChangeLabel, keepBoardDeparture, refreshDepartureTimeChanges } from "../lib/boardSmartness";
+import { boardDepartureIdentity, departureTimeChangeLabel, keepBoardDeparture, refreshDepartureTimeChanges, sortBoardDepartures } from "../lib/boardSmartness";
 import { departedNoticeVisible, shouldVerifyDeparture, journeyConfirmsDeparture, DEPARTURE_CHECK_COOLDOWN_MS, MAX_DEPARTURE_CHECKS } from "../lib/departedNotice";
 import { feedFreshness, platformChangeFor, refreshPlatformChanges } from "../lib/haltebordV4";
 import { boardLineFilterKey, matchesBoardLineFilter } from "../lib/boardLineFilters";
@@ -215,8 +215,10 @@ export function FlowBoard({ stop, initialBoard, initialLine, onBack, visible = t
 
   const source = useMemo(() => {
     if (!board) return [];
+    // V5.8: departures are shown in ascending order of their real expected departure time
+    // (effectiveAt, otherwise the existing clock/delay estimate), never the raw feed order.
     const entries = tab === "arrivals" ? board.arrivals
-      : tab === "departures" ? visibleDepartures : [];
+      : tab === "departures" ? sortBoardDepartures(visibleDepartures, nowMs) : [];
     return entries.map((rawItem) => {
       const item = withBoardFreshness(rawItem, dataCurrent);
       const quality = dataCurrent ? gpsQuality[item.ritId || ""] : undefined;
@@ -225,7 +227,7 @@ export function FlowBoard({ stop, initialBoard, initialLine, onBack, visible = t
           quality.level === "good" || quality.level === "reasonable" ? "medium" as const : "low" as const
       } : item;
     });
-  }, [board, tab, gpsQuality, visibleDepartures, dataCurrent]);
+  }, [board, tab, gpsQuality, visibleDepartures, dataCurrent, nowMs]);
 
   /** Favourite lines (a star in the Lijnen tab) are shown in "Jouw lijnen". */
   const favoriteKeySet = useMemo(() => new Set(favoriteLines), [favoriteLines]);
@@ -299,28 +301,29 @@ export function FlowBoard({ stop, initialBoard, initialLine, onBack, visible = t
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <View style={[styles.head, { paddingTop: Math.max(insets.top, 24) + 12, backgroundColor: resolvedScheme === "dark" ? "#123C64" : "#175FAD" }]}>
+      <View style={[styles.head, { paddingTop: Math.max(insets.top, 24) + 12, backgroundColor: colors.surface,
+        borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }]}>
         <View style={styles.headRow}>
           <Pressable onPress={onBack} accessibilityRole="button" accessibilityLabel="Terug" style={styles.back}>
-            <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
+            <Ionicons name="arrow-back" size={22} color={colors.text} />
           </Pressable>
-          <Text maxFontSizeMultiplier={1.2} style={[styles.title, { color: "#FFFFFF" }]} numberOfLines={3} accessibilityRole="header">{board?.stop.name || stop.name}</Text>
+          <Text maxFontSizeMultiplier={1.2} style={[styles.title, { color: colors.text }]} numberOfLines={3} accessibilityRole="header">{board?.stop.name || stop.name}</Text>
           <Pressable onPress={() => toggleFavoriteStop(board?.stop || stop)} accessibilityRole="button"
             accessibilityLabel={isFavoriteStop(board?.stop.id || stop.id) ? "Verwijder favoriete halte" : "Bewaar als favoriete halte"}
             accessibilityState={{ selected: isFavoriteStop(board?.stop.id || stop.id) }} style={styles.back}>
             <Ionicons name={isFavoriteStop(board?.stop.id || stop.id) ? "star" : "star-outline"} size={24}
-              color={isFavoriteStop(board?.stop.id || stop.id) ? "#FFD86B" : "#FFFFFF"} />
+              color={isFavoriteStop(board?.stop.id || stop.id) ? "#FFD86B" : colors.textSoft} />
           </Pressable>
-          <MenuButton onPress={() => setMenuOpen(true)} color="#FFFFFF" label="Meer opties voor deze halte" />
+          <MenuButton onPress={() => setMenuOpen(true)} color={colors.text} label="Meer opties voor deze halte" />
         </View>
-        {/* Two tabs, as in OVinfo; arrivals only where the feed has them. */}
+        {/* Two tabs, as in OVinfo; arrivals only where the feed has them. Compact white-green header (V5.8). */}
         <View style={styles.segments} accessibilityRole="tablist">
           {([["departures", "Vertrekken"], ["lines", "Lijnen"], ...(hasArrivals ? [["arrivals", "Aankomsten"] as const] : [])] as const).map(([value, label]) => {
             const active = tab === value;
             return (
               <Pressable key={value} onPress={() => selectTab(value)} accessibilityRole="tab" accessibilityState={{ selected: active }}
-                style={[styles.segment, { backgroundColor: active ? "#FFFFFF" : "#FFFFFF22" }]}>
-                <Text style={[styles.segmentText, { color: active ? "#14518B" : "#FFFFFF" }]}>{label}</Text>
+                style={[styles.segment, { backgroundColor: active ? colors.accentSoft : colors.surfaceSoft }]}>
+                <Text style={[styles.segmentText, { color: active ? colors.accentText : colors.textSoft }]}>{label}</Text>
               </Pressable>
             );
           })}
@@ -396,7 +399,7 @@ export function FlowBoard({ stop, initialBoard, initialLine, onBack, visible = t
         </View>
       ) : tab === "lines" ? (
         <FlowLineGroups
-          departures={visibleDepartures.map(row => withBoardFreshness(row, dataCurrent))}
+          departures={sortBoardDepartures(visibleDepartures, nowMs).map(row => withBoardFreshness(row, dataCurrent))}
           onSelectLine={(line) => { setTab("departures"); setSelectedDirection(null); selectLine(line); }}
           onOpenDeparture={openTrip}
           favoriteKeys={favoriteKeySet}
