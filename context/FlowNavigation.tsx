@@ -23,6 +23,10 @@ type FlowContextValue = {
   requestSearch: () => void;
   /** Goes up by one for every request; Start opens its search when it changes. */
   searchRequest: number;
+  /** V5.9: re-tapping the active Start tab — close every board and show the Start list again. */
+  goHome: () => void;
+  /** Goes up by one for every goHome; Start closes its search when it changes. */
+  homeRequest: number;
 };
 const Context = createContext<FlowContextValue | undefined>(undefined);
 let nextScreenKey = 0;
@@ -73,8 +77,10 @@ export function FlowNavigationProvider({ children }: { children: React.ReactNode
   const clearPendingError = useCallback(() => setPendingStopError(null), []);
   const [searchRequest, setSearchRequest] = useState(0);
   const requestSearch = useCallback(() => { cancelPending(); setScreens([]); setSearchRequest((n) => n + 1); }, [cancelPending]);
-  const value = useMemo(() => ({ screens, pendingStopName, pendingStopError, clearPendingError, showStop, followJourneyStop, back, close, requestSearch, searchRequest }),
-    [screens, pendingStopName, pendingStopError, clearPendingError, showStop, followJourneyStop, back, close, requestSearch, searchRequest]);
+  const [homeRequest, setHomeRequest] = useState(0);
+  const goHome = useCallback(() => { cancelPending(); setScreens([]); setHomeRequest((n) => n + 1); }, [cancelPending]);
+  const value = useMemo(() => ({ screens, pendingStopName, pendingStopError, clearPendingError, showStop, followJourneyStop, back, close, requestSearch, searchRequest, goHome, homeRequest }),
+    [screens, pendingStopName, pendingStopError, clearPendingError, showStop, followJourneyStop, back, close, requestSearch, searchRequest, goHome, homeRequest]);
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 export function useFlowNavigation() {

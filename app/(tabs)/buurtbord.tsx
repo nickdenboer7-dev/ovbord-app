@@ -47,6 +47,9 @@ export default function BuurtbordScreen() {
   const nearbyRequest = useRef(0);
   // V5.8.1: live GPS while Buurtbord is visible; disabled while a city is chosen by hand.
   const live = useLiveLocation(!manualCity);
+  // V5.9: "laatst bekend" follows the newest GPS fix, not the moment stops were last loaded.
+  const liveBron = live.bron ?? locatieBron;
+  const liveFixAt = live.fixAt ?? locatieFixAt;
   useEffect(() => {
     const timer = setInterval(() => setNowMs(Date.now()), 15000);
     return () => clearInterval(timer);
@@ -198,12 +201,12 @@ export default function BuurtbordScreen() {
             <Text style={{ color: colors.accentText, fontWeight: "700" }}>Opnieuw proberen</Text>
           </Pressable>
         </View>
-      ) : locatieBron && isLocationStale(locatieBron, locatieFixAt, nowMs) ? (
+      ) : locatieBron && isLocationStale(liveBron, liveFixAt, nowMs) ? (
         // V5.8.1: an old or missing GPS fix is never shown as if it were current.
         <View style={{ marginHorizontal: 13, marginBottom: 4, padding: 10, borderRadius: 10, backgroundColor: colors.warningSoft, flexDirection: "row", alignItems: "center", gap: 8 }}>
           <Ionicons name="time-outline" size={16} color={colors.text} />
           <Text style={{ color: colors.text, flex: 1, fontSize: 12 }}>
-            Laatst bekende locatie · {describeLocationAge(locatieFixAt ?? nowMs, nowMs)}
+            Laatst bekende locatie · {describeLocationAge(liveFixAt ?? nowMs, nowMs)}
           </Text>
         </View>
       ) : null}

@@ -181,18 +181,32 @@ test("the hook follows GPS only in the foreground, while Start or Buurtbord is f
   const hook = read("lib/useLiveLocation.ts");
   // Watch with expo-location, limited to ~150 m so small movements do not even reach JS.
   assert.match(hook, /Location\.watchPositionAsync\(\s*\{[^}]*distanceInterval: MOVEMENT_REFRESH_METERS/);
-  // Tied to screen focus, and a fresh fix on open / return to the tab.
+  // Tied to screen focus, and a fresh fix on open / return to the tab (V5.9: after permission).
   assert.match(hook, /useFocusEffect\(useCallback\(\(\) => \{\s*if \(!enabled\) return;/);
-  assert.match(hook, /requestFresh\(\);\s*void startWatch\(\);/);
+  assert.match(hook, /readFresh\(false\);[^\n]*\n\s*void startWatch\(\);\s*\};\s*void activate\(\);/);
   // Resume: fresh fix and watch again; background: stop watching.
-  assert.match(hook, /next === "active" && previousAppState !== "active"\) \{\s*requestFresh\(\);\s*void startWatch\(\);/);
+  assert.match(hook, /next === "active" && previousAppState !== "active"\) \{\s*void activate\(\);/);
   assert.match(hook, /next !== "active" && previousAppState === "active"\) \{[\s\S]*?watchSub\?\.remove\(\);/);
-  // Losing focus also stops it.
-  assert.match(hook, /return \(\) => \{\s*cancelled = true;\s*watchSub\?\.remove\(\);\s*subscription\.remove\(\);/);
+  // Losing focus also stops it (watch, heartbeat and AppState listener).
+  assert.match(hook, /return \(\) => \{\s*cancelled = true;[\s\S]*?watchSub\?\.remove\(\);\s*clearInterval\(heartbeat\);\s*subscription\.remove\(\);/);
   // Never background location.
   const all = hook + read("lib/location.ts") + read("app.json");
   assert.doesNotMatch(all, /requestBackgroundPermissionsAsync|startLocationUpdatesAsync|ACCESS_BACKGROUND_LOCATION|isAndroidBackgroundLocationEnabled/);
-  assert.match(hook, /bepaalLocatie\(\{ fallbackToExample: false, preferFresh: true \}\)/);
+  assert.match(hook, /bepaalLocatie\(\{ fallbackToExample: false, preferFresh: true, askPermission: ask \}\)/);
+});
+
+test("V5.9: askPermission false never shows a second permission dialog", async () => {
+  resetGps();
+  gps.permission = { granted: false, canAskAgain: true }; // Android after a first "Weigeren"
+  await assert.rejects(location.bepaalLocatie({ fallbackToExample: false, preferFresh: true, askPermission: false }),
+    (error) => error.code === "permission-denied");
+  assert.equal(gps.requested, 0);
+  // Granted: the read works without any dialog.
+  resetGps();
+  gps.current = { coords: AMSTERDAM_CS, timestamp: Date.now() };
+  const fix = await location.bepaalLocatie({ fallbackToExample: false, preferFresh: true, askPermission: false });
+  assert.equal(fix.bron, "gps");
+  assert.equal(gps.requested, 0);
 });
 
 test("Start and Buurtbord reload stops and departure previews when the location really changes", () => {
@@ -216,8 +230,9 @@ test("Start and Buurtbord reload stops and departure previews when the location 
 test("old GPS is labelled with its age on both screens", () => {
   const home = read("components/FlowHome.tsx");
   const buurt = read("app/(tabs)/buurtbord.tsx");
-  assert.match(home, /isLocationStale\(locationSource, locationFixAt, nowMs\)/);
-  assert.match(home, /Laatst bekende locatie · \{describeLocationAge\(locationFixAt \?\? nowMs, nowMs\)\}/);
-  assert.match(buurt, /isLocationStale\(locatieBron, locatieFixAt, nowMs\)/);
-  assert.match(buurt, /Laatst bekende locatie · \{describeLocationAge\(locatieFixAt \?\? nowMs, nowMs\)\}/);
+  // V5.9: judged by the newest live GPS fix, falling back to the fix the stops were loaded for.
+  assert.match(home, /isLocationStale\(liveBron, liveFixAt, nowMs\)/);
+  assert.match(home, /Laatst bekende locatie · \{describeLocationAge\(liveFixAt \?\? nowMs, nowMs\)\}/);
+  assert.match(buurt, /isLocationStale\(liveBron, liveFixAt, nowMs\)/);
+  assert.match(buurt, /Laatst bekende locatie · \{describeLocationAge\(liveFixAt \?\? nowMs, nowMs\)\}/);
 });

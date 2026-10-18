@@ -48,7 +48,9 @@ function isOutside(coords: { latitude: number; longitude: number }): boolean {
  * last-known position when no current one arrives, so a last-known fix never goes ahead of an
  * available current one.
  */
-type Opties = { manualCity?: string | null; fallbackToExample?: boolean; preferFresh?: boolean };
+type Opties = { manualCity?: string | null; fallbackToExample?: boolean; preferFresh?: boolean;
+  /** V5.9: false = never show the permission dialog here (the caller already asked once). */
+  askPermission?: boolean };
 
 /** Shared by Start and Buurtbord; only explicit choices may override a real GPS position. */
 export async function bepaalLocatie(options: Opties = {}): Promise<LocatieResultaat> {
@@ -64,7 +66,7 @@ export async function bepaalLocatie(options: Opties = {}): Promise<LocatieResult
 
   try {
     const current = await Location.getForegroundPermissionsAsync();
-    const permission = current.granted || !current.canAskAgain
+    const permission = current.granted || !current.canAskAgain || options.askPermission === false
       ? current : await Location.requestForegroundPermissionsAsync();
     if (!permission.granted) return fail("permission-denied");
 

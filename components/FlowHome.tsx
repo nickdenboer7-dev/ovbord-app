@@ -8,6 +8,7 @@ import { useApp } from "../context/AppProvider";
 import { useFlowNavigation } from "../context/FlowNavigation";
 import { getNearby, searchCatalog, type SearchJourney } from "../lib/api";
 import { uniqueRecentStops } from "../lib/flowRitQuality";
+import { groupNearbyStops, nearbyModeLabel, type NearbyStopGroup } from "../lib/nearbyGroups";
 import { MANUAL_CITIES, VOORBEELD_LOCATIE_UTRECHT, type LocatieResultaat } from "../lib/location";
 import { useLiveLocation } from "../lib/useLiveLocation";
 import { describeLocationAge, isLocationStale, shouldApplyResponse } from "../lib/liveLocation";
@@ -34,7 +35,7 @@ import type { DepartureItem, StopSummary } from "../types/api";
 
 type ListTab = "nabij" | "recent" | "favoriet";
 type SearchFilter = "alles" | "haltes" | "ritten";
-type SearchRow = { kind: "halte"; stop: StopSummary } | { kind: "rit"; journey: SearchJourney };
+type SearchRow = { kind: "halte"; stop: StopSummary } | { kind: "rit"; journey: SearchJourney } | { kind: "groep"; group: NearbyStopGroup };
 type SearchSection = { title: string; data: SearchRow[] };
 type NearbyState = "loading" | "ready" | "permission-denied" | "outside-nl" | "no-gps" | "empty" | "offline" | "error";
 
@@ -47,7 +48,7 @@ function shortStopName(name: string): string {
 /** One persistent screen for search, stop boards, inline journeys and intermediate stops. */
 export function FlowHome() {
   const { colors, resolvedScheme, recentStops, favoriteStops, favoriteJourneys, addRecentStop, toggleFavoriteStop, isFavoriteStop, manualCity, setManualCity } = useApp();
-  const { screens, showStop, searchRequest } = useFlowNavigation();
+  const { screens, showStop, searchRequest, homeRequest } = useFlowNavigation();
   const { boards: favoriteBoards, refreshFailure: favoritesFailure, refresh: refreshFavorites, stopsKey: favoritesKey } = useFavoritesLive();
   const [nowMs, setNowMs] = useState(() => Date.now());
   /** The trip last opened on the trip page, offered on Start until shortly after arrival. */
@@ -72,6 +73,10 @@ export function FlowHome() {
   const [showCities, setShowCities] = useState(false);
   // V5.8.1: live GPS while Start is visible; disabled for a manually chosen city or the Utrecht example.
   const live = useLiveLocation(!manualCity && !useUtrechtExample);
+  // V5.9: judge "laatst bekend" by the newest GPS fix, not by when stops were last loaded: a
+  // stationary user keeps getting fresh fixes (no reload needed) and must not see an old-location note.
+  const liveBron = live.bron ?? locationSource;
+  const liveFixAt = live.fixAt ?? locationFixAt;
   /** The search field opens from the search icon (V5.4: a calm Start without a permanent field). */
   const [searchOpen, setSearchOpen] = useState(false);
   const [loadingSearch, setLoadingSearch] = useState(false);
@@ -197,8 +202,15 @@ export function FlowHome() {
     if (tab === "favoriet") return favoriteStops;
     return nearby;
   }, [finding, localMatches, results, tab, uniqueRecents, favoriteStops, nearby, query]);
+  // Only the nearby list groups matching stop-area variants. Search, saved stops and actual
+  // stop boards keep every original stop ID and are unaffected.
+  const nearbyGroups = useMemo(() => groupNearbyStops(nearby), [nearby]);
   const sections = useMemo<SearchSection[]>(() => {
     const haltes: SearchRow[] = data.map((stop) => ({ kind: "halte", stop }));
+    if (!finding && tab === "nabij") {
+      const groups: SearchRow[] = nearbyGroups.map((group) => ({ kind: "groep", group }));
+      return groups.length ? [{ title: "", data: groups }] : [];
+    }
     // No section at all when empty: an empty section still counts as content, which
     // kept the explanation and the GPS/retry buttons in ListEmptyComponent from showing.
     if (!finding) return haltes.length ? [{ title: "", data: haltes }] : [];
@@ -206,7 +218,7 @@ export function FlowHome() {
       { title: "Haltes", data: searchFilter === "ritten" ? [] : haltes },
       { title: "Ritten", data: searchFilter === "haltes" ? [] : journeys.map((journey): SearchRow => ({ kind: "rit", journey })) }
     ].filter((section) => section.data.length > 0);
-  }, [data, finding, journeys, searchFilter]);
+  }, [data, finding, journeys, searchFilter, tab, nearbyGroups]);
   const resultCount = finding
     ? (searchFilter === "ritten" ? journeys.length : searchFilter === "haltes" ? data.length : data.length + journeys.length)
     : data.length;
@@ -253,6 +265,8 @@ export function FlowHome() {
     setSearchOpen(false);
     setTab("nabij");
   };
+  // V5.9: re-tapping the Start tab (FlowNavigation.goHome) also leaves an open search.
+  useEffect(() => { if (homeRequest > 0) { closeSearch(); setShowCities(false); } }, [homeRequest]);
   const openStop = (stop: StopSummary) => {
     Keyboard.dismiss();
     addRecentStop(stop);
@@ -341,7 +355,7 @@ export function FlowHome() {
           <SectionList<SearchRow>
             sections={sections}
             stickySectionHeadersEnabled={false}
-            keyExtractor={(item) => item.kind === "halte" ? "halte:" + item.stop.id : "rit:" + item.journey.journeyId}
+            keyExtractor={(item) => item.kind === "groep" ? "groep:" + item.group.key : item.kind === "halte" ? "halte:" + item.stop.id : "rit:" + item.journey.journeyId}
             renderSectionHeader={({ section }) => finding ? (
               <View style={[styles.headingRow, { backgroundColor: colors.surfaceSoft, borderBottomColor: colors.border, borderBottomWidth: 1 }]}>
                 <Text style={[styles.listTitle, { color: colors.text }]}>{section.title}</Text>
@@ -470,11 +484,11 @@ export function FlowHome() {
                   </Pressable>
                 ) : null}
                 {/* V5.8.1: an old or missing GPS fix is never shown as if it were current. */}
-                {!finding && tab === "nabij" && !manualCity && !useUtrechtExample && locationSource && isLocationStale(locationSource, locationFixAt, nowMs) ? (
+                {!finding && tab === "nabij" && !manualCity && !useUtrechtExample && locationSource && isLocationStale(liveBron, liveFixAt, nowMs) ? (
                   <View style={[styles.searchWarning, { backgroundColor: colors.warningSoft }]}>
                     <Ionicons name="time-outline" size={16} color={colors.text} />
                     <Text style={{ color: colors.text, flex: 1, fontSize: 12 }}>
-                      Laatst bekende locatie · {describeLocationAge(locationFixAt ?? nowMs, nowMs)}
+                      Laatst bekende locatie · {describeLocationAge(liveFixAt ?? nowMs, nowMs)}
                     </Text>
                   </View>
                 ) : null}
@@ -525,6 +539,42 @@ export function FlowHome() {
               </View>
             )}
             renderItem={({ item, index }) => {
+              if (item.kind === "groep") {
+                const group = item.group;
+                return (
+                  <View style={[styles.nearGroupCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <View style={styles.nearGroupHead}>
+                      <Text style={[styles.nearName, { color: colors.text, flex: 1 }]} numberOfLines={2}>{group.name}</Text>
+                      {group.walkMinutes !== undefined ? <Text style={[styles.stopSubtitle, { color: colors.textSoft }]}>
+                        {group.walkMinutes} min lopen
+                      </Text> : null}
+                    </View>
+                    {group.stops.map((stop, stopIndex) => (
+                      <Pressable key={stop.id} onPress={() => openStop(stop)} accessibilityRole="button"
+                        accessibilityLabel={"Open " + nearbyModeLabel(stop) + " " + stop.name +
+                          (stop.lines.length ? ", lijnen " + stop.lines.map((line) => line.line).join(", ") : "") +
+                          (stop.walkMinutes ? ", " + stop.walkMinutes + " minuten lopen" : "") +
+                          (isFavoriteStop(stop.id) ? ", favoriete halte" : "")}
+                        style={({ pressed }) => [styles.nearGroupStop, stopIndex > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+                          pressed && { backgroundColor: colors.surfaceSoft }]}>
+                        <View style={[styles.nearIcon, { backgroundColor: colors.accentSoft }]}>
+                          <Ionicons name={`${vehicleIcon(stop.mode)}-outline`} size={16} color={colors.accentText} />
+                        </View>
+                        <Text style={[styles.nearType, { color: colors.textSoft }]} numberOfLines={1}>{nearbyModeLabel(stop)}</Text>
+                        <View style={styles.nearGroupLines}>
+                          {stop.lines.slice(0, 4).map((line, lineIndex) => (
+                            <LijnBadge key={`${line.line}-${lineIndex}`} line={line.line} carrier={line.carrier} compact />
+                          ))}
+                          {stop.lines.length > 4 ? <Text style={{ color: colors.textSoft, fontSize: 11 }}>+{stop.lines.length - 4}</Text> : null}
+                        </View>
+                        {/* V5.9: favourite stops keep their star, per original stop ID. */}
+                        {isFavoriteStop(stop.id) ? <Ionicons name="star" size={14} color={colors.warning} /> : null}
+                        <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+                      </Pressable>
+                    ))}
+                  </View>
+                );
+              }
               if (item.kind === "rit") {
                 const journey = item.journey;
                 return (
@@ -654,6 +704,13 @@ const styles = StyleSheet.create({
   cardLast: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomLeftRadius: 14, borderBottomRightRadius: 14 },
   nearIcon: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
   nearName: { fontSize: 15, fontWeight: "700", lineHeight: 19 },
+  // V5.9: a stop area with separate, independently tappable bus/metro/train entries.
+  nearGroupCard: { marginHorizontal: 12, marginBottom: 7, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, overflow: "hidden" },
+  nearGroupHead: { minHeight: 39, paddingHorizontal: 13, paddingTop: 11, paddingBottom: 6,
+    flexDirection: "row", alignItems: "center", gap: 8 },
+  nearGroupStop: { minHeight: 43, paddingHorizontal: 13, paddingVertical: 6, flexDirection: "row", alignItems: "center", gap: 7 },
+  nearType: { flex: 1, minWidth: 64, fontSize: 12, fontWeight: "600" },
+  nearGroupLines: { flexShrink: 1, flexDirection: "row", justifyContent: "flex-end", alignItems: "center", flexWrap: "wrap", gap: 4 },
   quickArea: { paddingHorizontal: 15, paddingVertical: 10, borderBottomWidth: 1, gap: 7 },
   quickTitle: { fontSize: 11, fontWeight: "800" },
   quickLinks: { flexDirection: "row", gap: 8 },

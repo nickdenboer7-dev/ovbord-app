@@ -20,6 +20,18 @@ const initialSnapshot: LiveLocationSnapshot = {
   coords: null, bron: null, fixAt: null, loading: true, errorCode: null, refreshToken: 0
 };
 
+/** How often (ms) a foreground screen re-reads GPS while no watch callback has arrived (V5.9). */
+export const LIVE_HEARTBEAT_MS = 60000;
+
+/**
+ * V5.9: the location permission dialog is shown at most once per app session by automatic
+ * triggers (first open of Start or Buurtbord). Tab switches, resuming the app and the heartbeat
+ * never ask again; only an explicit tap ("GPS opnieuw proberen", "Gebruik GPS", pull to refresh)
+ * may show it once more. Shared between both screens so switching tabs never re-prompts.
+ */
+let permissionAskedThisSession = false;
+export function resetLivePermissionSessionForTests(): void { permissionAskedThisSession = false; }
+
 /**
  * Foreground-only live location (V5.8.1), shared logic for Start and Buurtbord.
  *
@@ -38,6 +50,8 @@ export function useLiveLocation(enabled: boolean): LiveLocationSnapshot & { requ
   stateRef.current = state;
   const lastUsedCoords = useRef<{ latitude: number; longitude: number } | null>(null);
   const requestSeq = useRef(0);
+  /** Starts the watch from outside the focus effect (after a fix), a no-op when not focused. */
+  const kickWatch = useRef<() => void>(() => {});
 
   // Re-arm when the screen is disabled (manual city chosen) so a later "Gebruik GPS" starts clean.
   useEffect(() => {
@@ -59,11 +73,17 @@ export function useLiveLocation(enabled: boolean): LiveLocationSnapshot & { requ
     }));
   }, []);
 
-  const requestFresh = useCallback(() => {
+  /** ask: only for an explicit user action; automatic reads never show the permission dialog. */
+  const readFresh = useCallback((ask: boolean) => {
     const seq = ++requestSeq.current;
     setState((previous) => (previous.coords ? previous : { ...previous, loading: true }));
-    void bepaalLocatie({ fallbackToExample: false, preferFresh: true })
-      .then((result) => { if (seq === requestSeq.current) applyFix(result); })
+    void bepaalLocatie({ fallbackToExample: false, preferFresh: true, askPermission: ask })
+      .then((result) => {
+        if (seq !== requestSeq.current) return;
+        applyFix(result);
+        // Permission may have been granted just now (a retry tap): start following at once.
+        kickWatch.current();
+      })
       .catch((error: unknown) => {
         if (seq !== requestSeq.current) return;
         setState((previous) => ({
@@ -72,38 +92,73 @@ export function useLiveLocation(enabled: boolean): LiveLocationSnapshot & { requ
         }));
       });
   }, [applyFix]);
+  const requestFresh = useCallback(() => readFresh(true), [readFresh]);
 
   useFocusEffect(useCallback(() => {
     if (!enabled) return;
     let cancelled = false;
     let watchSub: Location.LocationSubscription | null = null;
 
+    let starting = false;
     const startWatch = async () => {
+      if (cancelled || starting || watchSub || AppState.currentState !== "active") return;
+      starting = true;
       try {
         const permission = await Location.getForegroundPermissionsAsync();
-        if (cancelled || !permission.granted) return;
-        watchSub = await Location.watchPositionAsync(
+        if (cancelled || !permission.granted || AppState.currentState !== "active") return;
+        const sub = await Location.watchPositionAsync(
           { accuracy: Location.Accuracy.Balanced, distanceInterval: MOVEMENT_REFRESH_METERS, timeInterval: 20000 },
           (position) => {
-            if (cancelled) return;
+            if (cancelled || AppState.currentState !== "active") return;
             applyFix({ coords: position.coords, bron: "gps", fixAt: position.timestamp });
           }
         );
+        if (cancelled || AppState.currentState !== "active") sub.remove();
+        else if (watchSub) sub.remove(); // concurrent activation must never create duplicate watches
+        else watchSub = sub;
       } catch (error) {
         if (__DEV__) console.warn("Live locatie volgen mislukt", error);
+      } finally {
+        starting = false;
       }
     };
 
-    requestFresh();
-    void startWatch();
+    kickWatch.current = () => { void startWatch(); };
+
+    // Permission first, then the fresh read and the watch: on the very first consent the watch
+    // used to check permission while the dialog was still open, and then never started.
+    const activate = async () => {
+      try {
+        const current = await Location.getForegroundPermissionsAsync();
+        if (!current.granted && current.canAskAgain && !permissionAskedThisSession) {
+          permissionAskedThisSession = true;
+          await Location.requestForegroundPermissionsAsync();
+        }
+      } catch (error) {
+        if (__DEV__) console.warn("Locatietoestemming niet beschikbaar", error);
+      }
+      if (cancelled || AppState.currentState !== "active") return;
+      readFresh(false); // never a second dialog right after the first
+      void startWatch();
+    };
+    void activate();
+    // Fallback if the device suppresses distance callbacks during a journey: a foreground-only
+    // fresh read after 60s of radio/GPS silence. No duplicate watch or background polling. It also
+    // keeps a stationary fix current, so a live position is never labelled "laatst bekend".
+    const heartbeat = setInterval(() => {
+      if (cancelled || AppState.currentState !== "active") return;
+      // Half the interval: a stationary fix is re-read every tick, so it never ages past ~70s
+      // (well below the 2-minute "laatst bekend" threshold) between two ticks.
+      if (stateRef.current.fixAt === null || Date.now() - stateRef.current.fixAt > LIVE_HEARTBEAT_MS / 2) readFresh(false);
+      if (!watchSub) void startWatch();
+    }, LIVE_HEARTBEAT_MS);
 
     let previousAppState: AppStateStatus = AppState.currentState;
     const subscription = AppState.addEventListener("change", (next) => {
       if (next === "active" && previousAppState !== "active") {
-        requestFresh();
-        void startWatch();
+        void activate();
       } else if (next !== "active" && previousAppState === "active") {
-        // Foreground-only (requirement 8): stop watching the moment the app backgrounds.
+        // Foreground-only: stop listening immediately when the app is backgrounded.
         watchSub?.remove();
         watchSub = null;
       }
@@ -112,7 +167,9 @@ export function useLiveLocation(enabled: boolean): LiveLocationSnapshot & { requ
 
     return () => {
       cancelled = true;
+      kickWatch.current = () => {};
       watchSub?.remove();
+      clearInterval(heartbeat);
       subscription.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
