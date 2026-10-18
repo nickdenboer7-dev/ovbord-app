@@ -15,6 +15,8 @@ export type JourneyStopState = "passed" | "current" | "upcoming" | "end";
 export interface LineInfo {
   line: string;
   carrier?: string;
+  /** V5.9.1: the kind of transport of this line at this stop, when the API says so. */
+  mode?: Mode;
 }
 
 export interface StopSummary {
@@ -22,11 +24,17 @@ export interface StopSummary {
   name: string;
   city: string;
   mode: Mode;
+  /** V5.9.1: every kind of transport the API lists for this stop (/api/nearby "modes"). */
+  modes?: Mode[];
   walkMinutes?: number;
   distanceMeters?: number;
   lat?: number;
   lon?: number;
   lines: LineInfo[];
+  /** V5.9.1: the backend says these lines are complete for the whole stop area (no enrichment needed). */
+  linesComplete?: boolean;
+  /** V5.9.1: the real platform/stop IDs behind this entry, when the backend sends them ("quays"). */
+  variants?: StopSummary[];
 }
 
 export interface DepartureItem {

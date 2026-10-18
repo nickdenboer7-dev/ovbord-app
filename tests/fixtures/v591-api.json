@@ -1,0 +1,66 @@
+{
+  "recorded_at": "2026-10-18T17:02:20.991Z",
+  "source": "https://ovbord.nl",
+  "note": "Echte OVbord-responsen (18 okt 2026). nearby-rijen ongewijzigd; borden ingekort tot unieke [lijn, vervoerder, modaliteit] uit de vertrekken.",
+  "nearby": {
+    "floraweg_perron36": { "lat": 52.398282, "lon": 4.907662, "rows": [
+      {"id":"3980341","name":"Amsterdam, Floraweg","distance_m":0,"lat":52.398282,"lon":4.907662,"modes":["bus"],"lines":["36"],"line_details":[{"line":"36","operator":"GVB"}]},
+      {"id":"3980306","name":"Amsterdam, Klaprozenweg","distance_m":87,"lat":52.398178,"lon":4.906385,"modes":["bus"],"lines":["38"],"line_details":[{"line":"38","operator":"GVB"}]},
+      {"id":"3980461","name":"Amsterdam, Slijperweg","distance_m":104,"lat":52.399216,"lon":4.907681,"modes":["bus"],"lines":["39"],"line_details":[{"line":"39","operator":"GVB"}]},
+      {"id":"3981079","name":"Amsterdam, Pinksterbloemstraat","distance_m":302,"lat":52.398812,"lon":4.912035,"modes":["bus"],"lines":["34","N93"],"line_details":[{"line":"34","operator":"GVB"},{"line":"N93","operator":"GVB"}]},
+      {"id":"3981235","name":"Amsterdam, Sneeuwbalstraat","distance_m":479,"lat":52.39633,"lon":4.913957,"modes":["bus"],"lines":["34","N93"],"line_details":[{"line":"34","operator":"GVB"},{"line":"N93","operator":"GVB"}]}
+    ] },
+    "floraweg": { "lat": 52.398643, "lon": 4.906901, "rows": [
+      {"id":"3980306","name":"Amsterdam, Klaprozenweg","distance_m":62,"lat":52.398178,"lon":4.906385,"modes":["bus"],"lines":["38"],"line_details":[{"line":"38","operator":"GVB"}]},
+      {"id":"3184395","name":"Amsterdam, Floraweg","distance_m":64,"lat":52.398309,"lon":4.907676,"modes":["bus"],"lines":["391","394","N94"],"line_details":[{"line":"391","operator":"EBS"},{"line":"394","operator":"EBS"},{"line":"N94","operator":"EBS"}]},
+      {"id":"3980461","name":"Amsterdam, Slijperweg","distance_m":83,"lat":52.399216,"lon":4.907681,"modes":["bus"],"lines":["39"],"line_details":[{"line":"39","operator":"GVB"}]},
+      {"id":"3981079","name":"Amsterdam, Pinksterbloemstraat","distance_m":349,"lat":52.398812,"lon":4.912035,"modes":["bus"],"lines":["34","N93"],"line_details":[{"line":"34","operator":"GVB"},{"line":"N93","operator":"GVB"}]},
+      {"id":"3981235","name":"Amsterdam, Sneeuwbalstraat","distance_m":543,"lat":52.39633,"lon":4.913957,"modes":["bus"],"lines":["34","N93"],"line_details":[{"line":"34","operator":"GVB"},{"line":"N93","operator":"GVB"}]}
+    ] },
+    "noorderpark": { "lat": 52.389083, "lon": 4.919211, "rows": [
+      {"id":"3184393","name":"Amsterdam, Noorderpark","distance_m":25,"lat":52.389018,"lon":4.919558,"modes":["bus"],"lines":["391","394"],"line_details":[{"line":"391","operator":"EBS"},{"line":"394","operator":"EBS"}]},
+      {"id":"3980979","name":"Amsterdam, Johan van Hasseltweg","distance_m":302,"lat":52.387918,"lon":4.923227,"modes":["bus"],"lines":["34","36","38","N91"],"line_details":[{"line":"34","operator":"GVB"},{"line":"36","operator":"GVB"},{"line":"38","operator":"GVB"},{"line":"N91","operator":"GVB"}]},
+      {"id":"3980124","name":"Amsterdam, Hamerstraat","distance_m":363,"lat":52.386004,"lon":4.921,"modes":["bus"],"lines":["34"],"line_details":[{"line":"34","operator":"GVB"}]},
+      {"id":"3981331","name":"Amsterdam, Merelstraat","distance_m":397,"lat":52.389866,"lon":4.924926,"modes":["bus"],"lines":["36","38","N91"],"line_details":[{"line":"36","operator":"GVB"},{"line":"38","operator":"GVB"},{"line":"N91","operator":"GVB"}]},
+      {"id":"3979728","name":"Amsterdam, Havikslaan","distance_m":423,"lat":52.385319,"lon":4.91829,"modes":["bus"],"lines":["34"],"line_details":[{"line":"34","operator":"GVB"}]}
+    ] },
+    "johanvanhasseltweg": { "lat": 52.387758, "lon": 4.923767, "rows": [
+      {"id":"3980979","name":"Amsterdam, Johan van Hasseltweg","distance_m":41,"lat":52.387918,"lon":4.923227,"modes":["bus"],"lines":["34","36","38","N91"],"line_details":[{"line":"34","operator":"GVB"},{"line":"36","operator":"GVB"},{"line":"38","operator":"GVB"},{"line":"N91","operator":"GVB"}]},
+      {"id":"3981331","name":"Amsterdam, Merelstraat","distance_m":247,"lat":52.389866,"lon":4.924926,"modes":["bus"],"lines":["36","38","N91"],"line_details":[{"line":"36","operator":"GVB"},{"line":"38","operator":"GVB"},{"line":"N91","operator":"GVB"}]},
+      {"id":"3980124","name":"Amsterdam, Hamerstraat","distance_m":271,"lat":52.386004,"lon":4.921,"modes":["bus"],"lines":["34"],"line_details":[{"line":"34","operator":"GVB"}]},
+      {"id":"3981214","name":"Amsterdam, Noorderpark","distance_m":317,"lat":52.389081,"lon":4.919631,"modes":["bus"],"lines":["34","36","38"],"line_details":[{"line":"34","operator":"GVB"},{"line":"36","operator":"GVB"},{"line":"38","operator":"GVB"}]},
+      {"id":"3979728","name":"Amsterdam, Havikslaan","distance_m":460,"lat":52.385319,"lon":4.91829,"modes":["bus"],"lines":["34"],"line_details":[{"line":"34","operator":"GVB"}]}
+    ] },
+    "sneeuwbalstraat": { "lat": 52.396357, "lon": 4.914045, "rows": [
+      {"id":"3981235","name":"Amsterdam, Sneeuwbalstraat","distance_m":7,"lat":52.39633,"lon":4.913957,"modes":["bus"],"lines":["34","N93"],"line_details":[{"line":"34","operator":"GVB"},{"line":"N93","operator":"GVB"}]},
+      {"id":"3980886","name":"Amsterdam, Pinksterbloemstraat","distance_m":271,"lat":52.398525,"lon":4.912214,"modes":["bus"],"lines":["34","N93"],"line_details":[{"line":"34","operator":"GVB"},{"line":"N93","operator":"GVB"}]},
+      {"id":"3981401","name":"Amsterdam, Mosplein","distance_m":310,"lat":52.393571,"lon":4.914074,"modes":["bus"],"lines":["34","N93"],"line_details":[{"line":"34","operator":"GVB"},{"line":"N93","operator":"GVB"}]},
+      {"id":"3980341","name":"Amsterdam, Floraweg","distance_m":483,"lat":52.398282,"lon":4.907662,"modes":["bus"],"lines":["36"],"line_details":[{"line":"36","operator":"GVB"}]},
+      {"id":"3980461","name":"Amsterdam, Slijperweg","distance_m":536,"lat":52.399216,"lon":4.907681,"modes":["bus"],"lines":["39"],"line_details":[{"line":"39","operator":"GVB"}]}
+    ] },
+    "lelylaan": { "lat": 52.357347, "lon": 4.834379, "rows": [
+      {"id":"3980624","name":"Amsterdam, Station Lelylaan","distance_m":35,"lat":52.357652,"lon":4.834263,"modes":["metro"],"lines":["50","51"],"line_details":[{"line":"50","operator":"GVB"},{"line":"51","operator":"GVB"}]},
+      {"id":"2860888","name":"Amsterdam Lelylaan","distance_m":60,"lat":52.357863436615844,"lon":4.8340987850204,"modes":["train"],"lines":["IC","SPR"],"line_details":[{"line":"Intercity","operator":"NS"},{"line":"Sprinter","operator":"NS"}]},
+      {"id":"2860547","name":"[Amsterdam Lelylaan] Metrostation Amsterdam Lelylaan","distance_m":69,"lat":52.357948,"lon":4.834113,"modes":[],"lines":[],"line_details":[]},
+      {"id":"2860546","name":"[Amsterdam Lelylaan] Halte C, Willem Frogerplein","distance_m":84,"lat":52.356592,"lon":4.834511,"modes":[],"lines":[],"line_details":[]},
+      {"id":"3980220","name":"Amsterdam, Derkinderenstraat","distance_m":369,"lat":52.357965,"lon":4.83972,"modes":["tram"],"lines":["1","17","27","28"],"line_details":[{"line":"1","operator":"GVB"},{"line":"17","operator":"GVB"},{"line":"27","operator":"GVB"}]}
+    ] }
+  },
+  "boards": {
+    "lelylaan": {"name":"Amsterdam Lelylaan","lat":52.35729839756717,"lon":4.8343814835642975,"departure_count":95,"lines":[["51","GVB","metro"],["62","GVB","bus"],["SPR","NS","train"],["17","GVB","tram"],["1","GVB","tram"],["63","GVB","bus"],["50","GVB","metro"],["18","GVB","bus"],["Sprinter","NS","train"],["195","CXX","bus"]]},
+    "noorderpark": {"name":"Amsterdam, Noorderpark","lat":52.38908300000001,"lon":4.9192108,"departure_count":40,"lines":[["38","GVB","bus"],["36","GVB","bus"],["52","GVB","metro"],["34","GVB","bus"],["394","EBS","bus"]]},
+    "floraweg": {"name":"Amsterdam, Floraweg","lat":52.398643,"lon":4.906901250000001,"departure_count":32,"lines":[["394","EBS","bus"],["36","GVB","bus"],["391","EBS","bus"],["39","GVB","bus"],["N94","EBS","bus"]]},
+    "havikslaan": {"name":"Amsterdam, Havikslaan","lat":52.385174000000006,"lon":4.917946499999999,"departure_count":8,"lines":[["34","GVB","bus"]]},
+    "hamerstraat": {"name":"Amsterdam, Hamerstraat","lat":52.386004,"lon":4.921,"departure_count":8,"lines":[["34","GVB","bus"]]},
+    "derkinderenstraat": {"name":"Amsterdam, Derkinderenstraat","lat":52.361031749999995,"lon":4.8396894999999995,"departure_count":24,"lines":[["17","GVB","tram"],["18","GVB","bus"],["1","GVB","tram"]]},
+    "klaprozenweg": {"name":"Amsterdam, Klaprozenweg","lat":52.40186,"lon":4.899149666666666,"departure_count":24,"lines":[["394","EBS","bus"],["391","EBS","bus"],["38","GVB","bus"],["N94","EBS","bus"]]},
+    "slijperweg": {"name":"Amsterdam, Slijperweg","lat":52.399216,"lon":4.907681,"departure_count":7,"lines":[["39","GVB","bus"]]},
+    "pinksterbloemstraat": {"name":"Amsterdam, Pinksterbloemstraat","lat":52.3986685,"lon":4.9121245,"departure_count":8,"lines":[["34","GVB","bus"]]},
+    "johan_van_hasseltweg": {"name":"Amsterdam, Johan van Hasseltweg","lat":52.38775833333333,"lon":4.923767333333333,"departure_count":24,"lines":[["36","GVB","bus"],["38","GVB","bus"],["34","GVB","bus"]]},
+    "sneeuwbalstraat": {"name":"Amsterdam, Sneeuwbalstraat","lat":52.396356999999995,"lon":4.9140445,"departure_count":8,"lines":[["34","GVB","bus"]]},
+    "merelstraat": {"name":"Amsterdam, Merelstraat","lat":52.389911,"lon":4.9249915,"departure_count":16,"lines":[["36","GVB","bus"],["38","GVB","bus"]]},
+    "mosplein": {"name":"Amsterdam, Mosplein","lat":52.39307566666667,"lon":4.913092833333334,"departure_count":39,"lines":[["394","EBS","bus"],["36","GVB","bus"],["34","GVB","bus"],["38","GVB","bus"],["391","EBS","bus"],["N94","EBS","bus"]]}
+  },
+  "halte": {"2860546":"lelylaan","2860547":"lelylaan","2860888":"lelylaan","3184393":"noorderpark","3184395":"floraweg","3979728":"havikslaan","3980124":"hamerstraat","3980220":"derkinderenstraat","3980306":"klaprozenweg","3980341":"floraweg","3980461":"slijperweg","3980624":"lelylaan","3980886":"pinksterbloemstraat","3980979":"johan_van_hasseltweg","3981079":"pinksterbloemstraat","3981214":"noorderpark","3981235":"sneeuwbalstraat","3981331":"merelstraat","3981401":"mosplein"},
+  "search": {"Floraweg":{"id":"3980289","line_count":6,"modes":["bus"]},"Noorderpark":{"id":"3979933","line_count":7,"modes":["bus","metro"]},"Sneeuwbalstraat":{"id":"3980275","line_count":2,"modes":["bus"]},"Pinksterbloemstraat":{"id":"3980886","line_count":2,"modes":["bus"]},"Johan van Hasseltweg":{"id":"3980080","line_count":4,"modes":["bus"]}}
+}

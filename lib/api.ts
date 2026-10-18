@@ -1,5 +1,6 @@
 import { inferCarrierFromLine } from "../constants/vervoerders";
-import { DepartureItem, HalteBoardData, JourneyStop, Mode, ReliabilityInfo, RitData, StopSummary } from "../types/api";
+import { DepartureItem, HalteBoardData, JourneyStop, LineInfo, Mode, ReliabilityInfo, RitData, StopSummary } from "../types/api";
+import { mergeLines, primaryMode } from "./lineSet";
 import { formatClock, formatDutchClock, normalizeMode, relativeMinutesText, shiftClock } from "./format";
 import { delayedClock } from "./ritConsistency";
 import { isUnconfirmedExtremeEarlyDeparture } from "./earlyDepartureGuard";
@@ -35,23 +36,56 @@ function first<T = any>(...values: T[]): T | undefined {
   return undefined;
 }
 
-function pickMode(item: any): Mode {
-  return normalizeMode(first(item?.mode, item?.modaliteit, item?.route_type, item?.vehicle_type, item?.type));
+/**
+ * V5.9.1: every kind of transport the API names for this item. /api/nearby and /api/search send a
+ * "modes" array (["bus", "metro"]) and no single "mode" field; it was ignored, so a metro
+ * platform became a "Bushalte". An empty list stays empty (station entrances have no lines).
+ */
+function modesOf(item: any): Mode[] {
+  const single = first(item?.mode, item?.modaliteit, item?.route_type, item?.vehicle_type, item?.type);
+  const raw = [...(single !== undefined ? [single] : []), ...arrayOf<any>(item?.modes)];
+  const modes: Mode[] = [];
+  for (const value of raw) {
+    if (value === undefined || value === null || String(value).trim() === "") continue;
+    const mode = normalizeMode(String(value));
+    if (!modes.includes(mode)) modes.push(mode);
+  }
+  return modes;
 }
 
-function mapLines(item: any) {
-  const detailedLines = arrayOf<any>(item?.line_details);
-  const rawLines = detailedLines.length
-    ? detailedLines
-    : arrayOf<any>(first(item?.lines, item?.lijnbadges, item?.line_badges, item?.routes));
-  const source = rawLines.length ? rawLines : arrayOf<any>(item?.line ? [{ line: item.line, carrier: item.carrier }] : []);
-  return source.map((entry) => {
-    const line = str(first(entry?.line, entry?.number, entry?.name, entry));
+function pickMode(item: any): Mode {
+  const single = first(item?.mode, item?.modaliteit, item?.route_type, item?.vehicle_type, item?.type);
+  if (single !== undefined) return normalizeMode(single);
+  return primaryMode(modesOf(item)) || "bus";
+}
+
+/**
+ * V5.9.1: all lines of an entry. "line_details" (with operator) used to replace "lines" entirely,
+ * so a line missing from the details disappeared from the app (Derkinderenstraat: lines 1, 17,
+ * 27, 28 but details only 1, 17, 27). Both lists are now merged without duplicates
+ * ("Sprinter" in the details and "SPR" in lines are one line). A line gets its own mode from the
+ * API, or the stop's mode when the stop serves exactly one kind of transport.
+ */
+function mapLines(item: any): LineInfo[] {
+  const modes = modesOf(item);
+  const stopMode = modes.length === 1 ? modes[0] : undefined;
+  const toLine = (entry: any): LineInfo | null => {
+    const line = str(first(entry?.line, entry?.number, entry?.name, typeof entry === "object" ? undefined : entry)).trim();
+    if (!line) return null;
+    const entryMode = first(entry?.mode, entry?.modality, entry?.modaliteit);
+    const mode = entryMode !== undefined ? normalizeMode(String(entryMode)) : stopMode;
     return {
       line,
-      carrier: str(first(entry?.carrier, entry?.operator, entry?.agency_name, item?.carrier), inferCarrierFromLine(line))
+      carrier: str(first(entry?.carrier, entry?.operator, entry?.agency_name, item?.carrier), inferCarrierFromLine(line)),
+      ...(mode ? { mode } : {})
     };
-  });
+  };
+  const parse = (list: any[]) => list.map(toLine).filter((entry): entry is LineInfo => entry !== null);
+  const merged = mergeLines(
+    parse(arrayOf<any>(item?.line_details)),
+    parse(arrayOf<any>(first(item?.lines, item?.lijnbadges, item?.line_badges, item?.routes)))
+  );
+  return merged.length ? merged : parse(item?.line ? [{ line: item.line, carrier: item.carrier }] : []);
 }
 
 function stopNaam(item: any): string {
@@ -66,17 +100,36 @@ function normalizeStop(item: any): StopSummary {
     ? Math.max(1, Math.round(distanceMeters / 80))
     : undefined;
 
+  const modes = modesOf(item);
   return {
     id,
     name: stopNaam(item) || "Onbekende halte",
     city: str(first(item?.city, item?.place, item?.town, item?.municipality, item?.gemeente), ""),
     mode: pickMode(item),
+    ...(modes.length ? { modes } : {}),
     walkMinutes,
     distanceMeters,
     lat: num(first(item?.lat, item?.latitude)),
     lon: num(first(item?.lon, item?.lng, item?.longitude)),
-    lines: mapLines(item)
+    lines: mapLines(item),
+    ...(item?.lines_complete === true || item?.complete_lines === true ? { linesComplete: true } : {})
   };
+}
+
+/**
+ * V5.9.1: /api/nearby keeps only the nearest platform per stop name (with only that platform's
+ * lines). A backend that sends every platform ("quays": [{ id, lat, lon, modes, lines, ... }])
+ * keeps each real stop ID: they become variants of the entry, which Start groups per mode.
+ */
+function normalizeNearbyRow(row: any): StopSummary {
+  const stop = normalizeStop(row);
+  const quays = arrayOf<any>(first(row?.quays, row?.platforms, row?.variants));
+  if (!quays.length) return stop;
+  const variants = quays
+    .map((quay) => normalizeStop({ ...quay, name: first(quay?.name, row?.name), city: first(quay?.city, row?.city),
+      distance_m: first(quay?.distance_m, quay?.distance_meters, quay?.distance), lines_complete: first(quay?.lines_complete, row?.lines_complete) }))
+    .filter((quay, index, all) => quay.id !== "unknown" && all.findIndex((other) => other.id === quay.id) === index);
+  return variants.length ? { ...stop, variants } : stop;
 }
 
 export function normalizeDeparture(item: any): DepartureItem {
@@ -330,7 +383,7 @@ export async function searchStops(query: string): Promise<StopSummary[]> {
 
 export async function getNearby(lat: number, lon: number): Promise<StopSummary[]> {
   const raw = await requestJson("/api/nearby", { lat, lon });
-  return arrayOf<any>(first(raw?.stops, raw?.items, raw?.results, raw)).map(normalizeStop);
+  return arrayOf<any>(first(raw?.stops, raw?.items, raw?.results, raw)).map(normalizeNearbyRow);
 }
 
 export async function getHalte(id: string): Promise<HalteBoardData> {

@@ -149,9 +149,12 @@ test('a stationary live fix is not labelled "laatst bekend": the note follows th
 test('Start nearby groups show real line badges and each original stop remains tappable', () => {
   const home = fs.readFileSync(path.join(__dirname, '..', 'components/FlowHome.tsx'), 'utf8');
   assert.match(home, /groupNearbyStops\(nearby\)/);
-  assert.match(home, /group\.stops\.map\(\(stop, stopIndex\) =>/);
-  assert.match(home, /onPress=\{\(\) => openStop\(stop\)\}/);
-  assert.match(home, /stop\.lines\.slice\(0, 4\)\.map/);
+  // V5.9.1: one tappable row per mode, opening a real stop ID of that mode, with ALL its lines
+  // (the V5.9 "slice(0, 4)" and "+N" are gone on purpose).
+  assert.match(home, /item\.rows\.map\(\(row, rowIndex\) =>/);
+  assert.match(home, /onPress=\{\(\) => openStop\(row\.openStop\)\}/);
+  assert.match(home, /row\.lines\.map\(\(line\) =>/);
+  assert.doesNotMatch(home, /lines\.slice\(0, 4\)/);
 });
 
 test('foreground location watcher is started only after permission, and avoids duplicates', () => {

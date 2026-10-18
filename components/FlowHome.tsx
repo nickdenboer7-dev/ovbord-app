@@ -6,9 +6,11 @@ import { ActivityIndicator, Keyboard, Linking, Pressable, RefreshControl, Sectio
 import { largeText } from "../lib/textScale";
 import { useApp } from "../context/AppProvider";
 import { useFlowNavigation } from "../context/FlowNavigation";
-import { getNearby, searchCatalog, type SearchJourney } from "../lib/api";
+import { getHalte, getNearby, searchCatalog, type SearchJourney } from "../lib/api";
 import { uniqueRecentStops } from "../lib/flowRitQuality";
-import { groupNearbyStops, nearbyModeLabel, type NearbyStopGroup } from "../lib/nearbyGroups";
+import { areaLineSources, groupNearbyStops, nearbyGroupRows, type NearbyModeRow, type NearbyStopGroup } from "../lib/nearbyGroups";
+import { createAreaLinesLoader } from "../lib/stopLines";
+import { sortLines } from "../lib/lineSet";
 import { MANUAL_CITIES, VOORBEELD_LOCATIE_UTRECHT, type LocatieResultaat } from "../lib/location";
 import { useLiveLocation } from "../lib/useLiveLocation";
 import { describeLocationAge, isLocationStale, shouldApplyResponse } from "../lib/liveLocation";
@@ -31,13 +33,19 @@ import type { ActiveTrip } from "../lib/activeTrip";
 import { clearActiveTrip, loadActiveTrip } from "../lib/activeTripStore";
 import { rememberAlighting } from "../lib/alighting";
 import { leaveAdvice, walkMinutesTo } from "../lib/leaveTime";
-import type { DepartureItem, StopSummary } from "../types/api";
+import type { DepartureItem, LineInfo, StopSummary } from "../types/api";
 
 type ListTab = "nabij" | "recent" | "favoriet";
 type SearchFilter = "alles" | "haltes" | "ritten";
-type SearchRow = { kind: "halte"; stop: StopSummary } | { kind: "rit"; journey: SearchJourney } | { kind: "groep"; group: NearbyStopGroup };
+type SearchRow = { kind: "halte"; stop: StopSummary } | { kind: "rit"; journey: SearchJourney } | { kind: "groep"; group: NearbyStopGroup; rows: NearbyModeRow[] };
 type SearchSection = { title: string; data: SearchRow[] };
 type NearbyState = "loading" | "ready" | "permission-denied" | "outside-nl" | "no-gps" | "empty" | "offline" | "error";
+
+/**
+ * V5.9.1: lines of the stop areas around you that /api/nearby leaves out (it keeps only the nearest
+ * platform per stop name). Shared by every Start render; bounded and cached (lib/stopLines.ts).
+ */
+const areaLinesLoader = createAreaLinesLoader({ fetchBoard: getHalte });
 
 /** "Amsterdam, Rembrandtplein" → "Rembrandtplein" for short lines. */
 function shortStopName(name: string): string {
@@ -205,10 +213,21 @@ export function FlowHome() {
   // Only the nearby list groups matching stop-area variants. Search, saved stops and actual
   // stop boards keep every original stop ID and are unaffected.
   const nearbyGroups = useMemo(() => groupNearbyStops(nearby), [nearby]);
+  // V5.9.1: complete the line sets from each stop area's own board (bounded, cached). Only the
+  // answer for the list on screen is applied: a slower answer for an earlier list is dropped.
+  const [areaLines, setAreaLines] = useState<Record<string, LineInfo[]>>({});
+  useEffect(() => {
+    let active = true;
+    const sources = areaLineSources(nearbyGroups);
+    setAreaLines(areaLinesLoader.peek(sources));
+    if (sources.length) void areaLinesLoader.load(sources).then((lines) => { if (active) setAreaLines(lines); });
+    return () => { active = false; };
+  }, [nearbyGroups]);
+  const nearbyCards = useMemo(() => nearbyGroups.map((group) => ({ group, rows: nearbyGroupRows(group, areaLines) })), [nearbyGroups, areaLines]);
   const sections = useMemo<SearchSection[]>(() => {
     const haltes: SearchRow[] = data.map((stop) => ({ kind: "halte", stop }));
     if (!finding && tab === "nabij") {
-      const groups: SearchRow[] = nearbyGroups.map((group) => ({ kind: "groep", group }));
+      const groups: SearchRow[] = nearbyCards.map(({ group, rows }) => ({ kind: "groep", group, rows }));
       return groups.length ? [{ title: "", data: groups }] : [];
     }
     // No section at all when empty: an empty section still counts as content, which
@@ -218,7 +237,7 @@ export function FlowHome() {
       { title: "Haltes", data: searchFilter === "ritten" ? [] : haltes },
       { title: "Ritten", data: searchFilter === "haltes" ? [] : journeys.map((journey): SearchRow => ({ kind: "rit", journey })) }
     ].filter((section) => section.data.length > 0);
-  }, [data, finding, journeys, searchFilter, tab, nearbyGroups]);
+  }, [data, finding, journeys, searchFilter, tab, nearbyCards]);
   const resultCount = finding
     ? (searchFilter === "ritten" ? journeys.length : searchFilter === "haltes" ? data.length : data.length + journeys.length)
     : data.length;
@@ -549,29 +568,37 @@ export function FlowHome() {
                         {group.walkMinutes} min lopen
                       </Text> : null}
                     </View>
-                    {group.stops.map((stop, stopIndex) => (
-                      <Pressable key={stop.id} onPress={() => openStop(stop)} accessibilityRole="button"
-                        accessibilityLabel={"Open " + nearbyModeLabel(stop) + " " + stop.name +
-                          (stop.lines.length ? ", lijnen " + stop.lines.map((line) => line.line).join(", ") : "") +
-                          (stop.walkMinutes ? ", " + stop.walkMinutes + " minuten lopen" : "") +
-                          (isFavoriteStop(stop.id) ? ", favoriete halte" : "")}
-                        style={({ pressed }) => [styles.nearGroupStop, stopIndex > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
-                          pressed && { backgroundColor: colors.surfaceSoft }]}>
-                        <View style={[styles.nearIcon, { backgroundColor: colors.accentSoft }]}>
-                          <Ionicons name={`${vehicleIcon(stop.mode)}-outline`} size={16} color={colors.accentText} />
-                        </View>
-                        <Text style={[styles.nearType, { color: colors.textSoft }]} numberOfLines={1}>{nearbyModeLabel(stop)}</Text>
-                        <View style={styles.nearGroupLines}>
-                          {stop.lines.slice(0, 4).map((line, lineIndex) => (
-                            <LijnBadge key={`${line.line}-${lineIndex}`} line={line.line} carrier={line.carrier} compact />
-                          ))}
-                          {stop.lines.length > 4 ? <Text style={{ color: colors.textSoft, fontSize: 11 }}>+{stop.lines.length - 4}</Text> : null}
-                        </View>
-                        {/* V5.9: favourite stops keep their star, per original stop ID. */}
-                        {isFavoriteStop(stop.id) ? <Ionicons name="star" size={14} color={colors.warning} /> : null}
-                        <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
-                      </Pressable>
-                    ))}
+                    {/* V5.9.1: one row per kind of transport with ALL its lines (no "+N"); badges wrap
+                        to a second or third line. Each row opens a real stop ID of that mode. */}
+                    {item.rows.map((row, rowIndex) => {
+                      const favorite = isFavoriteStop(row.openStop.id) || row.stops.some((stop) => isFavoriteStop(stop.id));
+                      return (
+                        <Pressable key={row.key} onPress={() => openStop(row.openStop)} accessibilityRole="button"
+                          accessibilityLabel={"Open " + row.label + " " + group.name +
+                            (row.lines.length ? ", lijnen " + row.lines.map((line) => line.line).join(", ") : "") +
+                            (row.walkMinutes ? ", " + row.walkMinutes + " minuten lopen" : "") +
+                            (favorite ? ", favoriete halte" : "")}
+                          style={({ pressed }) => [styles.nearGroupStop, rowIndex > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+                            pressed && { backgroundColor: colors.surfaceSoft }]}>
+                          <View style={[styles.nearIcon, { backgroundColor: colors.accentSoft }]}>
+                            <Ionicons name={`${vehicleIcon(row.mode)}-outline`} size={16} color={colors.accentText} />
+                          </View>
+                          <View style={styles.nearGroupBody}>
+                            <Text style={[styles.nearType, { color: colors.textSoft }]} numberOfLines={1}>{row.label}</Text>
+                            {row.lines.length ? (
+                              <View style={styles.nearGroupLines}>
+                                {row.lines.map((line) => (
+                                  <LijnBadge key={row.mode + ":" + line.line} line={line.line} carrier={line.carrier} compact tone="mode" mode={row.mode} />
+                                ))}
+                              </View>
+                            ) : null}
+                          </View>
+                          {/* Favourite stops keep their star, per original stop ID. */}
+                          {favorite ? <Ionicons name="star" size={14} color={colors.warning} /> : null}
+                          <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+                        </Pressable>
+                      );
+                    })}
                   </View>
                 );
               }
@@ -642,9 +669,10 @@ export function FlowHome() {
                       <Text style={[styles.stopSubtitle, { color: colors.textSoft }]} numberOfLines={1}>
                         {[stop.city, stop.walkMinutes ? `${stop.walkMinutes} min lopen` : ""].filter(Boolean).join(" · ")}
                       </Text>
+                      {/* V5.9.1: every line, wrapping onto more lines; no hidden lines. */}
                       {stop.lines.length ? (
-                        <View style={styles.lines}>{stop.lines.slice(0, 5).map((line, i) =>
-                          <LijnBadge key={`${line.line}-${i}`} line={line.line} carrier={line.carrier} compact />
+                        <View style={styles.lines}>{sortLines(stop.lines).map((line, i) =>
+                          <LijnBadge key={`${line.line}-${i}`} line={line.line} carrier={line.carrier} compact tone="mode" mode={line.mode ?? stop.mode} />
                         )}</View>
                       ) : null}
                     </View>
@@ -708,9 +736,11 @@ const styles = StyleSheet.create({
   nearGroupCard: { marginHorizontal: 12, marginBottom: 7, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, overflow: "hidden" },
   nearGroupHead: { minHeight: 39, paddingHorizontal: 13, paddingTop: 11, paddingBottom: 6,
     flexDirection: "row", alignItems: "center", gap: 8 },
-  nearGroupStop: { minHeight: 43, paddingHorizontal: 13, paddingVertical: 6, flexDirection: "row", alignItems: "center", gap: 7 },
-  nearType: { flex: 1, minWidth: 64, fontSize: 12, fontWeight: "600" },
-  nearGroupLines: { flexShrink: 1, flexDirection: "row", justifyContent: "flex-end", alignItems: "center", flexWrap: "wrap", gap: 4 },
+  nearGroupStop: { minHeight: 48, paddingHorizontal: 13, paddingVertical: 8, flexDirection: "row", alignItems: "center", gap: 9 },
+  // V5.9.1: label above, then every line badge; they wrap instead of being cut off or counted as "+N".
+  nearGroupBody: { flex: 1, minWidth: 0, gap: 5 },
+  nearType: { fontSize: 12, fontWeight: "700" },
+  nearGroupLines: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 4 },
   quickArea: { paddingHorizontal: 15, paddingVertical: 10, borderBottomWidth: 1, gap: 7 },
   quickTitle: { fontSize: 11, fontWeight: "800" },
   quickLinks: { flexDirection: "row", gap: 8 },
@@ -726,7 +756,7 @@ const styles = StyleSheet.create({
   stopContent: { flex: 1, minWidth: 0 },
   stopTitle: { fontSize: 15, fontWeight: "800", lineHeight: 19 },
   stopSubtitle: { fontSize: 11, marginTop: 3 },
-  lines: { flexDirection: "row", gap: 5, marginTop: 6, flexWrap: "wrap" },
+  lines: { flexDirection: "row", gap: 4, marginTop: 6, flexWrap: "wrap" },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
   empty: { paddingTop: 24, textAlign: "center", fontSize: 13, lineHeight: 20 },
   emptyWrap: { paddingHorizontal: 30, alignItems: "center" },
