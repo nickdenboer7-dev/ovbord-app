@@ -8,7 +8,9 @@ import { useApp } from "../context/AppProvider";
 import { useFlowNavigation } from "../context/FlowNavigation";
 import { getNearby, searchCatalog, type SearchJourney } from "../lib/api";
 import { uniqueRecentStops } from "../lib/flowRitQuality";
-import { bepaalLocatie, LocatieFout, MANUAL_CITIES, type LocatieResultaat } from "../lib/location";
+import { MANUAL_CITIES, VOORBEELD_LOCATIE_UTRECHT, type LocatieResultaat } from "../lib/location";
+import { useLiveLocation } from "../lib/useLiveLocation";
+import { describeLocationAge, isLocationStale, shouldApplyResponse } from "../lib/liveLocation";
 import { mergeStopResults, rankSearchStops, resolveSearchTerm, searchSavedStops } from "../lib/flowSearch";
 import { failureKind, listRefreshNotice, nearbyUnavailableMessage } from "../lib/offline";
 import type { FailureKind } from "../lib/offline";
@@ -66,7 +68,10 @@ export function FlowHome() {
   const [nearbyRetry, setNearbyRetry] = useState(0);
   const [useUtrechtExample, setUseUtrechtExample] = useState(false);
   const [locationSource, setLocationSource] = useState<LocatieResultaat["bron"] | null>(null);
+  const [locationFixAt, setLocationFixAt] = useState<number | null>(null);
   const [showCities, setShowCities] = useState(false);
+  // V5.8.1: live GPS while Start is visible; disabled for a manually chosen city or the Utrecht example.
+  const live = useLiveLocation(!manualCity && !useUtrechtExample);
   /** The search field opens from the search icon (V5.4: a calm Start without a permanent field). */
   const [searchOpen, setSearchOpen] = useState(false);
   const [loadingSearch, setLoadingSearch] = useState(false);
@@ -82,50 +87,77 @@ export function FlowHome() {
   const [nearbyUpdatedAt, setNearbyUpdatedAt] = useState<number | null>(null);
   const nearbyCount = useRef(0);
   nearbyCount.current = nearby.length;
+  /** V5.8.1: only the newest nearby request may write the list (a slow Amsterdam reply never overwrites Zaandam). */
+  const nearbyRequest = useRef(0);
+
+  // V5.8.1: manual city and the Utrecht example resolve instantly; GPS comes from the shared live
+  // hook above (which already handles permissions, last-known fallback and the fetch timeout), and
+  // only re-runs this effect on a real location change (live.refreshToken), not on every GPS tick.
+  const manualLocation = useMemo<LocatieResultaat | null>(() => {
+    if (manualCity) {
+      const manual = MANUAL_CITIES.find((city) => city.key === manualCity);
+      return manual ? { coords: { latitude: manual.latitude, longitude: manual.longitude }, bron: "handmatig", cityName: manual.name, fixAt: Date.now() } : null;
+    }
+    if (useUtrechtExample) return { coords: VOORBEELD_LOCATIE_UTRECHT, bron: "voorbeeld", fixAt: Date.now() };
+    return null;
+  }, [manualCity, useUtrechtExample]);
 
   useEffect(() => {
     let active = true;
     const soft = softNearbyRefresh.current && nearbyCount.current > 0;
     softNearbyRefresh.current = false;
+
+    const location = manualLocation || (live.coords && live.bron ? { coords: live.coords, bron: live.bron, fixAt: live.fixAt ?? Date.now() } : null);
+
+    if (!location) {
+      // No fix yet: still loading, or GPS failed. Never overwrite a list already on screen with a soft refresh.
+      if (!soft) {
+        setNearby([]);
+        setLocationSource(null);
+        setNearbyRefreshFailure(null);
+        setNearbyState(live.errorCode
+          ? live.errorCode === "permission-denied" ? "permission-denied" : live.errorCode === "outside-nl" ? "outside-nl" : "no-gps"
+          : "loading");
+      }
+      return;
+    }
+
     if (!soft) {
       setNearbyState("loading");
       setNearby([]);
       setLocationSource(null);
       setNearbyRefreshFailure(null);
     }
+    const token = ++nearbyRequest.current;
+    const current = () => active && shouldApplyResponse(token, nearbyRequest.current);
     void (async () => {
       try {
-        const location = useUtrechtExample && !manualCity
-          ? { coords: { latitude: 52.0907, longitude: 5.1214 }, bron: "voorbeeld" as const }
-          : await bepaalLocatie({ manualCity, fallbackToExample: false });
-        if (!active) return;
         setLocationSource(location.bron);
+        setLocationFixAt(location.fixAt);
         setUserCoords(location.bron === "gps" || location.bron === "laatst-bekend"
           ? { lat: location.coords.latitude, lon: location.coords.longitude } : null);
         const items = await getNearby(location.coords.latitude, location.coords.longitude);
-        if (!active) return;
+        if (!current()) return;
         setNearby(items);
         setNearbyState(items.length ? "ready" : "empty");
         setNearbyRefreshFailure(null);
         setNearbyUpdatedAt(Date.now());
       } catch (error) {
-        if (!active) return;
+        if (!current()) return;
         // A failed background refresh keeps the last good list; a network failure says so.
         if (soft) {
           if (__DEV__) console.warn("Verversen haltes in de buurt mislukt", error);
-          if (!(error instanceof LocatieFout)) setNearbyRefreshFailure(failureKind(error));
+          setNearbyRefreshFailure(failureKind(error));
           return;
         }
-        setNearbyState(error instanceof LocatieFout
-          ? error.code === "permission-denied" ? "permission-denied" : error.code === "outside-nl" ? "outside-nl" : "no-gps"
-          : failureKind(error) === "offline" ? "offline" : "error");
+        setNearbyState(failureKind(error) === "offline" ? "offline" : "error");
         if (__DEV__) console.warn("Haltes in de buurt niet beschikbaar", error);
       } finally {
         if (active) setRefreshingNearby(false);
       }
     })();
     return () => { active = false; };
-  }, [nearbyRetry, useUtrechtExample, manualCity, nearbyRefreshTick]);
+  }, [nearbyRetry, manualLocation, live.refreshToken, live.errorCode, live.loading, nearbyRefreshTick]);
 
   useEffect(() => {
     const term = resolveSearchTerm(query);
@@ -319,7 +351,7 @@ export function FlowHome() {
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.listContent}
             refreshControl={!finding && tab === "nabij" ? <RefreshControl refreshing={refreshingNearby}
-              onRefresh={() => { softNearbyRefresh.current = true; setRefreshingNearby(true); setNearbyRefreshTick((n) => n + 1); if (showMine) void refreshFavorites(true); }}
+              onRefresh={() => { softNearbyRefresh.current = true; setRefreshingNearby(true); setNearbyRefreshTick((n) => n + 1); if (!manualCity && !useUtrechtExample) live.requestFresh(); if (showMine) void refreshFavorites(true); }}
               colors={[colors.accentText]} tintColor={colors.accentText} progressBackgroundColor={colors.surface} /> : undefined}
             ListHeaderComponent={
               <View>
@@ -390,14 +422,14 @@ export function FlowHome() {
                       onPress={() => setShowCities((open) => !open)}>
                       <Text style={[styles.headingLink, { color: colors.accentText }]}>{manualCity
                         ? (MANUAL_CITIES.find((city) => city.key === manualCity)?.name || "Stad")
-                        : locationSource === "laatst-bekend" ? "Laatst bekend · kies stad" : "Kies stad"}</Text>
+                        : "Kies stad"}</Text>
                     </Pressable>
                   ) : <Text style={[styles.count, { color: colors.textMuted }]}>{resultCount}</Text>}
                 </View>
                 {!finding && tab === "nabij" && (showCities || manualCity || useUtrechtExample) ? (
                   <View style={styles.cityOptions}>
                     {(manualCity || useUtrechtExample) ? <Pressable accessibilityRole="button" accessibilityLabel="Terug naar GPS"
-                      onPress={() => { setManualCity(null); setUseUtrechtExample(false); setShowCities(false); setNearbyRetry((n) => n + 1); }}
+                      onPress={() => { setManualCity(null); setUseUtrechtExample(false); setShowCities(false); setNearbyRetry((n) => n + 1); live.requestFresh(); }}
                       style={[styles.cityChoice, { borderColor: colors.border, backgroundColor: colors.surface }]}>
                       <Ionicons name="navigate-outline" size={14} color={colors.accentText} />
                       <Text style={{ color: colors.accentText, fontSize: 12, fontWeight: "800" }}>Gebruik GPS</Text>
@@ -437,6 +469,15 @@ export function FlowHome() {
                     <Text style={{ color: colors.accentText, fontWeight: "800" }}>Voorbeeldlocatie Utrecht · Tik om terug te gaan naar GPS</Text>
                   </Pressable>
                 ) : null}
+                {/* V5.8.1: an old or missing GPS fix is never shown as if it were current. */}
+                {!finding && tab === "nabij" && !manualCity && !useUtrechtExample && locationSource && isLocationStale(locationSource, locationFixAt, nowMs) ? (
+                  <View style={[styles.searchWarning, { backgroundColor: colors.warningSoft }]}>
+                    <Ionicons name="time-outline" size={16} color={colors.text} />
+                    <Text style={{ color: colors.text, flex: 1, fontSize: 12 }}>
+                      Laatst bekende locatie · {describeLocationAge(locationFixAt ?? nowMs, nowMs)}
+                    </Text>
+                  </View>
+                ) : null}
               </View>
             }
             ListEmptyComponent={!finding && tab === "nabij" && nearbyState === "loading" ? (
@@ -464,7 +505,7 @@ export function FlowHome() {
                   <View style={styles.emptyActions}>
                     {/* Without a connection the problem is not the GPS, and a sample city cannot load either. */}
                     <Pressable accessibilityRole="button" accessibilityLabel={nearbyState === "offline" || nearbyState === "error" ? "Opnieuw proberen" : "Locatie opnieuw proberen"}
-                      onPress={() => { setUseUtrechtExample(false); setNearbyRetry((n) => n + 1); }}
+                      onPress={() => { setUseUtrechtExample(false); setNearbyRetry((n) => n + 1); live.requestFresh(); }}
                       style={[styles.emptyAction, { borderColor: colors.border }]}>
                       <Text style={{ color: colors.accentText, fontWeight: "800" }}>{nearbyState === "offline" || nearbyState === "error" ? "Opnieuw proberen" : "GPS opnieuw proberen"}</Text>
                     </Pressable>

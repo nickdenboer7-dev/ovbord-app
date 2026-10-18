@@ -14,6 +14,12 @@ export type LocatieResultaat = {
   coords: { latitude: number; longitude: number };
   bron: "gps" | "laatst-bekend" | "voorbeeld" | "handmatig";
   cityName?: string;
+  /**
+   * V5.8.1: the real moment this fix was taken (the GPS reading's own timestamp for "gps" and
+   * "laatst-bekend"; "now" for "handmatig"/"voorbeeld", which are not real GPS reads). Lets callers
+   * order fixes correctly even when requests resolve out of order (lib/liveLocation.ts).
+   */
+  fixAt: number;
 };
 
 export type LocatieFoutCode = "permission-denied" | "no-gps" | "outside-nl";
@@ -37,15 +43,20 @@ function isOutside(coords: { latitude: number; longitude: number }): boolean {
     Math.abs(coords.latitude) <= 90 && Math.abs(coords.longitude) <= 180 && !valideCoords(coords);
 }
 
-type Opties = { manualCity?: string | null; fallbackToExample?: boolean };
+/**
+ * preferFresh (V5.8.1, live location): ask for a current GPS fix first and only fall back to a
+ * last-known position when no current one arrives, so a last-known fix never goes ahead of an
+ * available current one.
+ */
+type Opties = { manualCity?: string | null; fallbackToExample?: boolean; preferFresh?: boolean };
 
 /** Shared by Start and Buurtbord; only explicit choices may override a real GPS position. */
 export async function bepaalLocatie(options: Opties = {}): Promise<LocatieResultaat> {
   const manual = MANUAL_CITIES.find((city) => city.key === options.manualCity);
   if (manual) {
-    return { coords: { latitude: manual.latitude, longitude: manual.longitude }, bron: "handmatig", cityName: manual.name };
+    return { coords: { latitude: manual.latitude, longitude: manual.longitude }, bron: "handmatig", cityName: manual.name, fixAt: Date.now() };
   }
-  const voorbeeld: LocatieResultaat = { coords: VOORBEELD_LOCATIE_UTRECHT, bron: "voorbeeld" };
+  const voorbeeld: LocatieResultaat = { coords: VOORBEELD_LOCATIE_UTRECHT, bron: "voorbeeld", fixAt: Date.now() };
   const fail = (code: LocatieFoutCode): LocatieResultaat => {
     if (options.fallbackToExample !== false) return voorbeeld;
     throw new LocatieFout(code);
@@ -60,11 +71,13 @@ export async function bepaalLocatie(options: Opties = {}): Promise<LocatieResult
     if (!(await Location.hasServicesEnabledAsync())) return fail("no-gps");
     let outside = false;
 
-    const recent = await Location.getLastKnownPositionAsync({ maxAge: 120000 }).catch(() => null);
-    if (recent && valideCoords(recent.coords)) {
-      return { coords: recent.coords, bron: "laatst-bekend" };
+    if (!options.preferFresh) {
+      const recent = await Location.getLastKnownPositionAsync({ maxAge: 120000 }).catch(() => null);
+      if (recent && valideCoords(recent.coords)) {
+        return { coords: recent.coords, bron: "laatst-bekend", fixAt: recent.timestamp ?? Date.now() };
+      }
+      if (recent && isOutside(recent.coords)) outside = true;
     }
-    if (recent && isOutside(recent.coords)) outside = true;
 
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
@@ -73,7 +86,7 @@ export async function bepaalLocatie(options: Opties = {}): Promise<LocatieResult
         Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(() => null),
         deadline
       ]);
-      if (fresh && valideCoords(fresh.coords)) return { coords: fresh.coords, bron: "gps" };
+      if (fresh && valideCoords(fresh.coords)) return { coords: fresh.coords, bron: "gps", fixAt: fresh.timestamp ?? Date.now() };
       if (fresh && isOutside(fresh.coords)) outside = true;
     } finally {
       if (timer) clearTimeout(timer);
@@ -81,7 +94,7 @@ export async function bepaalLocatie(options: Opties = {}): Promise<LocatieResult
 
     const older = await Location.getLastKnownPositionAsync({ maxAge: 600000 }).catch(() => null);
     if (older && valideCoords(older.coords)) {
-      return { coords: older.coords, bron: "laatst-bekend" };
+      return { coords: older.coords, bron: "laatst-bekend", fixAt: older.timestamp ?? Date.now() };
     }
     if (older && isOutside(older.coords)) outside = true;
     return fail(outside ? "outside-nl" : "no-gps");

@@ -15,7 +15,9 @@ import { bestNearbyStopId, buurtbordPreviewRows, reachableOnFoot } from "../../l
 import { boardRefreshNotice, failureKind } from "../../lib/offline";
 import type { FailureKind } from "../../lib/offline";
 import { useSmartRefresh } from "../../lib/useSmartRefresh";
-import { bepaalLocatie, MANUAL_CITIES, type LocatieResultaat } from "../../lib/location";
+import { MANUAL_CITIES, VOORBEELD_LOCATIE_UTRECHT, type LocatieResultaat } from "../../lib/location";
+import { useLiveLocation } from "../../lib/useLiveLocation";
+import { describeLocationAge, isLocationStale, shouldApplyResponse } from "../../lib/liveLocation";
 import { DepartureItem, StopSummary } from "../../types/api";
 
 /** stale: the last refresh for this stop failed; departures are the last known ones. */
@@ -36,10 +38,15 @@ export default function BuurtbordScreen() {
   const [previews, setPreviews] = useState<Record<string, PreviewState>>({});
   const [loading, setLoading] = useState(true);
   const [locatieBron, setLocatieBron] = useState<LocatieResultaat["bron"] | null>(null);
+  const [locatieFixAt, setLocatieFixAt] = useState<number | null>(null);
   const [locatieRetry, setLocatieRetry] = useState(0);
   const [showCities, setShowCities] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
   const previousLocationKey = useRef<string | null>(null);
+  /** V5.8.1: only the newest request may write stops and previews (a slow Amsterdam reply never overwrites Zaandam). */
+  const nearbyRequest = useRef(0);
+  // V5.8.1: live GPS while Buurtbord is visible; disabled while a city is chosen by hand.
+  const live = useLiveLocation(!manualCity);
   useEffect(() => {
     const timer = setInterval(() => setNowMs(Date.now()), 15000);
     return () => clearInterval(timer);
@@ -48,8 +55,18 @@ export default function BuurtbordScreen() {
   const router = useRouter();
   const { showStop: showFlowStop } = useFlowNavigation();
 
+  // Manual city resolves instantly; a GPS failure falls back to the Utrecht example, same as before.
+  const manualLocation = useMemo<LocatieResultaat | null>(() => {
+    if (!manualCity) return null;
+    const manual = MANUAL_CITIES.find((city) => city.key === manualCity);
+    return manual ? { coords: { latitude: manual.latitude, longitude: manual.longitude }, bron: "handmatig", cityName: manual.name, fixAt: Date.now() } : null;
+  }, [manualCity]);
+
   useEffect(() => {
-    let cancelled = false;
+    let stopped = false;
+    const token = ++nearbyRequest.current;
+    // "cancelled" stays true for every older request once a newer one has started.
+    const isCancelled = () => stopped || !shouldApplyResponse(token, nearbyRequest.current);
     const locationKey = (manualCity || "gps") + ":" + locatieRetry;
     const locationChanged = previousLocationKey.current !== locationKey;
     previousLocationKey.current = locationKey;
@@ -60,14 +77,18 @@ export default function BuurtbordScreen() {
       setLocatieBron(null);
       setRefreshFailure(null);
     }
+    if (!manualLocation && !live.coords && !live.errorCode) return; // live fix still loading; wait for it
+    const locatie: LocatieResultaat = manualLocation
+      || (live.coords && live.bron ? { coords: live.coords, bron: live.bron, fixAt: live.fixAt ?? Date.now() }
+        // GPS failed (permission denied, no fix, outside NL): fall back to the Utrecht example, as before.
+        : { coords: VOORBEELD_LOCATIE_UTRECHT, bron: "voorbeeld", fixAt: Date.now() });
     void (async () => {
       try {
         setLoadError(false);
-        const locatie = await bepaalLocatie({ manualCity });
-        if (cancelled) return;
         setLocatieBron(locatie.bron);
+        setLocatieFixAt(locatie.fixAt);
         const nearby = (await getNearby(locatie.coords.latitude, locatie.coords.longitude)).slice(0, 5);
-        if (cancelled) return;
+        if (isCancelled()) return;
         setItems(nearby);
         setPreviews((current) => Object.fromEntries(nearby.map((stop) => [
           stop.id, current[stop.id] || { loading: true, departures: [] }
@@ -78,7 +99,7 @@ export default function BuurtbordScreen() {
         await Promise.all(nearby.map(async (stop) => {
           try {
             const board = await getHalte(stop.id);
-            if (cancelled) return;
+            if (isCancelled()) return;
             setPreviews((current) => ({
               ...current,
               // Keep more than three rows: past, departed and cancelled rows are filtered at render time.
@@ -88,19 +109,19 @@ export default function BuurtbordScreen() {
             if (__DEV__) console.warn(`Vertrekken laden mislukt voor ${stop.id}`, error);
             stopFailure = stopFailure || failureKind(error);
             // Keep the last known departures instead of emptying the card (e.g. offline).
-            if (!cancelled) setPreviews((current) => {
+            if (!isCancelled()) setPreviews((current) => {
               const before = current[stop.id]?.departures || [];
               return { ...current, [stop.id]: { loading: false, departures: before, stale: before.length > 0 } };
             });
           }
         }));
-        if (!cancelled) {
+        if (!isCancelled()) {
           setRefreshFailure(stopFailure);
           if (!stopFailure) setUpdatedAt(Date.now());
         }
       } catch (error) {
         if (__DEV__) console.warn("Buurtbord laden mislukt", error);
-        if (!cancelled) {
+        if (!isCancelled()) {
           setLoadError(true);
           // Stops already on screen stay, marked as last known.
           setRefreshFailure(failureKind(error));
@@ -108,11 +129,11 @@ export default function BuurtbordScreen() {
             [id, { ...preview, loading: false, stale: preview.departures.length > 0 }])));
         }
       } finally {
-        if (!cancelled) { setLoading(false); setRefreshing(false); }
+        if (!isCancelled()) { setLoading(false); setRefreshing(false); }
       }
     })();
-    return () => { cancelled = true; };
-  }, [locatieRetry, manualCity, refreshTick]);
+    return () => { stopped = true; };
+  }, [locatieRetry, manualCity, manualLocation, live.refreshToken, live.errorCode, refreshTick]);
 
   // Effective (delayed) time; never recommend a cancelled or departed trip.
   const bestStopId = useMemo(() => bestNearbyStopId(items,
@@ -153,7 +174,7 @@ export default function BuurtbordScreen() {
             : "Kies stad"}</Text>
         </Pressable>
         {manualCity ? <Pressable accessibilityRole="button" accessibilityLabel="Gebruik GPS in Buurtbord"
-          onPress={() => { setManualCity(null); setLocatieRetry((n) => n + 1); }}
+          onPress={() => { setManualCity(null); setLocatieRetry((n) => n + 1); live.requestFresh(); }}
           style={{ borderColor: colors.border, borderWidth: 1, borderRadius: 9, paddingHorizontal: 11, paddingVertical: 8 }}>
           <Text style={{ color: colors.accentText, fontWeight: "800", fontSize: 12 }}>Gebruik GPS</Text>
         </Pressable> : null}
@@ -173,12 +194,18 @@ export default function BuurtbordScreen() {
       ) : locatieBron === "voorbeeld" ? (
         <View style={{ marginHorizontal: 12, marginBottom: 10, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}>
           <Text style={{ color: colors.text }}>Je locatie is niet beschikbaar, we tonen Utrecht als voorbeeld.</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="Locatie opnieuw proberen" onPress={() => setLocatieRetry((n) => n + 1)} style={{ paddingVertical: 10, alignSelf: "flex-start" }}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Locatie opnieuw proberen" onPress={() => { setLocatieRetry((n) => n + 1); live.requestFresh(); }} style={{ paddingVertical: 10, alignSelf: "flex-start" }}>
             <Text style={{ color: colors.accentText, fontWeight: "700" }}>Opnieuw proberen</Text>
           </Pressable>
         </View>
-      ) : locatieBron === "laatst-bekend" ? (
-        <Text style={{ marginHorizontal: 14, marginBottom: 8, color: colors.textSoft }}>Je laatst bekende locatie wordt gebruikt.</Text>
+      ) : locatieBron && isLocationStale(locatieBron, locatieFixAt, nowMs) ? (
+        // V5.8.1: an old or missing GPS fix is never shown as if it were current.
+        <View style={{ marginHorizontal: 13, marginBottom: 4, padding: 10, borderRadius: 10, backgroundColor: colors.warningSoft, flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Ionicons name="time-outline" size={16} color={colors.text} />
+          <Text style={{ color: colors.text, flex: 1, fontSize: 12 }}>
+            Laatst bekende locatie · {describeLocationAge(locatieFixAt ?? nowMs, nowMs)}
+          </Text>
+        </View>
       ) : null}
 
       {refreshFailure && items.length ? (
@@ -197,7 +224,7 @@ export default function BuurtbordScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
           refreshControl={<RefreshControl refreshing={refreshing}
-            onRefresh={() => { setRefreshing(true); setRefreshTick((value) => value + 1); }}
+            onRefresh={() => { setRefreshing(true); setRefreshTick((value) => value + 1); if (!manualCity) live.requestFresh(); }}
             colors={[colors.accentText]} tintColor={colors.accentText} progressBackgroundColor={colors.surface} />}
           renderItem={({ item }) => {
             const preview = previews[item.id] || { loading: true, departures: [] };
@@ -251,7 +278,7 @@ export default function BuurtbordScreen() {
             <View style={{ alignItems: "center" }}>
               <Text style={[styles.empty, { color: colors.textSoft }]}>Haltes in de buurt konden niet worden geladen. Controleer je verbinding.</Text>
               <Pressable accessibilityRole="button" accessibilityLabel="Buurtbord opnieuw laden"
-                onPress={() => setLocatieRetry((n) => n + 1)}
+                onPress={() => { setLocatieRetry((n) => n + 1); live.requestFresh(); }}
                 style={{ borderColor: colors.border, borderWidth: 1, borderRadius: 9, paddingHorizontal: 14, paddingVertical: 10 }}>
                 <Text style={{ color: colors.accentText, fontWeight: "800" }}>Opnieuw proberen</Text>
               </Pressable>
