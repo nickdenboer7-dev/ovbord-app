@@ -37,5 +37,5 @@ test("the line badge in the trip header is the green accent", () => {
 });
 
 test("live information stays green", () => {
-  assert.match(read("components/DepartureLine.tsx"), /<Ionicons name="wifi" size=\{14\} color=\{colors\.success\} \/>/);
+  assert.match(read("components/DepartureLine.tsx"), /<Text style=\{\{ color: colors\.success \}\}>Live<\/Text>/);
 });

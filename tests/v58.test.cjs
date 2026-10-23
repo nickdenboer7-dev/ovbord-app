@@ -111,7 +111,7 @@ test("the stop board has a compact white-green header, like Start and the trip p
   assert.match(board, /color=\{isFavoriteStop\(board\?\.stop\.id \|\| stop\.id\) \? "#FFD86B" : colors\.textSoft\}/);
   assert.match(board, /<MenuButton onPress=\{\(\) => setMenuOpen\(true\)\} color=\{colors\.text\}/);
   // Active tab is the OVbord green accent; inactive tabs stay calm and light.
-  assert.match(board, /backgroundColor: active \? colors\.accentSoft : colors\.surfaceSoft/);
-  assert.match(board, /color: active \? colors\.accentText : colors\.textSoft/);
+  assert.match(board, /borderBottomColor: active \? colors\.accent : "transparent"/);
+  assert.match(board, /color: active \? colors\.heading : colors\.textSoft/);
   assert.doesNotMatch(board, /#175FAD|#123C64|#FFFFFF22|#14518B/);
 });

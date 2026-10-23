@@ -95,9 +95,9 @@ export function FlowLineGroups({ departures, onOpenDeparture, onSelectLine, favo
               accessibilityRole="button"
               accessibilityLabel={`Alle vertrekken van lijn ${group.line} tonen`}
             >
-              <LijnBadge line={group.line} carrier={group.carrier} tone="flow" />
+              <LijnBadge line={group.line} carrier={group.carrier} tone="plain" />
               <View style={styles.headerText}>
-                <Text style={[styles.lineCaption, { color: colors.text }]}>Lijn {group.line}</Text>
+                <Text style={[styles.lineCaption, { color: colors.heading }]}>Lijn {group.line}</Text>
                 <Text style={[styles.carrier, { color: colors.textSoft }]}>{group.carrier || "Vervoerder onbekend"} · {group.total} vertrekken</Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
@@ -135,7 +135,7 @@ export function FlowLineGroups({ departures, onOpenDeparture, onSelectLine, favo
                       accessibilityRole={dep.ritId && !departed ? "button" : undefined}
                       accessibilityLabel={departed ? "Lijn " + group.line + " richting " + direction.destination + ", vertrokken" : cancelled ? "Lijn " + group.line + " richting " + direction.destination + ", " + expected + ", rijdt niet" + (dep.ritId ? ", rit openen" : "") : "Lijn " + group.line + " richting " + direction.destination + ", " + expected + ", rit openen"}
                       onPress={() => onOpenDeparture(dep)}
-                      style={[styles.timeChip, { backgroundColor: cancelled ? (resolvedScheme === "dark" ? colors.dangerSoft : "#FFF4F3") : colors.surfaceSoft, borderColor: cancelled ? colors.danger : colors.border }]}
+                      style={[styles.timeChip, { backgroundColor: colors.surface, borderColor: colors.border }]}
                     >
                       <Text style={[styles.timeText, { color: cancelled ? colors.danger : departed ? colors.textMuted : colors.text }, (cancelled || departed) && {textDecorationLine:"line-through"}]}>{expected}</Text>
                       {delayed || early ? <Text style={[styles.delta, { color: delayed ? colors.danger : colors.accentText }]}>
@@ -164,12 +164,12 @@ export function FlowLineGroups({ departures, onOpenDeparture, onSelectLine, favo
 }
 
 const styles = StyleSheet.create({
-  list: { paddingHorizontal: 12, paddingBottom: 32, gap: 12 },
+  list: { paddingHorizontal: 12, paddingBottom: 32, gap: 0 },
   intro: { paddingTop: 16, paddingBottom: 4, gap: 5 },
   title: { fontSize: 17, fontWeight: "900" },
   subtitle: { fontSize: 11, lineHeight: 16 },
   empty: { textAlign: "center", marginTop: 30, fontSize: 12 },
-  card: { borderRadius: 13, borderWidth: 1, overflow: "hidden" },
+  card: { borderRadius: 0, borderWidth: 0, borderBottomWidth: StyleSheet.hairlineWidth, overflow: "hidden" },
   header: { minHeight: 54, paddingHorizontal: 12, paddingVertical: 9, flexDirection: "row", alignItems: "center", gap: 9 },
   headerMain: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 9 },
   star: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
@@ -180,7 +180,7 @@ const styles = StyleSheet.create({
   directionName: { fontSize: 12, fontWeight: "700" },
   departureTimes: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
   frequency:{fontSize:11,fontWeight:"600"},
-  timeChip: { minHeight: 37, paddingHorizontal: 9, borderRadius: 8, borderWidth: 1, flexDirection: "row", alignItems: "center", gap: 4 },
+  timeChip: { minHeight: 37, paddingHorizontal: 9, borderRadius: 0, borderWidth: 0, flexDirection: "row", alignItems: "center", gap: 4 },
   timeText: { fontSize: 12.5, fontWeight: "800", fontVariant: ["tabular-nums"] },
   delta: { fontSize: 9.5, fontWeight: "900" },
   dot: { width: 6, height: 6, borderRadius: 3 },

@@ -28,7 +28,7 @@ export default function FavorietenScreen() {
   const insets = useSafeAreaInsets();
   const large = largeText(useWindowDimensions().fontScale);
   const { showStop: showFlowStop } = useFlowNavigation();
-  const { boards, refreshFailure, updatedAt, refresh, stopsKey } = useFavoritesLive();
+  const { boards, refreshFailure, refreshing: favoritesRefreshing, updatedAt, refresh, stopsKey } = useFavoritesLive();
   const [refreshing, setRefreshing] = useState(false);
   const [ordering, setOrdering] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -80,8 +80,8 @@ export default function FavorietenScreen() {
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <View style={[styles.headerRow, { paddingTop: Math.max(insets.top, 24) + 24 }]}>
         <View style={styles.headerCopy}>
-          <Text style={[styles.title, { color: colors.text }]}>Favorieten</Text>
-          <Text style={[styles.subtitle, { color: colors.textSoft }]}>{ordering ? "Zet je vaste ritten en haltes bovenaan" : "Jouw vaste haltes en ritten"}</Text>
+          <Text style={[styles.title, { color: colors.heading }]}>Favorieten</Text>
+          <Text style={[styles.subtitle, { color: colors.textSoft }]}>{favoritesRefreshing && Object.values(boards).some((entry) => Boolean(entry.board)) ? "Bijwerken…" : ordering ? "Zet je vaste ritten en haltes bovenaan" : "Jouw vaste haltes en ritten"}</Text>
         </View>
         {canOrder ? (
           <Pressable onPress={() => setOrdering((value) => !value)} accessibilityRole="button"
@@ -189,7 +189,7 @@ export default function FavorietenScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 }, headerRow: { paddingHorizontal: 14, marginBottom: 7, flexDirection: "row", alignItems: "center", gap: 12 }, headerCopy: { flex: 1 }, title: { fontSize: 21, fontWeight: "800" }, subtitle: { marginTop: 3, fontSize: 12 }, content: { padding: 13, gap: 8, paddingBottom: 28 }, card: { borderWidth: 1, borderRadius: 12, padding: 12 }, cardTitle: { fontSize: 15, fontWeight: "800", marginBottom: 10 }, stopRow: { flexDirection: "row", gap: 12, alignItems: "flex-start" }, modeDot: { width: 16, height: 16, borderRadius: 999, marginTop: 4 }, stopTitle: { fontSize: 16, fontWeight: "800" }, stopMeta: { marginTop: 4, fontSize: 13 }, lineWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 }, removeButton: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  screen: { flex: 1 }, headerRow: { paddingHorizontal: 14, marginBottom: 7, flexDirection: "row", alignItems: "center", gap: 12 }, headerCopy: { flex: 1 }, title: { fontSize: 21, fontWeight: "800" }, subtitle: { marginTop: 3, fontSize: 12 }, content: { padding: 13, gap: 8, paddingBottom: 28 }, card: { borderWidth: 0, borderRadius: 0, padding: 12 }, cardTitle: { fontSize: 15, fontWeight: "800", marginBottom: 10 }, stopRow: { flexDirection: "row", gap: 12, alignItems: "flex-start" }, modeDot: { width: 16, height: 16, borderRadius: 999, marginTop: 4 }, stopTitle: { fontSize: 16, fontWeight: "800" }, stopMeta: { marginTop: 4, fontSize: 13 }, lineWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 }, removeButton: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
   headerList: { gap: 8 },
   notice: { flexDirection: "row", alignItems: "center", gap: 8, padding: 10, borderRadius: 10 },
   journey: { borderTopWidth: 1, paddingBottom: 8 },

@@ -179,7 +179,7 @@ test("Start: one compact trip line and a search icon", () => {
   assert.doesNotMatch(home, /Snel openen/);
   assert.match(home, /detail=\{advice \? \{ text: advice\.text, icon: "walk-outline", warn: advice\.tight \} : undefined\}/);
   // The live time is shown with an icon next to the destination (DepartureLine), not as a green clock.
-  assert.match(read("components/DepartureLine.tsx"), /\{item\.destination\}\{live \? <Text style=\{\{ color: colors\.success \}\}>\{"  "\}<Ionicons name="wifi"/);
+  assert.match(read("components/DepartureLine.tsx"), /statusIsLive \? <><Text style=\{\{ color: colors\.success \}\}>Live/);
 });
 
 test("stop board and trip page: options under ⋮, one row style everywhere", () => {
@@ -281,7 +281,7 @@ test("badges by kind of transport, tabs and search on the board", () => {
   assert.equal(modeBadgeColors("metro").bg, "#D7263D");
   assert.equal(modeBadgeColors("tram").bg, "#1767D2");
   assert.equal(modeBadgeColors(undefined).bg, "#1767D2");
-  assert.match(read("components/DepartureLine.tsx"), /tone="mode" mode=\{item\.mode\}/);
+  assert.match(read("components/DepartureLine.tsx"), /tone="plain"/);
   const board = read("components/FlowBoard.tsx");
   assert.match(board, /<Pressable onPress=\{requestSearch\} accessibilityRole="search"/);
   assert.match(read("context/FlowNavigation.tsx"), /setScreens\(\[\]\); setSearchRequest\(\(n\) => n \+ 1\);/);
@@ -358,7 +358,7 @@ test("a long word gets a slightly smaller font instead of being broken", () => {
   assert.equal(wordFitScale("Amstelveen-Stadshart", 120, 16, 1.5), 1.25); // breaks at the hyphen anyway
   const row = read("components/DepartureLine.tsx").replace(/\r\n/g, "\n");
   assert.match(row, /maxFontSizeMultiplier=\{wordFitScale\(item\.destination, bodyWidth/);
-  assert.equal((row.match(/maxFontSizeMultiplier=\{wordFitScale\(subText, bodyWidth, 12\.5, 1\.3\)\}/g) || []).length, 2);
+  assert.match(row, /maxFontSizeMultiplier=\{wordFitScale\(status\.text \+ extra, bodyWidth, 12\.5, 1\.3\)\}/);
   assert.match(row, /onLayout=\{large \?/);
   assert.match(row, /rowLarge: \{ gap: 8 \}/);
 });

@@ -57,7 +57,7 @@ function shortStopName(name: string): string {
 export function FlowHome() {
   const { colors, resolvedScheme, recentStops, favoriteStops, favoriteJourneys, addRecentStop, toggleFavoriteStop, isFavoriteStop, manualCity, setManualCity } = useApp();
   const { screens, showStop, searchRequest, homeRequest } = useFlowNavigation();
-  const { boards: favoriteBoards, refreshFailure: favoritesFailure, refresh: refreshFavorites, stopsKey: favoritesKey } = useFavoritesLive();
+  const { boards: favoriteBoards, refreshFailure: favoritesFailure, refreshing: favoritesUpdating, refresh: refreshFavorites, stopsKey: favoritesKey } = useFavoritesLive();
   const [nowMs, setNowMs] = useState(() => Date.now());
   /** The trip last opened on the trip page, offered on Start until shortly after arrival. */
   const [activeTrip, setActiveTrip] = useState<ActiveTrip | null>(null);
@@ -192,7 +192,7 @@ export function FlowHome() {
           setSearchError(message.includes("OVbord timeout") ? "timeout" : /^OVbord API \d{3}/.test(message) ? "server" : "network");
         })
         .finally(() => { if (active) setLoadingSearch(false); });
-    }, 280);
+    }, 150);
     return () => { active = false; clearTimeout(timer); };
   }, [query, searchRetry]);
 
@@ -316,7 +316,7 @@ export function FlowHome() {
           <View style={[styles.brandMark, { backgroundColor: colors.accent }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
             <Ionicons name="bus" size={15} color="#FFFFFF" />
           </View>
-          <Text style={[styles.brand, { color: colors.accentText }]} accessibilityRole="header" maxFontSizeMultiplier={1.2}>OVbord</Text>
+          <Text style={[styles.brand, { color: colors.heading }]} accessibilityRole="header" maxFontSizeMultiplier={1.2}>OVbord</Text>
         </View>
         {/* One calm search field, always in the same place: a tap opens the search with recent stops. */}
         <View style={styles.searchLine}>
@@ -358,7 +358,7 @@ export function FlowHome() {
           {(["alles", "haltes", "ritten"] as const).map((choice) => (
             <Pressable key={choice} accessibilityRole="button" accessibilityState={{ selected: searchFilter === choice }}
               accessibilityLabel={"Zoekfilter " + choice} onPress={() => setSearchFilter(choice)}
-              style={[styles.searchFilter, { backgroundColor: searchFilter === choice ? colors.accentSoft : colors.surface }]}>
+              style={[styles.searchFilter, { borderBottomColor: searchFilter === choice ? colors.accent : "transparent" }]}>
               <Text style={{ color: searchFilter === choice ? colors.accentText : colors.textSoft, fontSize: 12, fontWeight: "800" }}>
                 {choice === "alles" ? "Alles" : choice === "haltes" ? "Haltes" : "Ritten"}
               </Text>
@@ -377,7 +377,7 @@ export function FlowHome() {
             keyExtractor={(item) => item.kind === "groep" ? "groep:" + item.group.key : item.kind === "halte" ? "halte:" + item.stop.id : "rit:" + item.journey.journeyId}
             renderSectionHeader={({ section }) => finding ? (
               <View style={[styles.headingRow, { backgroundColor: colors.surfaceSoft, borderBottomColor: colors.border, borderBottomWidth: 1 }]}>
-                <Text style={[styles.listTitle, { color: colors.text }]}>{section.title}</Text>
+                <Text style={[styles.listTitle, { color: colors.heading }]}>{section.title}</Text>
                 <Text style={[styles.count, { color: colors.textMuted }]}>{section.data.length}</Text>
               </View>
             ) : null}
@@ -391,7 +391,7 @@ export function FlowHome() {
                 {showTrip && activeTrip ? (() => {
                   const tripLine = activeTripLine(activeTrip);
                   return (
-                    <View style={[styles.tripCard, { backgroundColor: colors.accentSoft, borderColor: colors.border }]}>
+                    <View style={[styles.tripCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                       <Pressable onPress={() => openActiveTrip(activeTrip)} accessibilityRole="button"
                         accessibilityLabel={tripLine.lead + "lijn " + tripLine.line + tripLine.text + ". Ritverloop openen"}
                         style={styles.tripMain}>
@@ -410,7 +410,10 @@ export function FlowHome() {
                 {showMine ? (
                   <View>
                     <View style={styles.headingRow}>
-                      <Text style={[styles.listTitle, { color: colors.text }]} accessibilityRole="header">Mijn ritten</Text>
+                      <Text style={[styles.listTitle, { color: colors.heading }]} accessibilityRole="header">Mijn ritten</Text>
+                      {favoritesUpdating && Object.values(favoriteBoards).some((entry) => Boolean(entry.board)) ? (
+                        <Text style={{ color: colors.textMuted, fontSize: 11 }}>Bijwerken…</Text>
+                      ) : null}
                       <Pressable accessibilityRole="button" accessibilityLabel="Alle favorieten openen" hitSlop={8}
                         onPress={() => router.navigate("/favorieten")}>
                         <Text style={[styles.headingLink, { color: colors.accentText }]}>Alle favorieten</Text>
@@ -449,7 +452,7 @@ export function FlowHome() {
                   </View>
                 ) : null}
                 <View style={styles.headingRow}>
-                  <Text style={[styles.listTitle, { color: colors.text }]} accessibilityRole="header">{finding ? "Zoekresultaten" : tab === "nabij" ? "Haltes in de buurt" : tab === "recent" ? "Onlangs bekeken" : "Favoriete haltes"}</Text>
+                  <Text style={[styles.listTitle, { color: colors.heading }]} accessibilityRole="header">{finding ? "Zoekresultaten" : tab === "nabij" ? "Haltes in de buurt" : tab === "recent" ? "Onlangs bekeken" : "Favoriete haltes"}</Text>
                   {!finding && tab === "nabij" ? (
                     <Pressable accessibilityRole="button" accessibilityLabel={manualCity ? "Stad wijzigen" : "Handmatig stad kiezen"} hitSlop={8}
                       onPress={() => setShowCities((open) => !open)}>
@@ -717,7 +720,7 @@ const styles = StyleSheet.create({
   cityChoice: { borderWidth: 1, borderRadius: 8, minHeight: 32, paddingHorizontal: 9, flexDirection: "row", gap: 5, alignItems: "center", justifyContent: "center" },
   cityOptions: { flexDirection: "row", flexWrap: "wrap", gap: 6, paddingHorizontal: 12, paddingBottom: 10 },
   searchFilters: { flexDirection: "row", gap: 7, marginTop: 10 },
-  searchFilter: { flex: 1, minHeight: 32, borderRadius: 7, alignItems: "center", justifyContent: "center" },
+  searchFilter: { flex: 1, minHeight: 32, borderBottomWidth: 2, alignItems: "center", justifyContent: "center" },
   switchButton: { flex: 1, alignItems: "center", paddingVertical: 11, borderBottomWidth: 2 },
   switchText: { fontSize: 12.5, fontWeight: "800" },
   listLayer: { flex: 1 }, boardLayer: { flex: 1 }, hidden: { display: "none" },
@@ -725,15 +728,15 @@ const styles = StyleSheet.create({
   headingRow: { paddingHorizontal: 16, paddingTop: 18, paddingBottom: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
   headingLink: { fontSize: 12.5, fontWeight: "800" },
   // One card for "Haltes in de buurt": the rows share the side borders, the first and last are rounded.
-  card: { marginHorizontal: 12, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, overflow: "hidden" },
+  card: { marginHorizontal: 12, borderWidth: 0, borderRadius: 0, overflow: "hidden" },
   nearRow: { marginHorizontal: 12, minHeight: 54, paddingHorizontal: 12, paddingVertical: 8, flexDirection: "row", alignItems: "center", gap: 11,
-    borderLeftWidth: StyleSheet.hairlineWidth, borderRightWidth: StyleSheet.hairlineWidth },
-  cardFirst: { borderTopWidth: StyleSheet.hairlineWidth, borderTopLeftRadius: 14, borderTopRightRadius: 14 },
-  cardLast: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomLeftRadius: 14, borderBottomRightRadius: 14 },
+    borderBottomWidth: StyleSheet.hairlineWidth },
+  cardFirst: { borderTopWidth: 0, borderTopLeftRadius: 0, borderTopRightRadius: 0 },
+  cardLast: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
   nearIcon: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
   nearName: { fontSize: 15, fontWeight: "700", lineHeight: 19 },
   // V5.9: a stop area with separate, independently tappable bus/metro/train entries.
-  nearGroupCard: { marginHorizontal: 12, marginBottom: 7, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, overflow: "hidden" },
+  nearGroupCard: { marginHorizontal: 12, marginBottom: 0, borderRadius: 0, borderBottomWidth: StyleSheet.hairlineWidth, overflow: "hidden" },
   nearGroupHead: { minHeight: 39, paddingHorizontal: 13, paddingTop: 11, paddingBottom: 6,
     flexDirection: "row", alignItems: "center", gap: 8 },
   nearGroupStop: { minHeight: 48, paddingHorizontal: 13, paddingVertical: 8, flexDirection: "row", alignItems: "center", gap: 9 },
@@ -765,7 +768,7 @@ const styles = StyleSheet.create({
   exampleBanner: { marginHorizontal: 15, marginBottom: 8, padding: 12, borderRadius: 8 },
   mineMain: { minHeight: 60, paddingHorizontal: 15, paddingVertical: 10, flexDirection: "row", alignItems: "center", gap: 11 },
   mineDirection: { fontSize: 15, fontWeight: "700" },
-  tripCard: { marginHorizontal: 12, marginTop: 12, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center", paddingLeft: 12 },
+  tripCard: { marginHorizontal: 12, marginTop: 12, borderRadius: 0, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center", paddingLeft: 12 },
   tripMain: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 12 },
   tripText: { flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: "600" },
   tripStrong: { fontWeight: "900" },

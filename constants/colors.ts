@@ -4,7 +4,7 @@ export const accentGreen = "#1D6F42";
 
 export const themes = {
   light: {
-    background: "#F5F7F5",
+    background: "#FFFFFF",
     surface: "#FFFFFF",
     surfaceSoft: "#EEF2EE",
     surfaceAlt: "#E7ECE8",
@@ -16,6 +16,7 @@ export const themes = {
     /** Green for text and icons; identical to accent in light mode. */
     accentText: "#1D6F42",
     accentSoft: "#DDF2E6",
+    heading: "#1454A0",
     danger: "#D92B2B",
     dangerSoft: "#FCE6E6",
     warning: "#F4A000",
@@ -41,6 +42,7 @@ export const themes = {
     /** Lighter green: #1D6F42 text on dark surfaces is only ~3:1 contrast. */
     accentText: "#4DD17C",
     accentSoft: "#1B3223",
+    heading: "#A6C6FF",
     danger: "#FF5E5E",
     dangerSoft: "#341919",
     warning: "#FFB547",

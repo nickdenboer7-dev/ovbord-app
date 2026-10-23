@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { DepartureHeading, DepartureLine } from "./DepartureLine";
+import { DepartureSkeleton } from "./DepartureSkeleton";
 import { MenuButton, OverflowMenu } from "./OverflowMenu";
 import type { MenuItem } from "./OverflowMenu";
 import { FlowLineGroups } from "./FlowLineGroups";
@@ -307,7 +308,7 @@ export function FlowBoard({ stop, initialBoard, initialLine, onBack, visible = t
           <Pressable onPress={onBack} accessibilityRole="button" accessibilityLabel="Terug" style={styles.back}>
             <Ionicons name="arrow-back" size={22} color={colors.text} />
           </Pressable>
-          <Text maxFontSizeMultiplier={1.2} style={[styles.title, { color: colors.text }]} numberOfLines={3} accessibilityRole="header">{board?.stop.name || stop.name}</Text>
+          <Text maxFontSizeMultiplier={1.2} style={[styles.title, { color: colors.heading }]} numberOfLines={3} accessibilityRole="header">{board?.stop.name || stop.name}</Text>
           <Pressable onPress={() => toggleFavoriteStop(board?.stop || stop)} accessibilityRole="button"
             accessibilityLabel={isFavoriteStop(board?.stop.id || stop.id) ? "Verwijder favoriete halte" : "Bewaar als favoriete halte"}
             accessibilityState={{ selected: isFavoriteStop(board?.stop.id || stop.id) }} style={styles.back}>
@@ -322,8 +323,8 @@ export function FlowBoard({ stop, initialBoard, initialLine, onBack, visible = t
             const active = tab === value;
             return (
               <Pressable key={value} onPress={() => selectTab(value)} accessibilityRole="tab" accessibilityState={{ selected: active }}
-                style={[styles.segment, { backgroundColor: active ? colors.accentSoft : colors.surfaceSoft }]}>
-                <Text style={[styles.segmentText, { color: active ? colors.accentText : colors.textSoft }]}>{label}</Text>
+                style={[styles.segment, { borderBottomColor: active ? colors.accent : "transparent" }]}>
+                <Text style={[styles.segmentText, { color: active ? colors.heading : colors.textSoft }]}>{label}</Text>
               </Pressable>
             );
           })}
@@ -367,10 +368,7 @@ export function FlowBoard({ stop, initialBoard, initialLine, onBack, visible = t
       ) : null}
       {board && refreshFailure ? <View style={[styles.refreshWarning, { backgroundColor: colors.warningSoft, borderBottomColor: colors.border }]}><Ionicons name="cloud-offline-outline" size={16} color={colors.text} /><Text style={{ color: colors.text, flex: 1, fontSize: 12 }}>{boardRefreshNotice(refreshFailure, fetchedAt)}</Text><Pressable accessibilityRole="button" accessibilityLabel="Vertrektijden opnieuw laden" onPress={() => setRetryBoard((n) => n + 1)}><Ionicons name="refresh" size={19} color={colors.accentText} /></Pressable></View> : null}
       {loading && !board ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="small" color={colors.accentText} />
-          <Text style={{ color: colors.textSoft, fontSize: 12 }}>Vertrektijden laden voor {stop.name}…</Text>
-        </View>
+        <DepartureSkeleton />
       ) : error && !board ? (
         <View style={styles.center}>
           <Text style={{ color: colors.textSoft }}>{error}</Text>
@@ -531,11 +529,11 @@ const styles = StyleSheet.create({
   headRow: { flexDirection: "row", alignItems: "center", gap: 2 },
   back: { width: 40, height: 44, justifyContent: "center", alignItems: "center" },
   title: { flex: 1, minWidth: 0, fontSize: 21, lineHeight: 26, fontWeight: "800", letterSpacing: -0.3, marginLeft: 2 },
-  segments: { flexDirection: "row", gap: 7, paddingHorizontal: 10, marginTop: 13 },
-  segment: { minHeight: 38, paddingHorizontal: 18, borderRadius: 19, alignItems: "center", justifyContent: "center" },
+  segments: { flexDirection: "row", borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "#D5DDD7", marginTop: 13 },
+  segment: { flex: 1, minHeight: 42, borderBottomWidth: 2, alignItems: "center", justifyContent: "center" },
   segmentText: { fontSize: 14, fontWeight: "700" },
   // In the flow under the list, not floating over it: it never covers a departure.
-  searchBar: { marginHorizontal: 15, marginTop: 8, marginBottom: 10, minHeight: 46, borderRadius: 23, borderWidth: 1,
+  searchBar: { marginHorizontal: 15, marginTop: 8, marginBottom: 10, minHeight: 46, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth,
     flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 18 },
   searchText: { flex: 1, fontSize: 15 },
   viewBar: { minHeight: 46, paddingHorizontal: 15, borderBottomWidth: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },

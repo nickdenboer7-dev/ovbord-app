@@ -132,7 +132,7 @@ test("screens are wired to V5.3", () => {
   assert.match(board, /pinnedDepartures\(source, favoriteLines, nowMs, MAX_PINNED_ROWS\)/);
   // V5.4: the time column lives in the shared DepartureLine row.
   // V5.4 (OVinfo-stijl): the minutes sit on the right with a minimum width, so large fonts do not cut them off.
-  assert.match(read("components/DepartureLine.tsx"), /right: \{ fontSize: 20,[^}]*minWidth: 48 \}/);
+  assert.match(read("components/DepartureLine.tsx"), /right: \{ fontSize: 20,[^}]*minWidth: 62 \}/);
   assert.match(read("components/FlowLineGroups.tsx"), /Bewaar als favoriete lijn /);
   assert.match(read("components/LijnBadge.tsx"), /maxFontSizeMultiplier=\{1\.3\}/);
   assert.match(read("app/(tabs)/meer.tsx"), /Favoriete lijnen/);

@@ -17,6 +17,7 @@ export type FavoriteBoard = { board?: HalteBoardData; failure?: FailureKind; sta
 type FavoritesLiveValue = {
   boards: Record<string, FavoriteBoard>;
   refreshFailure: FailureKind | null;
+  refreshing: boolean;
   /** Last moment all favourite boards were loaded successfully. */
   updatedAt: number | null;
   /** Reload all favourite boards. Without force it is skipped when a reload started less than 15 s ago. */
@@ -55,6 +56,7 @@ export function FavoritesLiveProvider({ children }: { children: React.ReactNode 
   const boardsRef = useRef(boards);
   boardsRef.current = boards;
   const [refreshFailure, setRefreshFailure] = useState<FailureKind | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   const inFlight = useRef(false);
   const loadAgain = useRef(false);
@@ -81,6 +83,7 @@ export function FavoritesLiveProvider({ children }: { children: React.ReactNode 
     if (inFlight.current) { if (force) loadAgain.current = true; return; }
     if (!force && Date.now() - lastStart.current < MIN_REFRESH_GAP_MS) return;
     inFlight.current = true;
+    setRefreshing(true);
     try {
       do {
         loadAgain.current = false;
@@ -132,14 +135,15 @@ export function FavoritesLiveProvider({ children }: { children: React.ReactNode 
       } while (loadAgain.current);
     } finally {
       inFlight.current = false;
+      setRefreshing(false);
     }
   }, []);
 
   // Load when the set of favourite stops changes (also once favourites are read at startup).
   useEffect(() => { void refresh(true); }, [stopsKey, refresh]);
 
-  const value = useMemo(() => ({ boards, refreshFailure, updatedAt, refresh, stopsKey }),
-    [boards, refreshFailure, updatedAt, refresh, stopsKey]);
+  const value = useMemo(() => ({ boards, refreshFailure, refreshing, updatedAt, refresh, stopsKey }),
+    [boards, refreshFailure, refreshing, updatedAt, refresh, stopsKey]);
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 

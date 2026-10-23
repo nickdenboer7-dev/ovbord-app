@@ -20,7 +20,7 @@ const read = (file) => fs.readFileSync(path.join(__dirname, "..", file), "utf8")
 test("Start has a white header with the green brand and a built-in search field", () => {
   const home = read("components/FlowHome.tsx");
   assert.match(home, /styles\.top, \{ paddingTop: Math\.max\(insets\.top, 24\) \+ 10, backgroundColor: colors\.surface, borderBottomColor: colors\.border \}/);
-  assert.match(home, /<Text style=\{\[styles\.brand, \{ color: colors\.accentText \}\]\} accessibilityRole="header" maxFontSizeMultiplier=\{1\.2\}>OVbord<\/Text>/);
+  assert.match(home, /<Text style=\{\[styles\.brand, \{ color: colors\.heading \}\]\} accessibilityRole="header" maxFontSizeMultiplier=\{1\.2\}>OVbord<\/Text>/);
   // The field is always in view; a tap opens the search, "Sluiten" closes it.
   assert.match(home, /<Pressable onPress=\{openSearch\} accessibilityRole="button" accessibilityLabel="Zoek een halte, station of rit"/);
   assert.match(home, /<Pressable onPress=\{closeSearch\} accessibilityRole="button" accessibilityLabel="Zoeken sluiten"/);

@@ -1,5 +1,6 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { useApp } from "../context/AppProvider";
 import { getVervoerderStyle, inferCarrierFromLine } from "../constants/vervoerders";
 import { compactTrainLineLabel } from "../lib/trainLineLabel";
 import { modeBadgeColors } from "../lib/lineColors";
@@ -8,9 +9,10 @@ import type { Mode } from "../types/api";
 
 /** tone "mode": a colour per kind of transport (metro red, tram and bus blue); give the mode.
  * tone "accent": OVbord green, for the white trip header (V5.7). */
-type Props = { line: string; carrier?: string; compact?: boolean; tone?: "carrier" | "flow" | "mode" | "accent"; mode?: Mode };
+type Props = { line: string; carrier?: string; compact?: boolean; tone?: "carrier" | "flow" | "mode" | "accent" | "plain"; mode?: Mode };
 
 export function LijnBadge({ line, carrier, compact = false, tone = "carrier", mode }: Props) {
+  const { colors } = useApp();
   const resolvedCarrier = inferCarrierFromLine(line, carrier);
   const palette = getVervoerderStyle(resolvedCarrier, line);
   const badgeLine = compactTrainLineLabel(line, resolvedCarrier);
@@ -21,14 +23,16 @@ export function LijnBadge({ line, carrier, compact = false, tone = "carrier", mo
       style={[
         styles.badge,
         {
-          backgroundColor: byMode ? byMode.bg : tone === "flow" ? "#1767D2" : tone === "accent" ? accentGreen : palette.bg,
+          backgroundColor: tone === "plain" ? colors.surface : byMode ? byMode.bg : tone === "flow" ? "#1767D2" : tone === "accent" ? accentGreen : palette.bg,
+          borderWidth: tone === "plain" ? StyleSheet.hairlineWidth : 0,
+          borderColor: colors.border,
           minHeight: compact ? 27 : 32,
           paddingHorizontal: compact ? 8 : 10
         }
       ]}
     >
       <Text
-        style={[styles.text, { color: byMode ? byMode.text : tone === "flow" || tone === "accent" ? "#FFFFFF" : palette.text, fontSize: compact ? 12.5 : 13.5 }]}
+        style={[styles.text, { color: tone === "plain" ? colors.text : byMode ? byMode.text : tone === "flow" || tone === "accent" ? "#FFFFFF" : palette.text, fontSize: compact ? 12.5 : 13.5 }]}
         numberOfLines={1}
         // Badges sit in fixed rows next to times: grow with the system font, but not without limit.
         maxFontSizeMultiplier={1.3}
