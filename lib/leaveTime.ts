@@ -1,6 +1,7 @@
 import type { DepartureItem } from "../types/api";
 import { departureTimeRemainingMs } from "./boardSmartness";
 import { distanceMeters } from "./boardingMatch";
+export const MAX_WALK_DISTANCE_METERS = 2000;
 import { departurePresentation } from "./departurePresentation";
 
 /** 4.5 km/h = 75 m/min, with a 1.3 detour factor for streets. */
@@ -10,7 +11,7 @@ export const WALK_DETOUR_FACTOR = 1.3;
 export function walkMinutesTo(from: { lat?: number; lon?: number } | null, to: { lat?: number; lon?: number }): number | null {
   if (!from) return null;
   const meters = distanceMeters(from, to);
-  if (!Number.isFinite(meters)) return null;
+  if (!Number.isFinite(meters) || meters > MAX_WALK_DISTANCE_METERS) return null;
   return Math.ceil(meters * WALK_DETOUR_FACTOR / WALK_METERS_PER_MINUTE);
 }
 
@@ -20,8 +21,9 @@ export function walkingDepartureAdvice(item: DepartureItem, from: {lat:number;lo
   if (item.cancelled || item.departed || item.liveDataStale) return null;
   const walk=walkMinutesTo(from,stop), ms=departureTimeRemainingMs(item,nowMs);
   if(walk===null || ms===null || ms<0)return null;
-  const minutes=Math.ceil(ms/60000), tight=ms/60000-walk<3;
-  return {text:walk+" min lopen · vertrekt over "+minutes+" min",tight,label:tight?"Krap":"Haalbaar"};
+  const margin=ms/60000-walk;
+  const label=margin<0?"Niet haalbaar":margin<3?"Krap":"";
+  return {text:walk+" min lopen",tight:margin<3,label};
 }
 
 /**

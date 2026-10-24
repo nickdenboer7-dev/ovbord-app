@@ -64,10 +64,10 @@ const defaults=()=>{app={colors:{},resolvedScheme:'light',recentStops:[],favorit
 test('walking uses 1.3 detour, 4.5 km/h and the actual expected departure, with an exact three-minute safety boundary',()=>{
  const from={lat:53.19,lon:5.78},to={lat:53.192,lon:5.78};
  assert.equal(walkMinutesTo(from,to),Math.ceil(distanceMeters(from,to)*1.3/75));assert.equal(walkMinutesTo(from,to),4);
- assert.deepEqual(walkingDepartureAdvice(dep('a',8),from,to,now),{text:'4 min lopen · vertrekt over 8 min',tight:false,label:'Haalbaar'});
- assert.equal(walkingDepartureAdvice(dep('a',7),from,to,now).label,'Haalbaar');
+ assert.deepEqual(walkingDepartureAdvice(dep('a',8),from,to,now),{text:'4 min lopen',tight:false,label:''});
+ assert.equal(walkingDepartureAdvice(dep('a',7),from,to,now).label,'');
  assert.equal(walkingDepartureAdvice(dep('a',7),from,to,now+1).label,'Krap');
- assert.equal(walkingDepartureAdvice(dep('a',2,{plannedTime:'17:40'}),from,to,now).label,'Krap');
+ assert.equal(walkingDepartureAdvice(dep('a',2,{plannedTime:'17:40'}),from,to,now).label,'Niet haalbaar');
  for(const extra of [{cancelled:true},{departed:true},{liveDataStale:true}])assert.equal(walkingDepartureAdvice(dep('a',8,extra),from,to,now),null);
  assert.equal(walkingDepartureAdvice(dep('a',-1),from,to,now),null);assert.equal(walkingDepartureAdvice(dep('a',8),null,to,now),null);assert.equal(walkMinutesTo(from,{}),null);
 });
@@ -108,7 +108,7 @@ test('walking position never requests permission and drops denied, revoked, old 
  try{
  fix={coords:{latitude:53.19,longitude:5.78},fixAt:Date.now()};permission={granted:true};render();h.flush();await tick();assert.deepEqual(render(),{lat:53.19,lon:5.78});
  permission={granted:false};for(const fn of listeners)fn('active');await tick();assert.equal(render(),null);
- permission={granted:true};fix.fixAt=Date.now()-120001;for(const fn of listeners)fn('active');await tick();assert.equal(render(),null);
+ permission={granted:true};fix.fixAt=Date.now()-300001;for(const fn of listeners)fn('active');await tick();assert.equal(render(),null);
  fix.fixAt=Date.now();enabled=false;render();h.flush();await tick();assert.equal(render(),null);
  }finally{h.destroy();}
 });
@@ -173,3 +173,15 @@ test('a known platform never falls back to another same-name stop on a server fa
 });
 
 test.after(()=>{Module._load=originalLoad;if(oldTs)Module._extensions['.ts']=oldTs;else delete Module._extensions['.ts'];if(oldTsx)Module._extensions['.tsx']=oldTsx;else delete Module._extensions['.tsx'];});
+
+test('OTA 1.0.4: walking remains local, hides beyond 2 km, and has exact margin bands',()=>{
+ const from={lat:53.19,lon:5.78},close={lat:53.192,lon:5.78},far={lat:53.22,lon:5.78};
+ assert.equal(walkMinutesTo(from,far),null);
+ assert.equal(walkingDepartureAdvice(dep('far',5),from,far,now),null);
+ assert.equal(walkMinutesTo(from,close),4);
+ assert.deepEqual(walkingDepartureAdvice(dep('ok',7),from,close,now),{text:'4 min lopen',tight:false,label:''});
+ assert.deepEqual(walkingDepartureAdvice(dep('tight',6),from,close,now),{text:'4 min lopen',tight:true,label:'Krap'});
+ assert.deepEqual(walkingDepartureAdvice(dep('zero',4),from,close,now),{text:'4 min lopen',tight:true,label:'Krap'});
+ assert.deepEqual(walkingDepartureAdvice(dep('impossible',3),from,close,now),{text:'4 min lopen',tight:true,label:'Niet haalbaar'});
+ assert.equal(departureLineStatus(dep('live',8),now,{note:'4 min lopen'}).text,'Live · over 8 min · 4 min lopen');
+});

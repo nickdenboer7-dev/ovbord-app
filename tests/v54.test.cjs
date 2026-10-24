@@ -178,7 +178,7 @@ test("Start: one compact trip line and a search icon", () => {
   assert.match(home, /const \[searchOpen, setSearchOpen\] = useState\(false\);/);
   assert.doesNotMatch(home, /accessibilityRole="tablist"/);
   assert.doesNotMatch(home, /Snel openen/);
-  assert.match(home, /detail=\{advice\?\{\.\.\.advice,warn:advice\.tight\}:undefined\}/);
+  assert.match(home, /detail=\{advice\|\|undefined\}/);
   // The live time is shown with an icon next to the destination (DepartureLine), not as a green clock.
   assert.match(read("components/DepartureLine.tsx"), /statusIsLive \? <><Text style=\{\{ color: colors\.success \}\}>Live/);
 });
@@ -284,7 +284,7 @@ test("badges by kind of transport, tabs and search on the board", () => {
   assert.equal(modeBadgeColors(undefined).bg, "#1767D2");
   assert.match(read("components/DepartureLine.tsx"), /tone="plain"/);
   const board = read("components/FlowBoard.tsx");
-  assert.match(board, /<Pressable onPress=\{requestSearch\} accessibilityRole="search"/);
+  assert.match(board, /<Pressable onPress=\{requestSearch\} accessibilityRole="button" accessibilityLabel="Zoek halte, lijn of plaats"/);
   assert.match(read("context/FlowNavigation.tsx"), /setScreens\(\[\]\); setSearchRequest\(\(n\) => n \+ 1\);/);
   assert.match(read("components/FlowHome.tsx"), /if \(searchRequest > 0\) openSearch\(\);/);
   // No line chips any more; a chosen line shows as one removable filter.

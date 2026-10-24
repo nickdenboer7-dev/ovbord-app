@@ -7,6 +7,7 @@ import { BackHandler, StyleSheet, View } from "react-native";
 import { useFlowNavigation } from "../context/FlowNavigation";
 import { FlowBoard } from "./FlowBoard";
 import { StopDirectionPicker } from "./StopDirectionPicker";
+import { DepartureSkeleton } from "./DepartureSkeleton";
 
 /** Invisible earlier boards stay mounted. The FlatList offset and open journey survive back navigation. */
 export function FlowWorkspace() {
@@ -44,6 +45,7 @@ export function FlowWorkspace() {
           >
             {screen.choosing ? <StopDirectionPicker stop={screen.stop} onBack={goBack}
               onChoose={(stop,board,at,stale)=>chooseStop(screen.key,stop,board,at,stale)}/> : <FlowBoard
+              key={screen.stop.id}
               stop={screen.stop}
               initialBoard={screen.initialBoard}
               initialFetchedAt={screen.initialFetchedAt}
@@ -56,11 +58,12 @@ export function FlowWorkspace() {
         );
       })}
       {pendingStopName ? (
-        <View style={[styles.notice, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <ActivityIndicator size="small" color={colors.accentText} />
-          <Text style={[styles.noticeText, { color: colors.text }]} numberOfLines={2}>
-            {pendingStopName} laden…
-          </Text>
+        <View style={[styles.pendingScreen, { backgroundColor: colors.background }]}>
+          <View style={[styles.pendingHeader, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+            <Text style={[styles.pendingTitle, { color: colors.heading }]} numberOfLines={2}>{pendingStopName}</Text>
+            <Text style={[styles.noticeText, { color: colors.textSoft }]}>Vertrektijden laden…</Text>
+          </View>
+          <DepartureSkeleton />
         </View>
       ) : pendingStopError ? (
         <Pressable onPress={clearPendingError} accessibilityRole="button" accessibilityLabel={pendingStopError + ". Sluiten"} style={[styles.notice, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -78,5 +81,8 @@ const styles = StyleSheet.create({
   layer: { flex: 1 },
   hidden: { display: "none" },
   notice: { position: "absolute", bottom: 12, left: 12, right: 12, padding: 13, borderWidth: 1, borderRadius: 12, flexDirection: "row", alignItems: "center", gap: 10 },
-  noticeText: { flex: 1, fontSize: 12.5, fontWeight: "700" }
+  noticeText: { flex: 1, fontSize: 12.5, fontWeight: "700" },
+  pendingScreen: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, zIndex: 50 },
+  pendingHeader: { paddingTop: 58, paddingHorizontal: 18, paddingBottom: 18, borderBottomWidth: StyleSheet.hairlineWidth },
+  pendingTitle: { fontSize: 21, lineHeight: 27, fontWeight: "800", marginBottom: 6 }
 });

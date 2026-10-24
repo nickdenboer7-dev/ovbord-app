@@ -82,6 +82,7 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
   const [selectedDirection, setSelectedDirection] = useState<string | null>(null);
   const [directionsOpen, setDirectionsOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [noticesExpanded, setNoticesExpanded] = useState(false);
   const boardRequest = useRef(0);
   const listRef = useRef<FlatList<DepartureItem>>(null);
   const reloadBoardRef = useRef<() => Promise<void>>(async () => {});
@@ -94,6 +95,7 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
   const staleDisplay=Boolean(refreshFailure)||cachePending;
   const dataCurrent = timingCurrent && !staleDisplay;
   useEffect(() => { addRecentStop(stop); }, [stop.id]);
+  useEffect(() => { setNoticesExpanded(false); }, [stop.id]);
   useEffect(() => {
     gpsQualityCheckedAt.current = 0;
     setGpsQuality({});
@@ -318,7 +320,7 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
       <DepartureHeading title="Jouw lijnen" star />
       {pinned.map((item, index) => (
         <DepartureLine key={"pin:" + departureKey(item, index)} item={item} nowMs={nowMs} stale={staleDisplay}
-          detail={!staleDisplay ? (()=>{const advice=walkingDepartureAdvice(item,position,board?.stop||stop,nowMs);return advice?{...advice,warn:advice.tight}:undefined;})() : undefined}
+          detail={!staleDisplay ? walkingDepartureAdvice(item,position,board?.stop||stop,nowMs) || undefined : undefined}
           onPress={() => openTrip(item)} last={index === pinned.length - 1} />
       ))}
       <DepartureHeading title="Alle vertrekken" />
@@ -334,7 +336,7 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
             <Ionicons name="arrow-back" size={22} color={colors.text} />
           </Pressable>
           <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
-            <Text maxFontSizeMultiplier={1.2} style={[styles.title, { color: colors.heading, flex: undefined }]} numberOfLines={3} accessibilityRole="header">{board?.stop.name || stop.name}</Text>
+            <Text maxFontSizeMultiplier={1.2} style={[styles.title, { color: colors.heading, flex: undefined }]} numberOfLines={3} accessibilityRole="header">{stop.name}</Text>
             {fetchedAt ? <Text style={{ color: colors.textSoft, fontSize: 12 }}>Bijgewerkt om {new Date(fetchedAt).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}{refreshFailure ? " · laatst bekend" : ""}</Text> : null}
           </View>
           <Pressable onPress={() => toggleFavoriteStop(board?.stop || stop)} accessibilityRole="button"
@@ -342,6 +344,10 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
             accessibilityState={{ selected: isFavoriteStop(board?.stop.id || stop.id) }} style={styles.back}>
             <Ionicons name={isFavoriteStop(board?.stop.id || stop.id) ? "star" : "star-outline"} size={24}
               color={isFavoriteStop(board?.stop.id || stop.id) ? "#FFD86B" : colors.textSoft} />
+          </Pressable>
+          <Pressable onPress={requestSearch} accessibilityRole="button" accessibilityLabel="Zoek halte, lijn of plaats"
+            hitSlop={6} style={styles.back}>
+            <Ionicons name="search-outline" size={22} color={colors.text} />
           </Pressable>
           <MenuButton onPress={() => setMenuOpen(true)} color={colors.text} label="Meer opties voor deze halte" />
         </View>
@@ -369,15 +375,26 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
         </View>
       ) : null}
       {board && tab !== "disruptions" && disruptionCount > 0 ? (
-        // The leading notice and remaining count; details are under ⋮ > Storingen.
-        <Pressable onPress={() => selectTab("disruptions")} accessibilityRole="button"
-          accessibilityLabel={"Storing: " + disruptionSummary("", activeNotices).title + ". Meer informatie"}
-          style={[styles.alertLine, { backgroundColor: activeNotices.some((n) => n.severity === "warning") ? colors.warningSoft : colors.surfaceSoft }]}>
-          <Ionicons name={activeNotices.some((n) => n.severity === "warning") ? "warning-outline" : "information-circle-outline"}
-            size={18} color={activeNotices.some((n) => n.severity === "warning") ? colors.danger : colors.accentText} />
-          <Text style={[styles.alertLineText, { color: colors.text }]}>{disruptionSummary("", activeNotices).title}</Text>
-          <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
-        </Pressable>
+        <View style={{ backgroundColor: activeNotices.some((n) => n.severity === "warning") ? colors.warningSoft : colors.surfaceSoft }}>
+          <Pressable onPress={() => setNoticesExpanded(v => !v)} accessibilityRole="button"
+            accessibilityState={{ expanded: noticesExpanded }}
+            accessibilityLabel={disruptionSummary("", activeNotices).title + (noticesExpanded ? ", inklappen" : ", tik voor meer")}
+            style={styles.alertLine}>
+            <Ionicons name={activeNotices.some((n) => n.severity === "warning") ? "warning-outline" : "information-circle-outline"}
+              size={17} color={activeNotices.some((n) => n.severity === "warning") ? colors.danger : colors.accentText} />
+            <Text numberOfLines={1} style={[styles.alertLineText, { color: colors.text }]}>
+              {disruptionSummary("", activeNotices).title}{noticesExpanded ? "" : " · tik voor meer"}
+            </Text>
+            <Ionicons name={noticesExpanded ? "chevron-up" : "chevron-down"} size={16} color={colors.textMuted} />
+          </Pressable>
+          {noticesExpanded ? activeNotices.map((notice,index) =>
+            <View key={index} style={[styles.disruptionItem, { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.alertHeadline, { color: colors.text }]}>{notice.title}</Text>
+                {notice.description ? <Text style={[styles.alertDescription, { color: colors.textSoft }]}>{notice.description}</Text> : null}
+              </View>
+            </View>) : null}
+        </View>
       ) : null}
       {board && freshness.level !== "fresh" ? (
         <View style={[styles.dataFreshness, { borderBottomColor: colors.border,
@@ -513,7 +530,7 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
                   {afterMidnight ? <View style={[styles.midnightRow,{borderBottomColor:colors.border,backgroundColor:colors.surfaceAlt}]}><Text style={[styles.midnightText,{color:colors.text}]}>Na middernacht</Text></View> : null}
                   {/* Failed refreshes show last-known times rather than a live countdown. */}
                   <DepartureLine item={item} nowMs={nowMs} stale={staleDisplay} note={changedFrom}
-                    detail={!staleDisplay && tab==="departures" ? (()=>{const advice=walkingDepartureAdvice(item,position,board?.stop||stop,nowMs);return advice?{...advice,warn:advice.tight}:undefined;})() : undefined}
+                    detail={!staleDisplay && tab==="departures" ? walkingDepartureAdvice(item,position,board?.stop||stop,nowMs) || undefined : undefined}
                     onPress={item.ritId ? () => openTrip(item) : undefined} />
                   {platformChange ? (
                     <View style={[styles.platformNotice, {
@@ -539,12 +556,6 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
           />
         </>
       )}
-      {/* Search sits at the bottom, within reach; it opens the search on Start. */}
-      <Pressable onPress={requestSearch} accessibilityRole="search" accessibilityLabel="Zoek halte, lijn of plaats"
-        style={[styles.searchBar, { backgroundColor: colors.surfaceSoft, borderColor: colors.border }]}>
-        <Ionicons name="search" size={19} color={colors.textSoft} />
-        <Text maxFontSizeMultiplier={1.2} style={[styles.searchText, { color: colors.textSoft }]} numberOfLines={1}>Zoek halte, lijn of plaats</Text>
-      </Pressable>
       {/* Last child: the menu lies above the list. */}
       <OverflowMenu open={menuOpen} onClose={() => setMenuOpen(false)} items={menuItems} title="Meer opties voor deze halte" />
     </View>

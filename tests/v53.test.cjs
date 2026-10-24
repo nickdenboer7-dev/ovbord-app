@@ -66,7 +66,7 @@ test("walking minutes from the own position", () => {
   assert.equal(leave.walkMinutesTo(null, stop), null);
   assert.equal(leave.walkMinutesTo({ lat: 52.3603, lon: 4.9000 }, stop), 1);
   assert.equal(leave.walkMinutesTo({ lat: 52.3645, lon: 4.9000 }, stop), 9);
-  assert.equal(leave.walkMinutesTo({ lat: 52.40, lon: 4.9 }, stop), 78);
+  assert.equal(leave.walkMinutesTo({ lat: 52.40, lon: 4.9 }, stop), null);
   assert.equal(leave.walkMinutesTo({ lat: 52.3645, lon: 4.9 }, {}), null);
 });
 

@@ -26,7 +26,9 @@ export function DepartureLine({ item, nowMs, onPress, stale = false, tooTight = 
   const { colors } = useApp();
   const large = largeText(useWindowDimensions().fontScale);
   const departed = item.departed === true && item.cancelled !== true;
-  const status = departureLineStatus(item, nowMs, { stale, tooTight, note });
+  const walkText = detail?.text || "";
+  const status = departureLineStatus(item, nowMs, { stale, tooTight: false,
+    note: [note,walkText].filter(Boolean).join(" · ") });
   const { clock } = departurePresentation(item, nowMs);
   const delay = departureClockDelay(item);
   const opensTrip = Boolean(onPress) && Boolean(item.ritId) && !departed;
@@ -59,9 +61,8 @@ export function DepartureLine({ item, nowMs, onPress, stale = false, tooTight = 
           maxFontSizeMultiplier={wordFitScale(status.text, bodyWidth, 12.5, 1.3)}
           numberOfLines={large ? 3 : 2}>
           {statusIsLive ? <><Text style={{ color: colors.success }}>Live</Text>{statusTail}</> : statusTail}
+          {visibleDetail?.label ? <Text style={{ color: visibleDetail.label==="Krap" ? colors.delayWarning : colors.textMuted }}>{" · "+visibleDetail.label}</Text> : null}
         </Text>}
-        {visibleDetail ? <Text style={[styles.sub,{color:colors.textSoft}]} maxFontSizeMultiplier={1.3}>{visibleDetail.text}</Text> : null}
-        {visibleDetail?.label ? <Text style={[styles.sub,{color:visibleDetail.warn?colors.delayWarning:colors.accentText}]} maxFontSizeMultiplier={1.3}>{visibleDetail.label} · schatting</Text> : null}
       </View>
       <View style={styles.clockColumn}>
         <Text style={[styles.right, list && styles.rightList, large && styles.clockLarge, { color: rightColor },

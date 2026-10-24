@@ -438,7 +438,7 @@ export function FlowHome() {
                       const advice=!stale&&!offline?walkingDepartureAdvice(item,walkingPosition,sourceStop,nowMs):null;
                       return <DepartureLine key={sourceStop.id+":"+item.id+":"+index} item={item} nowMs={nowMs} stale={stale||offline}
                         last={index===personalRows.length-1} note={shortStopName(sourceStop.name)}
-                        detail={advice?{...advice,warn:advice.tight}:undefined} onPress={()=>openMyDeparture(sourceStop,item)}/>;
+                        detail={advice||undefined} onPress={()=>openMyDeparture(sourceStop,item)}/>;
                     })}
                     {!personalRows.length?<Text style={{color:colors.textSoft,fontSize:13,padding:16,lineHeight:19}}>
                       {showMine?"Nog geen komende vertrekken geladen. Open een van jouw haltes.":"Bewaar een halte of lijn met de ster. De eerstvolgende vertrekken staan hier."}

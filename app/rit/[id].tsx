@@ -34,6 +34,7 @@ import type { MenuItem } from "../../components/OverflowMenu";
 import { rideSegmentRange } from "../../lib/ritMapRoute";
 import type { SavedAlighting } from "../../lib/alighting";
 import { ritParamsForDeparture } from "../../lib/ritRoute";
+import { JourneySkeleton } from "../../components/JourneySkeleton";
 import { RitTransfers } from "../../components/RitTransfers";
 import { mapGpsLabel, panMapCenter, routeFollowZoom, routeMapCenter, routeOverviewZoom } from "../../lib/ritMapViewport";
 import type { MapViewMode } from "../../lib/ritMapViewport";
@@ -819,7 +820,7 @@ export default function RitScreen() {
         <Text style={styles.chooseCancel}>Annuleren</Text>
       </Pressable>
     </View> : null}
-    {loading && !journey ? <View style={styles.center}><ActivityIndicator color={c.green}/><Text style={styles.message}>Ritverloop ophalen…</Text></View> : !journey ? <View style={styles.center}><Text style={styles.message}>{error || (otherTrip ? otherTripMessage(otherTrip, { line: expectedLine, destination: fallbackDestination }) : ritUnavailableMessage(failure))}</Text>{otherTrip ? <Pressable onPress={() => router.replace({ pathname: "/rit/[id]", params: { id: tripId, line: otherTrip.line, destination: otherTrip.destination, carrier: otherTrip.carrier || "" } })} accessibilityRole="button" accessibilityLabel="Huidige rit van deze bus bekijken" style={styles.otherTripLink}><Text style={styles.otherTripLinkText}>Huidige rit van deze bus bekijken</Text></Pressable> : null}<Pressable onPress={() => setRetry((x) => x + 1)} accessibilityRole="button" accessibilityLabel="Ritverloop opnieuw laden" style={styles.retry}><Ionicons name="refresh" color="#FFFFFF" size={17}/><Text style={styles.retryText}>Opnieuw proberen</Text></Pressable>{failure === "offline" && !error ? <Text style={styles.offlineHint}>OVbord probeert het automatisch opnieuw zodra er verbinding is.</Text> : null}</View> :
+    {loading && !journey ? <JourneySkeleton /> : !journey ? <View style={styles.center}><Text style={styles.message}>{error || (otherTrip ? otherTripMessage(otherTrip, { line: expectedLine, destination: fallbackDestination }) : ritUnavailableMessage(failure))}</Text>{otherTrip ? <Pressable onPress={() => router.replace({ pathname: "/rit/[id]", params: { id: tripId, line: otherTrip.line, destination: otherTrip.destination, carrier: otherTrip.carrier || "" } })} accessibilityRole="button" accessibilityLabel="Huidige rit van deze bus bekijken" style={styles.otherTripLink}><Text style={styles.otherTripLinkText}>Huidige rit van deze bus bekijken</Text></Pressable> : null}<Pressable onPress={() => setRetry((x) => x + 1)} accessibilityRole="button" accessibilityLabel="Ritverloop opnieuw laden" style={styles.retry}><Ionicons name="refresh" color="#FFFFFF" size={17}/><Text style={styles.retryText}>Opnieuw proberen</Text></Pressable>{failure === "offline" && !error ? <Text style={styles.offlineHint}>OVbord probeert het automatisch opnieuw zodra er verbinding is.</Text> : null}</View> :
     <ScrollView ref={scrollRef} style={styles.scroll}
       contentContainerStyle={[styles.content, { paddingBottom: Math.max(24, insets.bottom + 12) }]}
       showsVerticalScrollIndicator={false}

@@ -13,7 +13,7 @@ export function useWalkingPosition(enabled = true): { lat: number; lon: number }
         const permission=await Location.getForegroundPermissionsAsync();
         await hydrateNearbyCache();
         const fix=peekLastLocation();
-        const usable=enabled && permission.granted && fix && Date.now()-fix.fixAt>=0 && Date.now()-fix.fixAt<=120000;
+        const usable=enabled && permission.granted && fix && Date.now()-fix.fixAt>=0 && Date.now()-fix.fixAt<300000;
         if(active)setCoords(usable ? {lat:fix.coords.latitude,lon:fix.coords.longitude}:null);
       }catch{if(active)setCoords(null);}
     };
