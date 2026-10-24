@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Updates from "expo-updates";
 import React from "react";
 import { useRouter } from "expo-router";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import appConfig from "../../app.json";
 import { ThemeMode } from "../../constants/colors";
@@ -111,6 +111,10 @@ export default function MeerScreen() {
               </View>
             ))}
           </View>
+          <Pressable accessibilityRole="link" accessibilityLabel="Uitleg over OVbord" onPress={() => Linking.openURL("https://ovspot.nl/uitleg#ovbord").catch(() => Alert.alert("Uitleg openen lukt niet", "Open ovspot.nl/uitleg in je browser."))} style={{ flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: 8, minHeight: 44, paddingHorizontal: 2 }}>
+            <Ionicons name="help-circle-outline" size={20} color={colors.accentText} />
+            <Text style={{ color: colors.accentText, fontSize: 15, fontWeight: "700" }}>Uitleg</Text>
+          </Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel="Feedback geven" onPress={() => router.push("/feedback")} style={{ flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: 6, paddingVertical: 7, paddingHorizontal: 2 }}>
             <Ionicons name="chatbubble-outline" size={15} color={colors.textSoft} />
             <Text style={{ color: colors.textSoft, fontSize: 13 }}>Feedback geven</Text>
