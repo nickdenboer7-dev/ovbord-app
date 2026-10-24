@@ -1,10 +1,52 @@
 import type { DepartureItem, RitData, StopSummary, JourneyStop } from "../types/api";
-import { departureTimeRemainingMs, DEPARTURE_GRACE_MS } from "./boardSmartness";
+import { boardDepartureIdentity, departureTimeRemainingMs, keepBoardDeparture, DEPARTURE_GRACE_MS } from "./boardSmartness";
 
 /** Keep a confirmed departure on the screen briefly, then remove it. */
 export const DEPARTED_VISIBLE_MS = 60 * 1000;
 export const DEPARTURE_CHECK_COOLDOWN_MS = 45 * 1000;
 export const MAX_DEPARTURE_CHECKS = 2;
+
+export type DepartedNotices = Record<string, { item: DepartureItem; confirmedAt: number }>;
+
+/** Journey IDs can be vehicle IDs reused later: key the scheduled departure, never its changing ETA. */
+export function departureNoticeIdentity(item: DepartureItem): string {
+  return [boardDepartureIdentity(item), item.serviceDate || item.effectiveAt?.slice(0, 10) || "", item.plannedTime].join("|");
+}
+
+/** Keep just-fallen-out live rows eligible for GPS verification; disappearance is not proof. */
+export function recentDepartureCandidates(previous: readonly DepartureItem[], current: readonly DepartureItem[], nowMs: number): DepartureItem[] {
+  const rows = new Map(previous.map(item => [departureNoticeIdentity(item), item]));
+  for (const item of current) rows.set(departureNoticeIdentity(item), item);
+  return [...rows.values()].filter(item => shouldVerifyDeparture(item, nowMs));
+}
+
+/** Save the confirmed row as well as its first observation time. Repeated feeds never extend it. */
+export function confirmDepartedNotices(previous: DepartedNotices, items: readonly DepartureItem[], nowMs: number): DepartedNotices {
+  let next = previous;
+  for (const item of items) {
+    const key = departureNoticeIdentity(item), old = next[key];
+    // A cancellation supersedes a previous confirmation, including when it later leaves the feed.
+    if (item.cancelled === true ? !old : item.departed !== true || old) continue;
+    if (old?.item === item) continue;
+    if (next === previous) next = { ...previous };
+    next[key] = { item, confirmedAt: old?.confirmedAt ?? nowMs };
+  }
+  return next;
+}
+
+/** A confirmed departure stays for one minute even if the next board snapshot omits it. */
+export function visibleBoardDepartures(current: readonly DepartureItem[], notices: DepartedNotices, nowMs: number): DepartureItem[] {
+  const present = new Set(current.map(departureNoticeIdentity));
+  const retained = Object.values(notices).filter(notice => !present.has(departureNoticeIdentity(notice.item)) &&
+    notice.item.cancelled !== true && departedNoticeVisible(notice.confirmedAt, nowMs)).map(notice => notice.item);
+  return [...current, ...retained].filter(item => {
+    if (item.cancelled === true) return keepBoardDeparture(item, nowMs);
+    const notice = notices[departureNoticeIdentity(item)];
+    return notice ? notice.item.cancelled !== true && departedNoticeVisible(notice.confirmedAt, nowMs)
+      : keepBoardDeparture(item, nowMs);
+  }).map(item => item.cancelled !== true && notices[departureNoticeIdentity(item)]
+    ? { ...item, departed: true } : item);
+}
 
 export function departedNoticeVisible(confirmedAt: number | undefined, nowMs: number): boolean {
   return typeof confirmedAt === "number" && Number.isFinite(confirmedAt) &&
@@ -14,7 +56,8 @@ export function departedNoticeVisible(confirmedAt: number | undefined, nowMs: nu
 /** Only check near the scheduled departure. An early login is never a departure event. */
 export function shouldVerifyDeparture(item: DepartureItem, nowMs: number): boolean {
   if (!item.ritId || item.cancelled === true || item.departed === true ||
-      item.isLive !== true || (item.mode !== "bus" && item.mode !== "tram")) return false;
+      item.isLive !== true || item.liveDataStale === true ||
+      (item.mode !== "bus" && item.mode !== "tram")) return false;
   const until = departureTimeRemainingMs(item, nowMs);
   return until !== null && until <= 60_000 && until >= -DEPARTURE_GRACE_MS;
 }
@@ -35,7 +78,7 @@ function distanceMeters(a: Pick<StopSummary, "lat" | "lon">, b: Pick<JourneyStop
 
 /** A passed stop alone can be estimated. Demand fresh live GPS and matching boarding stop. */
 export function journeyConfirmsDeparture(journey: RitData, boardStop: StopSummary): boolean {
-  if (journey.live !== true || journey.estimatedPosition === true ||
+  if (journey.cancelled === true || journey.live !== true || journey.estimatedPosition === true ||
       !journey.vehicle || !Number.isFinite(journey.gpsAgeSeconds) ||
       journey.gpsAgeSeconds! < 0 || journey.gpsAgeSeconds! > 60) return false;
   return journey.stops.some((stop, i) => {

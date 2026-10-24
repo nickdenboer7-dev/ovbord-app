@@ -40,6 +40,8 @@ export interface StopSummary {
 export interface DepartureItem {
   id: string;
   ritId?: string;
+  /** Service day supplied by the API, to distinguish repeated vehicle workings. */
+  serviceDate?: string;
   line: string;
   carrier?: string;
   destination: string;

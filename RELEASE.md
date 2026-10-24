@@ -30,3 +30,12 @@ and remove after verification. It does not make a second build.
 
 Countdowns: up to 60 minutes in minutes, 61–180 in hours/minutes, above 180 only the
 live/planned status. Arrivals are shown only when the API supplies arrivals.
+
+Preview OTA: confirmed bus/tram departures keep their clock, line, destination and
+observed delay with an explicit blue `Vertrokken` label for one minute. A successful
+board refresh may omit the row without removing that notice early. Recent missing
+live rows can still be verified against fresh GPS and passed-stop progress; neither
+the timetable nor disappearance alone confirms departure. Cancellation wins, stale
+or estimated GPS is rejected, and repeated feed entries never extend the notice.
+The existing calm Start list, nearby line counts, updated-at clock and 180-minute
+countdown remain in place. No native dependencies or runtime changes are required.

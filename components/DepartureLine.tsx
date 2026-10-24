@@ -32,18 +32,19 @@ export function DepartureLine({ item, nowMs, onPress, stale = false, tooTight = 
   const opensTrip = Boolean(onPress) && Boolean(item.ritId) && !departed;
   const list = size === "list";
   const [bodyWidth, setBodyWidth] = useState<number>();
-  const statusTail = status.text.startsWith("Live · ") ? status.text.slice(4) : status.text;
-  const statusIsLive = status.text.startsWith("Live · ");
-  const right = item.cancelled === true ? "Rijdt niet" : departed ? "Vertrokken" : clock;
-  const rightColor = item.cancelled === true ? colors.danger : departed ? colors.textMuted : colors.text;
-  const extra = [delay?.text, detail?.text].filter(Boolean).join(" · ");
+  const statusIsLive = status.tone === "live";
+  const statusTail = statusIsLive ? status.text.slice(4) : status.text;
+  const right = item.cancelled === true ? "Rijdt niet" : clock;
+  const rightColor = item.cancelled === true ? colors.danger : departed ? colors.textSoft : colors.text;
+  const visibleDetail = departed ? undefined : detail;
+  const extra = [delay?.text, visibleDetail?.text].filter(Boolean).join(" · ");
   return (
     <Pressable onPress={onPress} disabled={!onPress || departed}
       accessibilityRole={onPress && !departed ? "button" : undefined}
       accessibilityLabel={departureLineLabel(item, nowMs, status, opensTrip)}
       style={({ pressed }) => [styles.row, list ? styles.rowList : styles.rowBoard,
         large && styles.rowLarge, !last && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-        (tooTight || departed) && styles.dim, pressed && { backgroundColor: colors.surfaceAlt }]}>
+        tooTight && !departed && styles.dim, pressed && { backgroundColor: colors.surfaceAlt }]}>
       <View style={styles.badge}>
         <LijnBadge line={item.line} carrier={item.carrier || carrier} tone="plain" compact={list} />
       </View>
@@ -52,18 +53,22 @@ export function DepartureLine({ item, nowMs, onPress, stale = false, tooTight = 
           maxFontSizeMultiplier={wordFitScale(item.destination, bodyWidth, list ? 14.5 : 16, 1.5)} numberOfLines={2}>
           {item.destination}
         </Text>
-        <Text style={[styles.sub, { color: colors.textSoft }]}
+        {departed ? <View style={styles.departedStatus}>
+          <Text style={[styles.departedLabel, { backgroundColor: colors.heading, color: colors.surface }]}
+            maxFontSizeMultiplier={1.3}>Vertrokken</Text>
+          {delay ? <Text style={[styles.sub, { color: delay.late ? colors.danger : colors.accentText }]}>{delay.text}</Text> : null}
+        </View> : <Text style={[styles.sub, { color: colors.textSoft }]}
           maxFontSizeMultiplier={wordFitScale(status.text + extra, bodyWidth, 12.5, 1.3)}
           numberOfLines={large ? 3 : 2}>
           {statusIsLive ? <><Text style={{ color: colors.success }}>Live</Text>{statusTail}</> : statusTail}
           {extra ? " · " : ""}
           {delay ? <Text style={{ color: delay.late ? colors.danger : colors.success }}>{delay.text}</Text> : null}
-          {delay && detail ? " · " : null}
-          {detail ? <Text style={{ color: detail.warn ? colors.danger : colors.textSoft }}>{detail.text}</Text> : null}
-        </Text>
+          {delay && visibleDetail ? " · " : null}
+          {visibleDetail ? <Text style={{ color: visibleDetail.warn ? colors.danger : colors.textSoft }}>{visibleDetail.text}</Text> : null}
+        </Text>}
       </View>
       <Text style={[styles.right, list && styles.rightList, { color: rightColor },
-        (item.cancelled === true || departed) && styles.rightWord]} maxFontSizeMultiplier={1.3}
+        item.cancelled === true && styles.rightWord]} maxFontSizeMultiplier={1.3}
         numberOfLines={1}>{right}</Text>
     </Pressable>
   );
@@ -87,6 +92,8 @@ const styles = StyleSheet.create({
   destination: { fontSize: 16, lineHeight: 21, fontWeight: "600" },
   destinationList: { fontSize: 14.5, lineHeight: 19 },
   sub: { fontSize: 12.5, lineHeight: 17 },
+  departedStatus: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6 },
+  departedLabel: { fontSize: 11.5, lineHeight: 17, fontWeight: "700", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, overflow: "hidden" },
   right: { fontSize: 20, fontWeight: "700", fontVariant: ["tabular-nums"], textAlign: "right", minWidth: 62 },
   rightList: { fontSize: 17 },
   rightWord: { fontSize: 13, fontWeight: "900" },

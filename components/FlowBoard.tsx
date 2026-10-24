@@ -15,8 +15,9 @@ import { useSmartRefresh } from "../lib/useSmartRefresh";
 import { departureKey } from "../lib/flowRitQuality";
 import { hasAvailableArrivals } from "../lib/arrivalAvailability";
 import { isNextServiceDay } from "../lib/format";
-import { boardDepartureIdentity, departureTimeChangeLabel, keepBoardDeparture, refreshDepartureTimeChanges, sortBoardDepartures } from "../lib/boardSmartness";
-import { departedNoticeVisible, shouldVerifyDeparture, journeyConfirmsDeparture, DEPARTURE_CHECK_COOLDOWN_MS, MAX_DEPARTURE_CHECKS } from "../lib/departedNotice";
+import { boardDepartureIdentity, departureTimeChangeLabel, refreshDepartureTimeChanges, sortBoardDepartures } from "../lib/boardSmartness";
+import { departureNoticeIdentity, confirmDepartedNotices, recentDepartureCandidates, visibleBoardDepartures, journeyConfirmsDeparture, DEPARTURE_CHECK_COOLDOWN_MS, MAX_DEPARTURE_CHECKS } from "../lib/departedNotice";
+import type { DepartedNotices } from "../lib/departedNotice";
 import { feedFreshness, platformChangeFor, refreshPlatformChanges } from "../lib/haltebordV4";
 import { boardLineFilterKey, matchesBoardLineFilter } from "../lib/boardLineFilters";
 import { boardDirectionChoices, matchesBoardDirection } from "../lib/boardDirectionFilters";
@@ -56,7 +57,8 @@ export function FlowBoard({ stop, initialBoard, initialLine, onBack, visible = t
   const previousBoard = useRef<HalteBoardData | null>(initialBoard || null);
   const [timeChanges, setTimeChanges] = useState<DepartureTimeChanges>({});
   const [platformChanges, setPlatformChanges] = useState<PlatformChanges>({});
-  const [departedNoticeAt, setDepartedNoticeAt] = useState<Record<string, number>>({});
+  const [departedNotices, setDepartedNotices] = useState<DepartedNotices>({});
+  const [recentDepartures, setRecentDepartures] = useState<DepartureItem[]>([]);
   const departedCheckedAt = useRef<Record<string, number>>({});
   const [gpsQuality, setGpsQuality] = useState<Record<string, ReliabilityInfo>>({});
   const gpsQualityCheckedAt = useRef(0);
@@ -84,7 +86,8 @@ export function FlowBoard({ stop, initialBoard, initialLine, onBack, visible = t
     previousBoard.current = initialBoard || null;
     setTimeChanges({});
     setPlatformChanges({});
-    setDepartedNoticeAt({});
+    setDepartedNotices({});
+    setRecentDepartures([]);
     departedCheckedAt.current = {};
   }, [stop.id]);
   useEffect(() => {
@@ -110,50 +113,42 @@ export function FlowBoard({ stop, initialBoard, initialLine, onBack, visible = t
     if (!board || !visible || !dataCurrent) return;
     let active = true;
     const checkedNow = Date.now();
-    const fromFeed = board.departures.filter(item =>
-      item.departed === true && item.cancelled !== true &&
-      departedNoticeAt[boardDepartureIdentity(item)] === undefined
-    );
-    if (fromFeed.length) {
-      setDepartedNoticeAt(previous => {
-        const next = { ...previous };
-        for (const item of fromFeed) {
-          const key = boardDepartureIdentity(item);
-          if (next[key] === undefined) next[key] = checkedNow;
-        }
-        return next;
-      });
-    }
-    const candidates = board.departures.filter(item => {
-      const key = boardDepartureIdentity(item);
-      return departedNoticeAt[key] === undefined && shouldVerifyDeparture(item, checkedNow) &&
+    const fromFeed = confirmDepartedNotices(departedNotices, board.departures, checkedNow);
+    if (fromFeed !== departedNotices) { setDepartedNotices(fromFeed); setNowMs(checkedNow); return; }
+    const candidates = recentDepartureCandidates(recentDepartures, board.departures, checkedNow).filter(item => {
+      const key = departureNoticeIdentity(item);
+      return departedNotices[key] === undefined &&
         (!departedCheckedAt.current[key] ||
           checkedNow - departedCheckedAt.current[key] >= DEPARTURE_CHECK_COOLDOWN_MS);
     }).slice(0, MAX_DEPARTURE_CHECKS);
-    for (const item of candidates) {
-      const key = boardDepartureIdentity(item);
-      departedCheckedAt.current[key] = checkedNow;
-      void getRit(item.ritId!).then(rit => {
-        if (!active || !journeyConfirmsDeparture(rit, board.stop)) return;
-        setDepartedNoticeAt(previous =>
-          previous[key] !== undefined ? previous : { ...previous, [key]: Date.now() }
-        );
-      }).catch(() => { /* Keep the ordinary departure display when confirmation is unavailable. */ });
-    }
-    return () => { active = false; };
-  }, [board, visible, stop.id, nowMs, departedNoticeAt, dataCurrent]);
+    let completed = false;
+    for (const item of candidates) departedCheckedAt.current[departureNoticeIdentity(item)] = checkedNow;
+    // Apply the small batch together so the first confirmation does not cancel the second check.
+    if (candidates.length) void Promise.all(candidates.map(async (item): Promise<DepartureItem | null> => {
+      try {
+        const rit = await getRit(item.ritId!);
+        return journeyConfirmsDeparture(rit, board.stop) ? { ...item, departed: true } : null;
+      } catch { return null; } // Missing confirmation leaves the ordinary departure display intact.
+    })).then(results => {
+      completed = true;
+      if (active) {
+        const confirmedAt = Date.now();
+        setDepartedNotices(previous => confirmDepartedNotices(previous,
+          results.filter((item): item is DepartureItem => item !== null), confirmedAt));
+        setNowMs(confirmedAt);
+      }
+    });
+    return () => {
+      active = false;
+      if (!completed) for (const item of candidates) {
+        const key = departureNoticeIdentity(item);
+        if (departedCheckedAt.current[key] === checkedNow) delete departedCheckedAt.current[key];
+      }
+    };
+  }, [board, visible, stop.id, nowMs, departedNotices, recentDepartures, dataCurrent]);
 
-  const visibleDepartures = useMemo(() => (board?.departures || [])
-    .filter(item => {
-      const confirmedAt = departedNoticeAt[boardDepartureIdentity(item)];
-      return confirmedAt === undefined ? keepBoardDeparture(item, nowMs)
-        : departedNoticeVisible(confirmedAt, nowMs);
-    })
-    .map(item => {
-      const confirmedAt = departedNoticeAt[boardDepartureIdentity(item)];
-      return confirmedAt !== undefined && departedNoticeVisible(confirmedAt, nowMs)
-        ? { ...item, departed: true } : item;
-    }), [board, departedNoticeAt, nowMs]);
+  const visibleDepartures = useMemo(() => visibleBoardDepartures(board?.departures || [], departedNotices, nowMs),
+    [board, departedNotices, nowMs]);
 
   // A refreshed board may lose arrival data while the arrivals tab is open.
   useEffect(() => {
@@ -190,6 +185,7 @@ export function FlowBoard({ stop, initialBoard, initialLine, onBack, visible = t
         const receivedAt = Date.now();
         const before = previousBoard.current;
         const previousRows = before && before.stop.id === result.stop.id ? before.departures : null;
+        setRecentDepartures(previous => recentDepartureCandidates([...previous, ...(previousRows || [])], result.departures, receivedAt));
         setTimeChanges((existing) => refreshDepartureTimeChanges(previousRows, result.departures, existing, receivedAt));
         setPlatformChanges((existing) => refreshPlatformChanges(previousRows, result.departures, existing, receivedAt));
         previousBoard.current = result;

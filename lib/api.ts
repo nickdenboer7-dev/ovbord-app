@@ -165,6 +165,8 @@ export function normalizeDeparture(item: any): DepartureItem {
   return {
     id: str(first(item?.id, item?.trip_id, item?.rit_id, `${line}-${plannedRaw}-${item?.destination}`)),
     ritId: str(first(item?.rit_id, item?.journey_id, item?.trip_id, item?.gtfs_trip_id, item?.realtime_trip_id), "") || undefined,
+    ...(typeof item?.service_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(item.service_date)
+      ? { serviceDate: item.service_date } : {}),
     line,
     carrier: str(
       first(

@@ -37,9 +37,9 @@ export function departureLineStatus(item: DepartureItem, nowMs: number, options:
   return { tone, text: joined(label, countdown, platform, options.note) };
 }
 
-/** "+3 min" (late) or "−1 min" (early) under the time; nothing for cancelled or departed trips. */
+/** Keep the observed delay on recently departed trips too; cancelled trips have no ETA. */
 export function departureDelayLabel(item: DepartureItem): { text: string; late: boolean } | null {
-  if (item.cancelled === true || item.departed === true) return null;
+  if (item.cancelled === true) return null;
   const delay = item.delayMinutes;
   if (typeof delay !== "number" || !Number.isFinite(delay) || Math.abs(delay) < 1) return null;
   return delay > 0 ? { text: "+" + Math.round(delay) + " min", late: true } : { text: "−" + Math.round(Math.abs(delay)) + " min", late: false };
