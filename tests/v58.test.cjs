@@ -93,9 +93,10 @@ test("example: 14:10 +3 at phone time 14:08 shows a clock and countdown that agr
   assert.equal(line.departureRightText(item, now).text, "2 min");
 });
 
-test("long destinations wrap to two lines instead of being cut off early", () => {
-  // Previously only a large system font got a second line; now it always does.
-  assert.match(read("components/DepartureLine.tsx"), /numberOfLines=\{2\}>\s*\{item\.destination\}/);
+test("long destinations keep one primary row and their full accessible name", () => {
+  // User-approved shared layout: one primary row, with the unabridged destination spoken.
+  assert.match(read("components/DepartureLine.tsx"), /numberOfLines=\{1\} ellipsizeMode="tail">\s*\{item\.destination\}/);
+  assert.match(read("lib/departureLine.ts"), /"Lijn " \+ item\.line \+ " naar " \+ item\.destination/);
 });
 
 test("the stop board sorts its departures and lijnen feed by real expected time", () => {

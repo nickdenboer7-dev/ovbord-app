@@ -58,7 +58,7 @@ test('departed row keeps time, line, destination and delay with one explicit bad
   for (scheme of ['light', 'dark']) {
     const html = render({ ...row, departed: true }, { detail: { text: 'Nu vertrekken om de bus te halen' } });
     const text = html.replace(/<[^>]*>/g, '');
-    assert.match(text, /395Amsterdam SloterdijkVertrokken\+3 min17:14/);
+    assert.match(text, /17:14395Amsterdam SloterdijkVertrokken\+3 min/);
     assert.equal((text.match(/Vertrokken/g) || []).length, 1);
     assert.doesNotMatch(text, /Live|Gepland|over |Nu vertrekken/);
     assert.match(html, /disabled=""/);
@@ -78,4 +78,12 @@ test('live status without countdown still renders green Live; normal and cancell
   assert.match(cancelled, /Rijdt niet/);
   assert.doesNotMatch(cancelled, /Vertrokken|\+3 min/);
   assert.match(render({ ...row, isLive: false }).replace(/<[^>]*>/g, ''), /Gepland/);
+});
+
+test('primary row is clock then line then one-line destination, with status below it', () => {
+  const html=render({...row,destination:'Een zeer lange bestemming met meerdere woorden'});
+  const text=html.replace(/<[^>]*>/g,'');
+  assert.match(text,/17:14395Een zeer lange bestemming met meerdere woordenLive/);
+  assert.match(html,/flex-start/);
+  assert.match(html,/lineHeight.*32/);
 });

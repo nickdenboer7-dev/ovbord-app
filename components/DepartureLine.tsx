@@ -20,7 +20,7 @@ type Props = {
   last?: boolean;
 };
 
-/** Flat Concept C row: line, destination, departure clock; secondary live information. */
+/** Concept C: clock, line and destination share the first row; status sits below destination. */
 export function DepartureLine({ item, nowMs, onPress, stale = false, tooTight = false, carrier, detail, note,
   size = "board", last = false }: Props) {
   const { colors } = useApp();
@@ -34,7 +34,7 @@ export function DepartureLine({ item, nowMs, onPress, stale = false, tooTight = 
   const [bodyWidth, setBodyWidth] = useState<number>();
   const statusIsLive = status.tone === "live";
   const statusTail = statusIsLive ? status.text.slice(4) : status.text;
-  const right = item.cancelled === true ? "Rijdt niet" : clock;
+  const right = clock;
   const rightColor = item.cancelled === true ? colors.danger : departed ? colors.textSoft : colors.text;
   const visibleDetail = departed ? undefined : detail;
   const extra = [delay?.text, visibleDetail?.text].filter(Boolean).join(" · ");
@@ -45,12 +45,15 @@ export function DepartureLine({ item, nowMs, onPress, stale = false, tooTight = 
       style={({ pressed }) => [styles.row, list ? styles.rowList : styles.rowBoard,
         large && styles.rowLarge, !last && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
         tooTight && !departed && styles.dim, pressed && { backgroundColor: colors.surfaceAlt }]}>
+      <Text style={[styles.right, list && styles.rightList, large && styles.clockLarge, { color: rightColor },
+        item.cancelled === true && styles.cancelledClock]} maxFontSizeMultiplier={1.3}
+        numberOfLines={1}>{right}</Text>
       <View style={styles.badge}>
         <LijnBadge line={item.line} carrier={item.carrier || carrier} tone="plain" compact={list} />
       </View>
       <View style={styles.body} onLayout={large ? (event: LayoutChangeEvent) => setBodyWidth(Math.floor(event.nativeEvent.layout.width)) : undefined}>
         <Text style={[styles.destination, list && styles.destinationList, { color: colors.text }]}
-          maxFontSizeMultiplier={wordFitScale(item.destination, bodyWidth, list ? 14.5 : 16, 1.5)} numberOfLines={2}>
+          maxFontSizeMultiplier={wordFitScale(item.destination, bodyWidth, list ? 14.5 : 16, 1.5)} numberOfLines={1} ellipsizeMode="tail">
           {item.destination}
         </Text>
         {departed ? <View style={styles.departedStatus}>
@@ -67,9 +70,6 @@ export function DepartureLine({ item, nowMs, onPress, stale = false, tooTight = 
           {visibleDetail ? <Text style={{ color: visibleDetail.warn ? colors.danger : colors.textSoft }}>{visibleDetail.text}</Text> : null}
         </Text>}
       </View>
-      <Text style={[styles.right, list && styles.rightList, { color: rightColor },
-        item.cancelled === true && styles.rightWord]} maxFontSizeMultiplier={1.3}
-        numberOfLines={1}>{right}</Text>
     </Pressable>
   );
 }
@@ -82,21 +82,22 @@ export function DepartureHeading({ title, star = false }: { title: string; star?
   );
 }
 const styles = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 15 },
+  row: { flexDirection: "row", alignItems: "flex-start", gap: 10, paddingHorizontal: 15 },
   rowBoard: { minHeight: 66, paddingVertical: 10 },
   rowList: { minHeight: 54, paddingVertical: 8, paddingHorizontal: 0, gap: 10 },
   rowLarge: { gap: 8 },
   dim: { opacity: 0.55 },
-  badge: { alignSelf: "center", minWidth: 44, alignItems: "center" },
+  badge: { alignSelf: "flex-start", minWidth: 44, alignItems: "center" },
   body: { flex: 1, minWidth: 0, gap: 3 },
-  destination: { fontSize: 16, lineHeight: 21, fontWeight: "600" },
-  destinationList: { fontSize: 14.5, lineHeight: 19 },
+  destination: { fontSize: 16, lineHeight: 32, fontWeight: "600" },
+  destinationList: { fontSize: 14.5, lineHeight: 27 },
   sub: { fontSize: 12.5, lineHeight: 17 },
   departedStatus: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6 },
   departedLabel: { fontSize: 11.5, lineHeight: 17, fontWeight: "700", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, overflow: "hidden" },
-  right: { fontSize: 20, fontWeight: "700", fontVariant: ["tabular-nums"], textAlign: "right", minWidth: 62 },
-  rightList: { fontSize: 17 },
-  rightWord: { fontSize: 13, fontWeight: "900" },
+  right: { fontSize: 20, lineHeight: 32, fontWeight: "700", fontVariant: ["tabular-nums"], textAlign: "left", width: 62, flexShrink: 0 },
+  rightList: { fontSize: 17, lineHeight: 27, width: 55 },
+  clockLarge: { width: 78 },
+  cancelledClock: { textDecorationLine: "line-through" },
   heading: { flexDirection: "row", paddingHorizontal: 15, paddingVertical: 7 },
   headingText: { fontSize: 13, fontWeight: "800" }
 });

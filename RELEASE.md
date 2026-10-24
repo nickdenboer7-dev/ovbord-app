@@ -39,3 +39,9 @@ the timetable nor disappearance alone confirms departure. Cancellation wins, sta
 or estimated GPS is rejected, and repeated feed entries never extend the notice.
 The existing calm Start list, nearby line counts, updated-at clock and 180-minute
 countdown remain in place. No native dependencies or runtime changes are required.
+
+Shared six-point release: the app now puts clock, line badge and single-line
+destination on the same primary row, including narrow mobile screens. Status stays
+under the destination. Start shows metres below 1 km and counts the actual rendered
+nearby rows. The app has no browser-notification prompt or floating feedback button;
+feedback stays in Meer and the stop menu. Runtime and preview channel remain 1.0.4.

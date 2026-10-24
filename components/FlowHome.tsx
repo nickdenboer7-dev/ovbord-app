@@ -29,6 +29,7 @@ import { useSmartRefresh } from "../lib/useSmartRefresh";
 import { favoriteLineKey, pinnedDepartures } from "../lib/favoriteLines";
 import { favoriteStatusText } from "./FavoriteDepartures";
 import { DepartureLine } from "./DepartureLine";
+import { nearbyCountText, nearbyDistance } from "../lib/nearbyPresentation";
 import { activeTripLine, activeTripValid } from "../lib/activeTrip";
 import type { ActiveTrip } from "../lib/activeTrip";
 import { clearActiveTrip, loadActiveTrip } from "../lib/activeTripStore";
@@ -500,6 +501,7 @@ export function FlowHome() {
                     </Pressable>
                   ) : <Text style={[styles.count, { color: colors.textMuted }]}>{resultCount}</Text>}
                 </View>
+                {!finding && tab === "nabij" && nearbyState === "ready" ? <Text style={{ color: colors.textSoft, fontSize: 12, paddingHorizontal: 16, paddingBottom: 8 }}>{nearbyCountText(nearbyCards.reduce((total, card) => total + card.rows.length, 0))}</Text> : null}
                 {!finding && tab === "nabij" && (showCities || manualCity || useUtrechtExample) ? (
                   <View style={styles.cityOptions}>
                     {(manualCity || useUtrechtExample) ? <Pressable accessibilityRole="button" accessibilityLabel="Terug naar GPS"
@@ -604,8 +606,7 @@ export function FlowHome() {
                 return <View>
                   {item.rows.map((row) => {
                     const distance = row.openStop.distanceMeters;
-                    const distanceText = typeof distance === "number" ? (distance / 1000).toLocaleString("nl-NL", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + " km"
-                      : row.walkMinutes !== undefined ? row.walkMinutes + " min lopen" : "Afstand onbekend";
+                    const distanceText = nearbyDistance(distance, row.walkMinutes);
                     const name = item.rows.length > 1 ? shortStopName(row.openStop.name) : group.name;
                     return <Pressable key={row.key} onPress={() => openStop(row.openStop)} accessibilityRole="button"
                       accessibilityLabel={name + ", " + row.label + ", " + distanceText + ", " + row.lines.length + " lijnen"}

@@ -131,8 +131,8 @@ test("screens are wired to V5.3", () => {
   const board = read("components/FlowBoard.tsx");
   assert.match(board, /pinnedDepartures\(source, favoriteLines, nowMs, MAX_PINNED_ROWS\)/);
   // V5.4: the time column lives in the shared DepartureLine row.
-  // V5.4 (OVinfo-stijl): the minutes sit on the right with a minimum width, so large fonts do not cut them off.
-  assert.match(read("components/DepartureLine.tsx"), /right: \{ fontSize: 20,[^}]*minWidth: 62 \}/);
+  // Shared Concept C row: a fixed clock column stays readable beside line and destination.
+  assert.match(read("components/DepartureLine.tsx"), /right: \{ fontSize: 20,[^}]*width: 62, flexShrink: 0 \}/);
   assert.match(read("components/FlowLineGroups.tsx"), /Bewaar als favoriete lijn /);
   assert.match(read("components/LijnBadge.tsx"), /maxFontSizeMultiplier=\{1\.3\}/);
   assert.match(read("app/(tabs)/meer.tsx"), /Favoriete lijnen/);
@@ -153,8 +153,9 @@ test("large system font: two-line names, smaller Buurtbord map, capped tab label
   assert.equal(largeText(1.3), true);
   assert.equal(largeText(1.5), true);
   assert.equal(largeText(undefined), false);
-  // V5.8: destinations get up to two lines regardless of font scale, not just at a large one.
-  assert.match(read("components/DepartureLine.tsx"), /numberOfLines=\{2\}>\s*\{item\.destination\}/);
+  // The approved shared row now keeps the destination on one line; the full name remains spoken.
+  assert.match(read("components/DepartureLine.tsx"), /numberOfLines=\{1\} ellipsizeMode="tail">\s*\{item\.destination\}/);
+  assert.match(read("components/DepartureLine.tsx"), /accessibilityLabel=\{departureLineLabel/);
   assert.match(read("components/FlowBoard.tsx"), /<DepartureLine /);
   const buurt = read("app/(tabs)/buurtbord.tsx");
   assert.match(buurt, /large && styles\.mapWrapLarge/);
