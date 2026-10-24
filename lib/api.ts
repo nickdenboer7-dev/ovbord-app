@@ -4,7 +4,7 @@ import { mergeLines, primaryMode } from "./lineSet";
 import { formatClock, formatDutchClock, normalizeMode, relativeMinutesText, shiftClock } from "./format";
 import { delayedClock } from "./ritConsistency";
 import { isUnconfirmedExtremeEarlyDeparture } from "./earlyDepartureGuard";
-import { parseDisruptions } from "./haltebordV4";
+import { parseDisruptions, parseStopDisruptions } from "./haltebordV4";
 
 const API_BASE = "https://ovbord.nl";
 
@@ -396,8 +396,8 @@ export async function getHalte(id: string): Promise<HalteBoardData> {
     departures: arrayOf<any>(first(raw?.departures, raw?.vertrekken, raw?.rows, raw?.items))
       .map((item) => normalizeDeparture({ ...item, feed_generated_at: raw?.generated_at })),
     arrivals: arrayOf<any>(first(raw?.arrivals, raw?.aankomsten)).map(normalizeDeparture),
-    disruptions: parseDisruptions(first(raw?.disruptions, raw?.storingen, raw?.alerts)),
-    disruptionsAvailable: ["disruptions", "storingen", "alerts"].some(key => Object.prototype.hasOwnProperty.call(raw || {}, key) && raw[key] !== null),
+    disruptions: parseStopDisruptions(first(raw?.disruptions, raw?.storingen, raw?.alerts), id),
+    disruptionsAvailable: raw?.disruptions_available !== false && ["disruptions", "storingen", "alerts"].some(key => Object.prototype.hasOwnProperty.call(raw || {}, key) && raw[key] !== null),
     generatedAt: typeof raw?.generated_at === "string" ? raw.generated_at : undefined,
     feedAgeSeconds: typeof raw?.feed_age_seconds === "number" && Number.isFinite(raw.feed_age_seconds) && raw.feed_age_seconds >= 0
       ? raw.feed_age_seconds : undefined,

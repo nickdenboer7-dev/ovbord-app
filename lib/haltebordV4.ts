@@ -101,23 +101,43 @@ export function parseDisruptions(source: unknown): DisruptionNotice[] {
     const stopIds = Array.isArray(rawStops)
       ? rawStops.filter((id: unknown) => typeof id === "string" || typeof id === "number").map((id: string | number) => String(id).trim()).filter(Boolean)
       : [];
+    const rawPeriods = typeof item === "object" && item ? item.active_periods ?? item.activePeriods : undefined;
+    const activePeriods: [number | null, number | null][] = Array.isArray(rawPeriods)
+      ? rawPeriods.filter((p: unknown) => Array.isArray(p) && p.length === 2 && p.every(x => x === null || typeof x === "number" && Number.isFinite(x)))
+        .map((p: [number | null, number | null]) => [p[0], p[1]]) : [];
     notices.push({
       title: shownTitle,
       description: shownDescription,
       severity: /^(severe|critical|error|major|warning|alert|high)$/i.test(severity) ? "warning" : "info",
       ...(badge && !/^unknown/i.test(badge) ? { badge } : {}),
-      ...(stopIds.length ? { stopIds } : {})
+      ...(stopIds.length ? { stopIds } : {}),
+      ...(activePeriods.length ? { activePeriods } : {})
     });
   }
   return notices.sort((a, b) => noticePriority(a) - noticePriority(b));
+}
+
+/** Stop boards never inherit route-only or opposite-platform notices. */
+export function isActiveStopNotice(notice: DisruptionNotice, stopId: string, nowMs: number): boolean {
+  if (!notice.stopIds?.includes(stopId)) return false;
+  return !notice.activePeriods?.length || notice.activePeriods.some(([start, end]) =>
+    (!start || nowMs >= start * 1000) && (!end || nowMs < end * 1000));
+}
+
+export function parseStopDisruptions(source: unknown, stopId: string, nowMs = Date.now()): DisruptionNotice[] {
+  if (!Array.isArray(source)) return [];
+  const gtfs = source.filter(item => item && typeof item === "object" &&
+    (item.source === "GTFS-RT" || Array.isArray(item.sources) && item.sources.includes("GTFS-RT")));
+  return parseDisruptions(gtfs).filter(notice => isActiveStopNotice(notice, stopId, nowMs));
 }
 
 /** The most important notice remains visible, with the number of other notices. */
 export function disruptionSummary(_line: string, notices: readonly DisruptionNotice[]): { title: string; detail: string } {
   if (!notices.length) return { title: "", detail: "" };
   const sorted = [...notices].sort((a, b) => noticePriority(a) - noticePriority(b));
-  const first = dutchNoticeText(sorted[0].title).replace(/[. ]+$/, "");
   const others = sorted.length - 1;
+  const text = dutchNoticeText(sorted[0].title);
+  const first = others ? text.split(/(?<=[.!?])\s+/, 1)[0].replace(/[. ]+$/, "") : text;
   return { title: first + (others ? " · " + others + " andere melding" + (others > 1 ? "en" : "") : ""), detail: "" };
 }
 

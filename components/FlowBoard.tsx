@@ -18,7 +18,7 @@ import { isNextServiceDay } from "../lib/format";
 import { boardDepartureIdentity, departureTimeChangeLabel, refreshDepartureTimeChanges, sortBoardDepartures } from "../lib/boardSmartness";
 import { departureNoticeIdentity, confirmDepartedNotices, recentDepartureCandidates, visibleBoardDepartures, journeyConfirmsDeparture, DEPARTURE_CHECK_COOLDOWN_MS, MAX_DEPARTURE_CHECKS } from "../lib/departedNotice";
 import type { DepartedNotices } from "../lib/departedNotice";
-import { feedFreshness, platformChangeFor, refreshPlatformChanges } from "../lib/haltebordV4";
+import { feedFreshness, platformChangeFor, refreshPlatformChanges, isActiveStopNotice, disruptionSummary } from "../lib/haltebordV4";
 import { boardLineFilterKey, matchesBoardLineFilter } from "../lib/boardLineFilters";
 import { boardDirectionChoices, matchesBoardDirection } from "../lib/boardDirectionFilters";
 import { favoriteLineKey, pinnedDepartures } from "../lib/favoriteLines";
@@ -78,6 +78,8 @@ export function FlowBoard({ stop, initialBoard, initialLine, onBack, visible = t
   const reloadBoardRef = useRef<() => Promise<void>>(async () => {});
   const hasArrivals = hasAvailableArrivals(board);
   const freshness = feedFreshness(board || {}, fetchedAt, nowMs);
+  const activeNotices = useMemo(() => (board?.disruptions || []).filter(notice =>
+    isActiveStopNotice(notice, stop.id, nowMs)), [board, stop.id, nowMs]);
   // After a failed refresh nothing is confirmed any more: no "Live" labels, no departure checks.
   const dataCurrent = freshness.level === "fresh" && !refreshFailure;
   useEffect(() => {
@@ -275,7 +277,7 @@ export function FlowBoard({ stop, initialBoard, initialLine, onBack, visible = t
 
   const viewTitle = tab === "disruptions" ? "Storingen" : "";
   const selectedLineLabel = selectedLine ? source.find((row) => matchesBoardLineFilter(row, selectedLine))?.line || selectedLine : "";
-  const disruptionCount = board?.disruptions.length || 0;
+  const disruptionCount = activeNotices.length;
   // Options that do not need to be on screen all the time.
   const menuItems: MenuItem[] = [];
   if (tab === "departures" && selectedDirection === null && directions.length > 1) {
@@ -344,14 +346,13 @@ export function FlowBoard({ stop, initialBoard, initialLine, onBack, visible = t
         </View>
       ) : null}
       {board && tab !== "disruptions" && disruptionCount > 0 ? (
-        // One line; the details are under ⋮ > Storingen.
+        // The leading notice and remaining count; details are under ⋮ > Storingen.
         <Pressable onPress={() => selectTab("disruptions")} accessibilityRole="button"
-          accessibilityLabel={"Storing: " + board.disruptions[0].title + (disruptionCount > 1 ? " · " + (disruptionCount - 1) + " andere melding" + (disruptionCount > 2 ? "en" : "") : "") + ". Meer informatie"}
-          style={[styles.alertLine, { backgroundColor: board.disruptions.some((n) => n.severity === "warning") ? colors.warningSoft : colors.surfaceSoft }]}>
-          <Ionicons name={board.disruptions.some((n) => n.severity === "warning") ? "warning-outline" : "information-circle-outline"}
-            size={18} color={board.disruptions.some((n) => n.severity === "warning") ? colors.danger : colors.accentText} />
-          <Text style={[styles.alertLineText, { color: colors.text }]} numberOfLines={2}>{board.disruptions[0].title.replace(/[. ]+$/, "")}</Text>
-          {disruptionCount > 1 ? <Text style={[styles.alertLineMore, { color: colors.textSoft }]}>· {disruptionCount - 1} andere melding{disruptionCount > 2 ? "en" : ""}</Text> : null}
+          accessibilityLabel={"Storing: " + disruptionSummary("", activeNotices).title + ". Meer informatie"}
+          style={[styles.alertLine, { backgroundColor: activeNotices.some((n) => n.severity === "warning") ? colors.warningSoft : colors.surfaceSoft }]}>
+          <Ionicons name={activeNotices.some((n) => n.severity === "warning") ? "warning-outline" : "information-circle-outline"}
+            size={18} color={activeNotices.some((n) => n.severity === "warning") ? colors.danger : colors.accentText} />
+          <Text style={[styles.alertLineText, { color: colors.text }]}>{disruptionSummary("", activeNotices).title}</Text>
           <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
         </Pressable>
       ) : null}
@@ -383,7 +384,7 @@ export function FlowBoard({ stop, initialBoard, initialLine, onBack, visible = t
         </View>
       ) : tab === "disruptions" ? (
         <View style={styles.alerts}>
-          {board?.disruptions.length ? board.disruptions.map((notice, index) => (
+          {activeNotices.length ? activeNotices.map((notice, index) => (
             <View key={index} style={[styles.disruptionItem, { borderBottomColor: colors.border }]}>
               <Ionicons name={notice.severity === "warning" ? "warning-outline" : "information-circle-outline"}
                 color={notice.severity === "warning" ? colors.danger : colors.accentText} size={18} />

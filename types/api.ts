@@ -81,6 +81,8 @@ export interface DisruptionNotice {
   badge?: string;
   /** Stops the notice is attached to (for "Halte vervalt": the stops that are skipped). */
   stopIds?: string[];
+  /** GTFS-RT validity intervals, seconds since epoch; an omitted bound is open. */
+  activePeriods?: [number | null, number | null][];
 }
 
 export interface HalteBoardData {

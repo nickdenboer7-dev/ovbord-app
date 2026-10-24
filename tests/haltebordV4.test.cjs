@@ -90,7 +90,7 @@ test("live API response parser preserves absence vs empty disruption feed", asyn
     assert.equal(result.generatedAt, fixture.generated_at);
     assert.equal(result.disruptionsAvailable,false);
     assert.deepEqual(result.disruptions,[]);
-    fixture.disruptions=[{title:"Omleiding lijn 3", severity:"warning"}];
+    fixture.disruptions=[{title:"Omleiding lijn 3", severity:"warning",source:"GTFS-RT",stop_ids:["2993405"]}];
     const result2=await getHalte("2993405");
     assert.equal(result2.disruptionsAvailable,true);
     assert.equal(result2.disruptions[0].title,"Omleiding lijn 3");
