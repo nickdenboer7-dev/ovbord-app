@@ -58,18 +58,16 @@ export function platformChangeFor(
     nowMs - change.changedAt < PLATFORM_NOTICE_MS ? change : null;
 }
 
-const ENGLISH_WORDS = /\b(the|runs|run|served|diverted|from|due|will|cancelled|delayed|instead|between|only|does|not)\b/i;
-const DUTCH_WORDS = /\b(de|het|een|rijdt|rijden|halte|haltes|vanaf|niet|wegens|omleiding|stopt|vervalt|tussen|naar)\b/i;
-
-/**
- * Some carriers (GVB) put "Dutch -- English" in one string. Keep the Dutch part,
- * but only when the second half really reads as English.
- */
+/** Carriers put Dutch -- English in one field. The delimiter ends the Dutch text. */
 export function dutchNoticeText(text: string): string {
-  const parts = text.split(/\s+--\s+/);
-  if (parts.length < 2) return text;
-  const first = parts[0].trim(), rest = parts.slice(1).join(" -- ");
-  return DUTCH_WORDS.test(first) && ENGLISH_WORDS.test(rest) && !DUTCH_WORDS.test(rest) ? first : text;
+  return text.split(" -- ", 1)[0].trim();
+}
+
+function noticePriority(notice: DisruptionNotice): number {
+  const text = [notice.title, notice.description, notice.badge].join(" ").toLocaleLowerCase("nl");
+  if (/halte vervalt|haltewijziging|tijdelijke halte|halte verplaatst|stopt hier niet|stoppen hier niet|andere kant|niet instappen/.test(text)) return 0;
+  if (/omleiding|omgeleid|rijdt om|rijden om|ingekort|rijdt t\/m|rijdt tot|stremming/.test(text)) return 1;
+  return /vertraging/.test(text) ? 3 : 2;
 }
 
 /** "… Details: gvb.nl" at the end of a notice becomes a separate "Meer informatie" line. */
@@ -83,6 +81,9 @@ export function parseDisruptions(source: unknown): DisruptionNotice[] {
   const seen = new Set<string>();
   const notices: DisruptionNotice[] = [];
   for (const item of source) {
+    const effect = clean(typeof item === "object" && item ? item.effect : "").toUpperCase();
+    const cancellationTitle = dutchNoticeText(clean(typeof item === "object" && item ? item.title ?? item.header ?? item.name : item));
+    if (effect === "CANCELLED" || /\b(?:rit(?:ten)? (?:is |zijn )?vervallen|vervallen rit(?:ten)?)\b/i.test(cancellationTitle)) continue;
     const rawTitle = dutchNoticeText(clean(typeof item === "object" && item ? item.title ?? item.header ?? item.name : item));
     const rawDescription = dutchNoticeText(clean(typeof item === "object" && item ? item.message ?? item.description ?? item.text : ""));
     const title = splitDetails(rawTitle), description = splitDetails(rawDescription);
@@ -108,20 +109,16 @@ export function parseDisruptions(source: unknown): DisruptionNotice[] {
       ...(stopIds.length ? { stopIds } : {})
     });
   }
-  return notices;
+  return notices.sort((a, b) => noticePriority(a) - noticePriority(b));
 }
 
-/** One compact line for several notices: "Lijn N85 · 3 meldingen" and "2× Omleiding · Halte vervalt". */
-export function disruptionSummary(line: string, notices: readonly DisruptionNotice[]): { title: string; detail: string } {
-  const count = notices.length;
-  const prefix = line && line !== "?" ? "Lijn " + line + " · " : "";
-  const title = prefix + count + (count === 1 ? " melding" : " meldingen");
-  const badges = new Map<string, number>();
-  for (const notice of notices) if (notice.badge) badges.set(notice.badge, (badges.get(notice.badge) || 0) + 1);
-  const detail = badges.size
-    ? [...badges.entries()].map(([badge, n]) => (n > 1 ? n + "× " : "") + badge).join(" · ")
-    : notices[0]?.title || "";
-  return { title, detail };
+/** The most important notice remains visible, with the number of other notices. */
+export function disruptionSummary(_line: string, notices: readonly DisruptionNotice[]): { title: string; detail: string } {
+  if (!notices.length) return { title: "", detail: "" };
+  const sorted = [...notices].sort((a, b) => noticePriority(a) - noticePriority(b));
+  const first = dutchNoticeText(sorted[0].title).replace(/[. ]+$/, "");
+  const others = sorted.length - 1;
+  return { title: first + (others ? " · " + others + " andere melding" + (others > 1 ? "en" : "") : ""), detail: "" };
 }
 
 export type FeedFreshness = {

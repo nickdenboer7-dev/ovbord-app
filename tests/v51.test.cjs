@@ -32,14 +32,14 @@ const badges = ["Omleiding", "Omleiding", "Halte vervalt"];
 
 test("bilingual notices keep only the Dutch text, once, with the link as one short line", () => {
   const notices = parseDisruptions(gvb.map((text, i) => ({ title: text, description: text, badge: badges[i], severity: "low" })));
-  assert.deepEqual(notices[0], { title: "Bus N85 rijdt om vanaf halte Van Woustraat.", description: "Meer informatie: gvb.nl", severity: "info", badge: "Omleiding" });
-  assert.equal(notices[2].title, "Bus N85 stopt hier niet.");
+  assert.deepEqual(notices[1], { title: "Bus N85 rijdt om vanaf halte Van Woustraat.", description: "Meer informatie: gvb.nl", severity: "info", badge: "Omleiding" });
+  assert.equal(notices[0].title, "Bus N85 stopt hier niet.");
   assert.equal(notices.length, 3);
   for (const notice of notices) assert.doesNotMatch(notice.title + notice.description, /runs|served|--/);
 });
 
-test("Dutch text with ' -- ' is only split when the second half is English", () => {
-  assert.equal(dutchNoticeText("Werk aan de weg -- de bus rijdt om via de Dam"), "Werk aan de weg -- de bus rijdt om via de Dam");
+test("Dutch text always ends at the translation delimiter", () => {
+  assert.equal(dutchNoticeText("Werk aan de weg -- de bus rijdt om via de Dam"), "Werk aan de weg");
   assert.equal(dutchNoticeText("Tram 2 rijdt niet -- Tram 2 does not run"), "Tram 2 rijdt niet");
   assert.equal(dutchNoticeText("Geen scheiding"), "Geen scheiding");
   const [plain] = parseDisruptions([{ title: "Werkzaamheden", message: "Werkzaamheden", severity: "warning" }]);
@@ -48,9 +48,9 @@ test("Dutch text with ' -- ' is only split when the second half is English", () 
 
 test("one compact line for all notices", () => {
   const notices = parseDisruptions(gvb.map((text, i) => ({ title: text, badge: badges[i] })));
-  assert.deepEqual(disruptionSummary("N85", notices), { title: "Lijn N85 · 3 meldingen", detail: "2× Omleiding · Halte vervalt" });
+  assert.deepEqual(disruptionSummary("N85", notices), { title: "Bus N85 stopt hier niet · 2 andere meldingen", detail: "" });
   const single = parseDisruptions([{ title: "Omleiding lijn 3", severity: "warning" }]);
-  assert.deepEqual(disruptionSummary("?", single), { title: "1 melding", detail: "Omleiding lijn 3" });
+  assert.deepEqual(disruptionSummary("?", single), { title: "Omleiding lijn 3", detail: "" });
 });
 
 // Overstappen: alleen zinvolle aansluitingen

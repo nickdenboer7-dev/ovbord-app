@@ -346,12 +346,12 @@ export function FlowBoard({ stop, initialBoard, initialLine, onBack, visible = t
       {board && tab !== "disruptions" && disruptionCount > 0 ? (
         // One line; the details are under ⋮ > Storingen.
         <Pressable onPress={() => selectTab("disruptions")} accessibilityRole="button"
-          accessibilityLabel={"Storing: " + board.disruptions[0].title + (disruptionCount > 1 ? ", en " + (disruptionCount - 1) + " meer" : "") + ". Meer informatie"}
+          accessibilityLabel={"Storing: " + board.disruptions[0].title + (disruptionCount > 1 ? " · " + (disruptionCount - 1) + " andere melding" + (disruptionCount > 2 ? "en" : "") : "") + ". Meer informatie"}
           style={[styles.alertLine, { backgroundColor: board.disruptions.some((n) => n.severity === "warning") ? colors.warningSoft : colors.surfaceSoft }]}>
           <Ionicons name={board.disruptions.some((n) => n.severity === "warning") ? "warning-outline" : "information-circle-outline"}
             size={18} color={board.disruptions.some((n) => n.severity === "warning") ? colors.danger : colors.accentText} />
-          <Text style={[styles.alertLineText, { color: colors.text }]} numberOfLines={1}>{board.disruptions[0].title}</Text>
-          {disruptionCount > 1 ? <Text style={[styles.alertLineMore, { color: colors.textSoft }]}>+{disruptionCount - 1}</Text> : null}
+          <Text style={[styles.alertLineText, { color: colors.text }]} numberOfLines={2}>{board.disruptions[0].title.replace(/[. ]+$/, "")}</Text>
+          {disruptionCount > 1 ? <Text style={[styles.alertLineMore, { color: colors.textSoft }]}>· {disruptionCount - 1} andere melding{disruptionCount > 2 ? "en" : ""}</Text> : null}
           <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
         </Pressable>
       ) : null}
@@ -545,7 +545,7 @@ const styles = StyleSheet.create({
   viewBackText: { fontSize: 13, fontWeight: "800" },
   alertLine: { minHeight: 44, paddingHorizontal: 15, flexDirection: "row", alignItems: "center", gap: 9 },
   alertLineText: { flex: 1, fontSize: 13, fontWeight: "700" },
-  alertLineMore: { fontSize: 12, fontWeight: "800" },
+  alertLineMore: { fontSize: 12, fontWeight: "800", maxWidth: 100 },
   filterPanel: { borderBottomWidth: StyleSheet.hairlineWidth, paddingBottom: 4 },
   filterInner: { paddingHorizontal: 13, paddingVertical: 7, alignItems: "center", gap: 8 },
   chip: { minHeight: 36, minWidth: 48, justifyContent: "center", alignItems: "center", borderRadius: 18, paddingHorizontal: 15 },
