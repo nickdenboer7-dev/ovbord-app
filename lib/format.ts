@@ -97,7 +97,7 @@ export function effectiveDepartureClock(row: {plannedTime:string; expectedTime?:
   return typeof row.delayMinutes==="number" && row.delayMinutes!==0
     ?shiftClock(row.plannedTime,row.delayMinutes):row.plannedTime;
 }
-export function departureCountdown(row: {plannedTime:string;expectedTime?:string;effectiveAt?:string;delayMinutes?:number},nowMs=Date.now()):string {
+export function departureCountdown(row: {plannedTime:string;expectedTime?:string;effectiveAt?:string;delayMinutes?:number},nowMs=Date.now(),maxMinutes=60):string {
   let mins:number|undefined;
   if(row.effectiveAt){const t=Date.parse(row.effectiveAt);if(Number.isFinite(t))mins=Math.ceil((t-nowMs)/60000);}
   if(mins===undefined){
@@ -110,7 +110,8 @@ export function departureCountdown(row: {plannedTime:string;expectedTime?:string
     // Recent past departures must not become fake "over 1437 min" predictions.
     if(mins < -720) mins+=1440;
   }
-  if (mins > 60 || mins < -1) return "";
+  if (mins > maxMinutes || mins < -1) return "";
+  if (mins > 60) return "over " + Math.floor(mins / 60) + " u" + (mins % 60 ? " " + mins % 60 + " min" : "");
   return mins <= 0 ? "nu" : "over " + mins + " min";
 }
 export function isNextServiceDay(a:{plannedTime:string;expectedTime?:string;effectiveAt?:string},b:{plannedTime:string;expectedTime?:string;effectiveAt?:string}):boolean {

@@ -146,14 +146,13 @@ test('a stationary live fix is not labelled "laatst bekend": the note follows th
   assert.match(read('lib/useLiveLocation.ts'), /export const LIVE_HEARTBEAT_MS = 60000;/);
 });
 
-test('Start nearby groups show real line badges and each original stop remains tappable', () => {
+test('Start nearby groups show a line count and each original stop remains tappable', () => {
   const home = fs.readFileSync(path.join(__dirname, '..', 'components/FlowHome.tsx'), 'utf8');
   assert.match(home, /groupNearbyStops\(nearby\)/);
-  // V5.9.1: one tappable row per mode, opening a real stop ID of that mode, with ALL its lines
-  // (the V5.9 "slice(0, 4)" and "+N" are gone on purpose).
-  assert.match(home, /item\.rows\.map\(\(row, rowIndex\) =>/);
+  // One calm row per real transport stop; count the complete enriched line set.
+  assert.match(home, /item\.rows\.map\(\(row\) =>/);
   assert.match(home, /onPress=\{\(\) => openStop\(row\.openStop\)\}/);
-  assert.match(home, /row\.lines\.map\(\(line\) =>/);
+  assert.match(home, /row\.lines\.length/);
   assert.doesNotMatch(home, /lines\.slice\(0, 4\)/);
 });
 

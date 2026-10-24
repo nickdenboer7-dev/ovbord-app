@@ -1,7 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Updates from "expo-updates";
 import React from "react";
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useRouter } from "expo-router";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import appConfig from "../../app.json";
 import { ThemeMode } from "../../constants/colors";
@@ -42,6 +43,7 @@ function SavedRow({ icon, iconColor, count, hint, children, last = false, action
 }
 
 export default function MeerScreen() {
+  const router = useRouter();
   const { colors, themeMode, setThemeMode, favoriteStops, favoriteJourneys, favoriteLines, recentStops, clearRecentStops } = useApp();
   const confirmClearRecents = () => Alert.alert("Recente haltes wissen?", "De lijst met onlangs bekeken haltes wordt leeggemaakt. Favorieten blijven bewaard.", [
     { text: "Annuleren", style: "cancel" },
@@ -109,7 +111,7 @@ export default function MeerScreen() {
               </View>
             ))}
           </View>
-          <Pressable accessibilityRole="link" accessibilityLabel="Feedback geven" onPress={() => { void Linking.openURL("https://docs.google.com/forms/d/e/1FAIpQLScffqygYzhnAwpBYo2eqhNWubLtWNLb6eQcUflEvt7BOx2clA/viewform").catch(() => {}); }} style={{ flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: 6, paddingVertical: 7, paddingHorizontal: 2 }}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Feedback geven" onPress={() => router.push("/feedback")} style={{ flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: 6, paddingVertical: 7, paddingHorizontal: 2 }}>
             <Ionicons name="chatbubble-outline" size={15} color={colors.textSoft} />
             <Text style={{ color: colors.textSoft, fontSize: 13 }}>Feedback geven</Text>
           </Pressable>

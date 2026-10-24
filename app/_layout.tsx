@@ -4,6 +4,7 @@ import React, { useEffect } from "react";
 import appConfig from "../app.json";
 import { AppProvider, useApp } from "../context/AppProvider";
 import { FavoritesLiveProvider } from "../context/FavoritesLive";
+import { FeedbackPrompt } from "../components/FeedbackPrompt";
 import { FlowNavigationProvider } from "../context/FlowNavigation";
 
 const APP_VERSION = appConfig.expo.version;
@@ -30,7 +31,9 @@ function RootNavigation() {
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="rit/[id]" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="feedback" options={{ animation: "slide_from_right" }} />
       </Stack>
+      <FeedbackPrompt />
     </ThemeProvider>
   );
 }

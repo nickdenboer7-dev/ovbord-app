@@ -302,14 +302,13 @@ test("a board far from the platform adds nothing; failures are not retried at on
   assert.equal(calls, 2, "one failed request, then a pause instead of retrying on every GPS update");
 });
 
-test("Start shows every line: no slice(0, 4), no +N, wrapping mode-coloured badges", () => {
+test("nearby list counts the complete line set without badges; saved/search stops keep their lines", () => {
   const home = read("components/FlowHome.tsx");
-  assert.doesNotMatch(home, /lines\.slice\(0, 4\)/);
-  assert.doesNotMatch(home, /lines\.slice\(0, 5\)/);
-  assert.doesNotMatch(home, /\+\{stop\.lines\.length - 4\}/);
-  assert.match(home, /row\.lines\.map\(\(line\) => \(\s*<LijnBadge key=\{row\.mode \+ ":" \+ line\.line\} line=\{line\.line\} carrier=\{line\.carrier\} compact tone="mode" mode=\{row\.mode\} \/>/);
-  assert.match(home, /nearGroupLines: \{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 4 \}/);
-  // Search/recent/favourite rows show all their lines too.
+  const nearby = home.slice(home.indexOf('if (item.kind === "groep")'), home.indexOf('if (item.kind === "rit")'));
+  assert.doesNotMatch(nearby, /<LijnBadge/);
+  assert.match(nearby, /row\.lines\.length/);
+  assert.match(nearby, /distanceText/);
+  assert.match(nearby, /chevron-forward/);
   assert.match(home, /sortLines\(stop\.lines\)\.map\(\(line, i\) =>/);
 });
 

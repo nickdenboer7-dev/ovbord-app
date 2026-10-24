@@ -1,0 +1,33 @@
+appId: nl.ovbord.app
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "Handmatig stad kiezen"
+    timeout: 90000
+- tapOn: "Handmatig stad kiezen"
+- tapOn: "Kies stad Leeuwarden"
+- extendedWaitUntil:
+    visible: ".*Blokhuisplein.*"
+    timeout: 60000
+- assertVisible: "Jouw lijnen"
+- takeScreenshot: startscherm
+- tapOn: ".*Blokhuisplein.*"
+- extendedWaitUntil:
+    visible: "Bijgewerkt om.*"
+    timeout: 60000
+- takeScreenshot: haltebord
+- tapOn: "Meer opties voor deze halte"
+- tapOn: "Klopt dit niet?"
+- assertVisible: "Feedback geven"
+- assertVisible: ".*Blokhuisplein.*"
+- takeScreenshot: feedback-context
+- tapOn:
+    id: feedback-message
+- eraseText: 2000
+- inputText: "OVBORD-RELEASE-QA-20261024: controle vanuit de EAS APK. Dit testbericht wordt verwijderd."
+- tapOn: "Feedback versturen"
+- extendedWaitUntil:
+    visible: "Bedankt voor je feedback"
+    timeout: 20000
+- tapOn: "OK"

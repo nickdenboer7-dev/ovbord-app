@@ -1,0 +1,16 @@
+name: OVbord preview update
+on:
+  push:
+    branches: ['feature/v591-complete-lijnen']
+  workflow_dispatch:
+jobs:
+  update:
+    type: update
+    environment: preview
+    params:
+      channel: preview
+      platform: android
+    hooks:
+      before_update:
+        - run: npm run typecheck
+        - run: node --test tests/*.test.cjs

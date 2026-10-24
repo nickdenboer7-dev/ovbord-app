@@ -42,8 +42,9 @@ test("status line: live, planned, estimated and what can no longer be confirmed"
   // Trains add the platform; a recent time change is appended.
   assert.equal(line.departureLineStatus(dep("09:50", { isLive: true, platform: "4b", mode: "train" }), now, { note: "was 09:47" }).text,
     "Live · over 10 min · spoor 4b · was 09:47");
-  // More than an hour away: no countdown, just the kind of time.
-  assert.equal(line.departureLineStatus(dep("11:30"), now).text, "Gepland");
+  // Until three hours away show hours/minutes; after that only the kind of time.
+  assert.equal(line.departureLineStatus(dep("11:30"), now).text, "Gepland · over 1 u 50 min");
+  assert.equal(line.departureLineStatus(dep("13:00"), now).text, "Gepland");
 });
 
 test("delay under the time and the spoken row", () => {

@@ -288,6 +288,10 @@ export function FlowBoard({ stop, initialBoard, initialLine, onBack, visible = t
   if (selectedDirection !== null) menuItems.push({ key: "direction-clear", label: "Richtingfilter wissen", icon: "close-circle-outline", onPress: () => selectDirection(null) });
   if (selectedLine) menuItems.push({ key: "line-clear", label: "Lijnfilter wissen", icon: "close-circle-outline", onPress: () => selectLine(null) });
   if (disruptionCount && tab !== "disruptions") menuItems.push({ key: "disruptions", label: "Storingen (" + disruptionCount + ")", icon: "warning-outline", onPress: () => selectTab("disruptions") });
+  menuItems.push({ key: "feedback", label: "Klopt dit niet?", icon: "chatbubble-outline", group: 2, onPress: () => {
+    const current = board?.stop || stop;
+    router.push({ pathname: "/feedback", params: { stop_id: current.id, stop_name: current.name, reported_at: new Date().toISOString() } });
+  } });
   menuItems.push({ key: "refresh", label: "Vertrektijden verversen", icon: "refresh", group: 2, onPress: () => { void pullToRefresh(); } });
   const pinnedHeader = pinned.length ? (
     <View>
@@ -308,7 +312,10 @@ export function FlowBoard({ stop, initialBoard, initialLine, onBack, visible = t
           <Pressable onPress={onBack} accessibilityRole="button" accessibilityLabel="Terug" style={styles.back}>
             <Ionicons name="arrow-back" size={22} color={colors.text} />
           </Pressable>
-          <Text maxFontSizeMultiplier={1.2} style={[styles.title, { color: colors.heading }]} numberOfLines={3} accessibilityRole="header">{board?.stop.name || stop.name}</Text>
+          <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+            <Text maxFontSizeMultiplier={1.2} style={[styles.title, { color: colors.heading, flex: undefined }]} numberOfLines={3} accessibilityRole="header">{board?.stop.name || stop.name}</Text>
+            {fetchedAt ? <Text style={{ color: colors.textSoft, fontSize: 12 }}>Bijgewerkt om {new Date(fetchedAt).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}{refreshFailure ? " · laatst bekend" : ""}</Text> : null}
+          </View>
           <Pressable onPress={() => toggleFavoriteStop(board?.stop || stop)} accessibilityRole="button"
             accessibilityLabel={isFavoriteStop(board?.stop.id || stop.id) ? "Verwijder favoriete halte" : "Bewaar als favoriete halte"}
             accessibilityState={{ selected: isFavoriteStop(board?.stop.id || stop.id) }} style={styles.back}>

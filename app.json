@@ -3,7 +3,7 @@
     "name": "OVbord",
     "slug": "ovspot",
     "scheme": "ovbord",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "plugins": [
@@ -24,10 +24,8 @@
     },
     "android": {
       "package": "nl.ovbord.app",
-      "versionCode": 4,
+      "versionCode": 5,
       "permissions": [
-        "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION"
       ]
@@ -46,7 +44,10 @@
       "policy": "appVersion"
     },
     "updates": {
-      "url": "https://u.expo.dev/879efc14-e217-4ba5-b9a0-468ef855b9ed"
+      "url": "https://u.expo.dev/879efc14-e217-4ba5-b9a0-468ef855b9ed",
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
     }
   }
 }

@@ -26,6 +26,7 @@ import type { SavedJourney } from "../context/AppProvider";
 import { favoriteJourneyDepartures } from "../lib/favoritesLive";
 import { ritParamsForDeparture } from "../lib/ritRoute";
 import { useSmartRefresh } from "../lib/useSmartRefresh";
+import { favoriteLineKey, pinnedDepartures } from "../lib/favoriteLines";
 import { favoriteStatusText } from "./FavoriteDepartures";
 import { DepartureLine } from "./DepartureLine";
 import { activeTripLine, activeTripValid } from "../lib/activeTrip";
@@ -55,7 +56,7 @@ function shortStopName(name: string): string {
 
 /** One persistent screen for search, stop boards, inline journeys and intermediate stops. */
 export function FlowHome() {
-  const { colors, resolvedScheme, recentStops, favoriteStops, favoriteJourneys, addRecentStop, toggleFavoriteStop, isFavoriteStop, manualCity, setManualCity } = useApp();
+  const { colors, resolvedScheme, recentStops, favoriteStops, favoriteJourneys, favoriteLines, addRecentStop, toggleFavoriteStop, isFavoriteStop, manualCity, setManualCity } = useApp();
   const { screens, showStop, searchRequest, homeRequest } = useFlowNavigation();
   const { boards: favoriteBoards, refreshFailure: favoritesFailure, refreshing: favoritesUpdating, refresh: refreshFavorites, stopsKey: favoritesKey } = useFavoritesLive();
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -224,6 +225,27 @@ export function FlowHome() {
     return () => { active = false; };
   }, [nearbyGroups]);
   const nearbyCards = useMemo(() => nearbyGroups.map((group) => ({ group, rows: nearbyGroupRows(group, areaLines) })), [nearbyGroups, areaLines]);
+  const savedLineSources = useMemo(() => favoriteLines.slice(0, 3).map((key) => {
+    const candidates = [...favoriteStops, ...nearbyCards.flatMap(({ rows }) => rows.map((row) => ({ ...row.openStop, lines: row.lines })))];
+    return { key, stop: candidates.find((candidate) => candidate.lines.some((line) => favoriteLineKey(line.line, line.carrier) === key)) };
+  }), [favoriteLines, favoriteStops, nearbyCards]);
+  const [savedLineBoards, setSavedLineBoards] = useState<Record<string, Awaited<ReturnType<typeof getHalte>>>>({});
+  const [savedLinesUpdating, setSavedLinesUpdating] = useState(false);
+  const savedLineIds = [...new Set(savedLineSources.flatMap(({ stop }) => stop ? [stop.id] : []))].sort().join("|");
+  const savedLinesRequest = useRef(0);
+  const refreshSavedLines = useCallback(async () => {
+    if (!savedLineIds) return;
+    const request = ++savedLinesRequest.current;
+    setSavedLinesUpdating(true);
+    const loaded = await Promise.all(savedLineIds.split("|").map(async (id) => { try { return [id, await getHalte(id)] as const; } catch { return null; } }));
+    if (request === savedLinesRequest.current) {
+      // Do not show old cached departures as Live after a failed refresh.
+      setSavedLineBoards(Object.fromEntries(loaded.filter((entry): entry is NonNullable<typeof entry> => entry !== null)));
+      setSavedLinesUpdating(false);
+    }
+  }, [savedLineIds]);
+  useEffect(() => { void refreshSavedLines(); return () => { savedLinesRequest.current += 1; }; }, [refreshSavedLines]);
+  useSmartRefresh(refreshSavedLines, 60000, "saved-lines:" + savedLineIds, favoriteJourneys.length === 0 && screens.length === 0);
   const sections = useMemo<SearchSection[]>(() => {
     const haltes: SearchRow[] = data.map((stop) => ({ kind: "halte", stop }));
     if (!finding && tab === "nabij") {
@@ -312,11 +334,8 @@ export function FlowHome() {
       {focused ? <ExpoStatusBar style={statusBarStyle} /> : null}
       {!showingBoard ? <View style={[styles.top, { paddingTop: Math.max(insets.top, 24) + 10, backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
         <View style={styles.brandLine}>
-          {/* Small brand mark: the app icon idea in a few dp, no decorative surface. */}
-          <View style={[styles.brandMark, { backgroundColor: colors.accent }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-            <Ionicons name="bus" size={15} color="#FFFFFF" />
-          </View>
           <Text style={[styles.brand, { color: colors.heading }]} accessibilityRole="header" maxFontSizeMultiplier={1.2}>OVbord</Text>
+          <Pressable onPress={openSearch} accessibilityRole="button" accessibilityLabel="Zoeken" hitSlop={10} style={{ marginLeft: "auto", padding: 5 }}><Ionicons name="search" size={25} color={colors.heading} /></Pressable>
         </View>
         {/* One calm search field, always in the same place: a tap opens the search with recent stops. */}
         <View style={styles.searchLine}>
@@ -388,29 +407,10 @@ export function FlowHome() {
               colors={[colors.accentText]} tintColor={colors.accentText} progressBackgroundColor={colors.surface} /> : undefined}
             ListHeaderComponent={
               <View>
-                {showTrip && activeTrip ? (() => {
-                  const tripLine = activeTripLine(activeTrip);
-                  return (
-                    <View style={[styles.tripCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                      <Pressable onPress={() => openActiveTrip(activeTrip)} accessibilityRole="button"
-                        accessibilityLabel={tripLine.lead + "lijn " + tripLine.line + tripLine.text + ". Ritverloop openen"}
-                        style={styles.tripMain}>
-                        <Ionicons name="navigate-circle-outline" size={21} color={colors.accentText} />
-                        <Text style={[styles.tripText, { color: colors.text }]} numberOfLines={large ? undefined : 2}>
-                          {tripLine.lead}<Text style={styles.tripStrong}>{tripLine.line}</Text>{tripLine.text}
-                        </Text>
-                        <Ionicons name="chevron-forward" size={18} color={colors.accentText} />
-                      </Pressable>
-                      <Pressable onPress={dismissActiveTrip} hitSlop={8} accessibilityRole="button" accessibilityLabel="Rit van Start verwijderen" style={styles.tripClose}>
-                        <Ionicons name="close" size={16} color={colors.textSoft} />
-                      </Pressable>
-                    </View>
-                  );
-                })() : null}
                 {showMine ? (
                   <View>
                     <View style={styles.headingRow}>
-                      <Text style={[styles.listTitle, { color: colors.heading }]} accessibilityRole="header">Mijn ritten</Text>
+                      <Text style={[styles.listTitle, { color: colors.heading }]} accessibilityRole="header">Jouw lijnen</Text>
                       {favoritesUpdating && Object.values(favoriteBoards).some((entry) => Boolean(entry.board)) ? (
                         <Text style={{ color: colors.textMuted, fontSize: 11 }}>Bijwerken…</Text>
                       ) : null}
@@ -451,6 +451,44 @@ export function FlowHome() {
                     </View>
                   </View>
                 ) : null}
+                {!finding && tab === "nabij" && !showMine ? <View>
+                  <View style={styles.headingRow}><Text style={[styles.listTitle, { color: colors.heading }]} accessibilityRole="header">Jouw lijnen</Text></View>
+                  {savedLinesUpdating ? <Text style={{ color: colors.textMuted, fontSize: 11, paddingHorizontal: 16 }}>Bijwerken…</Text> : null}
+                  {savedLineSources.length ? <View style={styles.card}>{savedLineSources.map(({ key, stop: lineStop }, index) => {
+                    const board = lineStop ? savedLineBoards[lineStop.id] : undefined;
+                    const departure = board ? pinnedDepartures(board.departures, [key], nowMs, 1)[0] : undefined;
+                    return departure && lineStop ? <DepartureLine key={key} item={departure} nowMs={nowMs} last={index === savedLineSources.length - 1}
+                      onPress={() => openMyDeparture(board?.stop || lineStop, departure)} /> :
+                      <Pressable key={key} onPress={() => lineStop ? openStop(lineStop) : router.navigate("/favorieten")} accessibilityRole="button"
+                        style={[styles.mineMain, { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth }]}>
+                        <LijnBadge line={key.split("|")[0]} carrier={key.split("|")[1]} tone="plain" />
+                        <View style={styles.stopContent}><Text style={{ color: colors.text }}>{lineStop?.name || "Favoriete lijn"}</Text>
+                          <Text style={[styles.stopSubtitle, { color: colors.textSoft }]}>Nog geen actuele vertrekken</Text></View>
+                        <Ionicons name="chevron-forward" size={17} color={colors.textMuted} />
+                      </Pressable>;
+                  })}</View> : <Text style={{ color: colors.textSoft, fontSize: 13, lineHeight: 19, paddingHorizontal: 16, paddingBottom: 8 }}>
+                    Bewaar een lijn met de ster op een haltebord. Je vindt je favorieten hier terug.
+                  </Text>}
+                </View> : null}
+                {showTrip && activeTrip ? (() => {
+                  const tripLine = activeTripLine(activeTrip);
+                  return (
+                    <View style={[styles.tripCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                      <Pressable onPress={() => openActiveTrip(activeTrip)} accessibilityRole="button"
+                        accessibilityLabel={tripLine.lead + "lijn " + tripLine.line + tripLine.text + ". Ritverloop openen"}
+                        style={styles.tripMain}>
+                        <Ionicons name="navigate-circle-outline" size={21} color={colors.accentText} />
+                        <Text style={[styles.tripText, { color: colors.text }]} numberOfLines={large ? undefined : 2}>
+                          {tripLine.lead}<Text style={styles.tripStrong}>{tripLine.line}</Text>{tripLine.text}
+                        </Text>
+                        <Ionicons name="chevron-forward" size={18} color={colors.accentText} />
+                      </Pressable>
+                      <Pressable onPress={dismissActiveTrip} hitSlop={8} accessibilityRole="button" accessibilityLabel="Rit van Start verwijderen" style={styles.tripClose}>
+                        <Ionicons name="close" size={16} color={colors.textSoft} />
+                      </Pressable>
+                    </View>
+                  );
+                })() : null}
                 <View style={styles.headingRow}>
                   <Text style={[styles.listTitle, { color: colors.heading }]} accessibilityRole="header">{finding ? "Zoekresultaten" : tab === "nabij" ? "Haltes in de buurt" : tab === "recent" ? "Onlangs bekeken" : "Favoriete haltes"}</Text>
                   {!finding && tab === "nabij" ? (
@@ -563,47 +601,23 @@ export function FlowHome() {
             renderItem={({ item, index }) => {
               if (item.kind === "groep") {
                 const group = item.group;
-                return (
-                  <View style={[styles.nearGroupCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <View style={styles.nearGroupHead}>
-                      <Text style={[styles.nearName, { color: colors.text, flex: 1 }]} numberOfLines={2}>{group.name}</Text>
-                      {group.walkMinutes !== undefined ? <Text style={[styles.stopSubtitle, { color: colors.textSoft }]}>
-                        {group.walkMinutes} min lopen
-                      </Text> : null}
-                    </View>
-                    {/* V5.9.1: one row per kind of transport with ALL its lines (no "+N"); badges wrap
-                        to a second or third line. Each row opens a real stop ID of that mode. */}
-                    {item.rows.map((row, rowIndex) => {
-                      const favorite = isFavoriteStop(row.openStop.id) || row.stops.some((stop) => isFavoriteStop(stop.id));
-                      return (
-                        <Pressable key={row.key} onPress={() => openStop(row.openStop)} accessibilityRole="button"
-                          accessibilityLabel={"Open " + row.label + " " + group.name +
-                            (row.lines.length ? ", lijnen " + row.lines.map((line) => line.line).join(", ") : "") +
-                            (row.walkMinutes ? ", " + row.walkMinutes + " minuten lopen" : "") +
-                            (favorite ? ", favoriete halte" : "")}
-                          style={({ pressed }) => [styles.nearGroupStop, rowIndex > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
-                            pressed && { backgroundColor: colors.surfaceSoft }]}>
-                          <View style={[styles.nearIcon, { backgroundColor: colors.accentSoft }]}>
-                            <Ionicons name={`${vehicleIcon(row.mode)}-outline`} size={16} color={colors.accentText} />
-                          </View>
-                          <View style={styles.nearGroupBody}>
-                            <Text style={[styles.nearType, { color: colors.textSoft }]} numberOfLines={1}>{row.label}</Text>
-                            {row.lines.length ? (
-                              <View style={styles.nearGroupLines}>
-                                {row.lines.map((line) => (
-                                  <LijnBadge key={row.mode + ":" + line.line} line={line.line} carrier={line.carrier} compact tone="mode" mode={row.mode} />
-                                ))}
-                              </View>
-                            ) : null}
-                          </View>
-                          {/* Favourite stops keep their star, per original stop ID. */}
-                          {favorite ? <Ionicons name="star" size={14} color={colors.warning} /> : null}
-                          <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                );
+                return <View>
+                  {item.rows.map((row) => {
+                    const distance = row.openStop.distanceMeters;
+                    const distanceText = typeof distance === "number" ? (distance / 1000).toLocaleString("nl-NL", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + " km"
+                      : row.walkMinutes !== undefined ? row.walkMinutes + " min lopen" : "Afstand onbekend";
+                    const name = item.rows.length > 1 ? shortStopName(row.openStop.name) : group.name;
+                    return <Pressable key={row.key} onPress={() => openStop(row.openStop)} accessibilityRole="button"
+                      accessibilityLabel={name + ", " + row.label + ", " + distanceText + ", " + row.lines.length + " lijnen"}
+                      style={({ pressed }) => [styles.nearRow, { backgroundColor: pressed ? colors.surfaceSoft : colors.surface, borderBottomColor: colors.border }]}>
+                      <View style={styles.stopContent}>
+                        <Text style={[styles.nearName, { color: colors.text }]} numberOfLines={large ? 2 : 1}>{name}</Text>
+                        <Text style={[styles.stopSubtitle, { color: colors.textSoft }]}>{distanceText} · {row.lines.length} {row.lines.length === 1 ? "lijn" : "lijnen"}</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+                    </Pressable>;
+                  })}
+                </View>;
               }
               if (item.kind === "rit") {
                 const journey = item.journey;
@@ -705,7 +719,7 @@ const styles = StyleSheet.create({
   top: { borderBottomWidth: StyleSheet.hairlineWidth, paddingHorizontal: 16, paddingBottom: 12 },
   brandLine: { flexDirection: "row", alignItems: "center", gap: 9, paddingBottom: 12 },
   brandMark: { width: 28, height: 28, borderRadius: 8, alignItems: "center", justifyContent: "center" },
-  brand: { fontSize: 23, fontWeight: "900", letterSpacing: -0.6 },
+  brand: { fontSize: 34, fontWeight: "900", letterSpacing: -0.6 },
   caption: { fontSize: 10.5, marginTop: 1 },
   beta: { paddingHorizontal: 7, paddingVertical: 4, borderRadius: 6 },
   betaText: { fontSize: 8.5, fontWeight: "900" },

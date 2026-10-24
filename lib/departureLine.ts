@@ -1,6 +1,7 @@
 import type { DepartureItem } from "../types/api";
 import { departurePresentation } from "./departurePresentation";
 import { staleCountdown } from "./offline";
+import { departureCountdown } from "./format";
 
 /**
  * One calm departure row (V5.4 "Rustig"): a large time, the line, the destination
@@ -20,7 +21,8 @@ function joined(...parts: (string | undefined | null | false)[]): string {
 export function departureLineStatus(item: DepartureItem, nowMs: number, options: {
   stale?: boolean; tooTight?: boolean; platform?: boolean; note?: string;
 } = {}): DepartureLineStatus {
-  const { cancelled, countdown } = departurePresentation(item, nowMs);
+  const { cancelled } = departurePresentation(item, nowMs);
+  const countdown = departureCountdown(item, nowMs, 180);
   const platform = options.platform !== false && item.platform
     ? (item.mode === "train" ? "spoor " : "perron ") + item.platform : "";
   if (cancelled) return { tone: "cancelled", text: joined("Rijdt niet", platform) };
