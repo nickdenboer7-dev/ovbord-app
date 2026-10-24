@@ -6,22 +6,23 @@ let harness,app={},favorites={},api={},permission={granted:true},fix=null,cacheM
 const storageData=new Map();let readStorage=async key=>storageData.get(key)||null;
 const storage={getItem:key=>readStorage(key),setItem:async(key,value)=>storageData.set(key,value)};
 const listeners=new Set(),smart=[];
-const React={createElement:(type,props,...children)=>({type,props:{...props,children}}),
+const apiProxy=new Proxy({},{get:(_target,key)=>(...args)=>api[key](...args)});
+const React={createContext:()=>({Provider:'Provider'}),createElement:(type,props,...children)=>({type,props:{...props,children}}),
  useRef:v=>harness.slot(()=>({current:v})),useState:initial=>{const h=harness,s=h.slot(()=>({value:typeof initial==='function'?initial():initial}));return[s.value,v=>{s.value=typeof v==='function'?v(s.value):v;}];},
  useMemo:(fn,deps)=>harness.memo(fn,deps),useCallback:(fn,deps)=>harness.memo(()=>fn,deps),useEffect:(fn,deps)=>harness.effect(fn,deps)};React.default=React;
-const native={StyleSheet:{create:v=>v,hairlineWidth:1},AppState:{currentState:'active',addEventListener:(_,fn)=>{listeners.add(fn);return{remove:()=>listeners.delete(fn)};}},useWindowDimensions:()=>({fontScale:1}),Keyboard:{dismiss(){}},Linking:{openSettings(){}},View:'View',Text:'Text',Pressable:'Pressable',FlatList:'FlatList',SectionList:'SectionList',RefreshControl:'RefreshControl',TextInput:'TextInput',ActivityIndicator:'ActivityIndicator'};
+const native={StyleSheet:{create:v=>v,hairlineWidth:1},AppState:{currentState:'active',addEventListener:(_,fn)=>{listeners.add(fn);return{remove:()=>listeners.delete(fn)};}},useWindowDimensions:()=>({fontScale:1}),Keyboard:{dismiss(){}},Linking:{openSettings(){}},View:'View',Text:'Text',Pressable:'Pressable',FlatList:'FlatList',SectionList:'SectionList',RefreshControl:'RefreshControl',TextInput:'TextInput',ActivityIndicator:'ActivityIndicator',ScrollView:'ScrollView',Platform:{OS:'android'},StatusBar:{currentHeight:24},Vibration:{vibrate(){}}};
 Module._load=function(request,parent,isMain){
  if(request==='react')return React;if(request==='react-native')return native;
  if(request==='@react-native-async-storage/async-storage')return{default:storage,__esModule:true};
  if(request==='@expo/vector-icons')return{Ionicons:'Ionicons'};
- if(request==='expo-router')return{useFocusEffect(){},useRouter:()=>({push(){},navigate(){}})};
+ if(request==='expo-router')return{Stack:{Screen:'Stack.Screen'},useLocalSearchParams:()=>({id:'trip',line:'4',destination:'Nijlân'}),useFocusEffect(){},useRouter:()=>({push(){},navigate(){},back(){},replace(){}})};
  if(request==='expo-status-bar')return{StatusBar:'StatusBar'};
  if(request==='expo-location')return{getForegroundPermissionsAsync:async()=>permission,requestForegroundPermissionsAsync:()=>{throw Error('Advice must never request permission');}};
  if(request==='react-native-safe-area-context')return{useSafeAreaInsets:()=>({top:24,bottom:8})};
- if(request.endsWith('/context/AppProvider'))return{useApp:()=>app};
+ if(request.endsWith('/context/AppProvider'))return{useApp:()=>app,favoriteJourneyKey:(...args)=>args.join('|')};
  if(request.endsWith('/context/FavoritesLive'))return{useFavoritesLive:()=>favorites};
  if(request.endsWith('/context/FlowNavigation'))return{useFlowNavigation:()=>({screens:[],showStop(){},requestSearch(){},searchRequest:0,homeRequest:0})};
- if(request.endsWith('/lib/api'))return api;
+ if(request.endsWith('/lib/api'))return apiProxy;
  if(request.endsWith('/lib/boardCache')&&cacheModule)return cacheModule;
  if(request.endsWith('/lib/useWalkingPosition'))return{useWalkingPosition:()=>null};
  if((request.endsWith('/lib/nearbyCache')||request==='./nearbyCache'))return{hydrateNearbyCache:async()=>{},peekLastLocation:()=>fix,rememberNearby(){},nearbyScope:()=> 'gps'};
@@ -29,7 +30,7 @@ Module._load=function(request,parent,isMain){
  if(request.endsWith('/lib/useBoardFocusRefresh'))return{useBoardFocusRefresh(){}};
  if(request.endsWith('/lib/useLiveLocation'))return{useLiveLocation:()=>({coords:null,bron:null,loading:true,requestFresh(){}})};
  if(request.endsWith('/lib/useLocationStartup'))return{useLocationStartup:()=>false};
- if(request.endsWith('/lib/activeTripStore'))return{loadActiveTrip:async()=>null,clearActiveTrip:async()=>{}};
+ if(request.endsWith('/lib/activeTripStore'))return{loadActiveTrip:async()=>null,clearActiveTrip:async()=>{},loadTripSnapshot:async()=>null,saveTripSnapshot:async()=>{},saveActiveTrip:async()=>{}};
  if(request.endsWith('/lib/location'))return{MANUAL_CITIES:[],VOORBEELD_LOCATIE_UTRECHT:{latitude:52.09,longitude:5.12}};
  for(const name of ['DepartureLine','DepartureSkeleton','NearbySkeleton','FlowWorkspace','FlowLineGroups','LijnBadge'])if(request==='./'+name||request.endsWith('/components/'+name))return{[name]:name,DepartureHeading:'DepartureHeading'};
  if(request.endsWith('/OverflowMenu'))return{MenuButton:'MenuButton',OverflowMenu:'OverflowMenu'};
@@ -55,11 +56,10 @@ const board=(s,departures=[])=>({stop:s,departures,arrivals:[],disruptions:[],ge
 const {walkMinutesTo,walkingDepartureAdvice}=require('../lib/leaveTime.ts');
 const {distanceMeters}=require('../lib/boardingMatch.ts');
 const {forYouDepartures}=require('../lib/forYou.ts');
-const {directionStops,directionDescription}=require('../lib/stopDirections.ts');
 const {departureLineStatus}=require('../lib/departureLine.ts');
 const cachePath=require.resolve('../lib/boardCache.ts');
 function freshCache(){delete require.cache[cachePath];cacheModule=require(cachePath);return cacheModule;}
-const defaults=()=>{app={colors:{},resolvedScheme:'light',recentStops:[],favoriteStops:[],favoriteJourneys:[],favoriteLines:[],manualCity:null,addRecentStop(){},toggleFavoriteStop(){},isFavoriteStop:()=>false,setManualCity(){},toggleFavoriteLine(){}};favorites={boards:{},refreshFailure:null,refreshing:false,refresh:async()=>{},stopsKey:''};api={getHalte:async()=>{throw Object.assign(Error('offline'),{name:'RequestFailure',network:true});},getNearby:async()=>[],searchCatalog:async()=>({stops:[],journeys:[]}),searchStops:async()=>[],getStopReliability:async()=>({})};};defaults();
+const defaults=()=>{app={colors:{},resolvedScheme:'light',recentStops:[],favoriteStops:[],favoriteJourneys:[],favoriteLines:[],manualCity:null,addRecentStop(){},toggleFavoriteStop(){},isFavoriteStop:()=>false,setManualCity(){},toggleFavoriteLine(){},toggleFavoriteJourney(){},isFavoriteJourney:()=>false,getCachedRit:()=>null,setCachedRit(){}};favorites={boards:{},refreshFailure:null,refreshing:false,refresh:async()=>{},stopsKey:''};api={getHalte:async()=>{throw Object.assign(Error('offline'),{name:'RequestFailure',network:true});},getNearby:async()=>[],searchCatalog:async()=>({stops:[],journeys:[]}),searchStops:async()=>[],getStopReliability:async()=>({})};};defaults();
 
 test('walking uses 1.3 detour, 4.5 km/h and the actual expected departure, with an exact three-minute safety boundary',()=>{
  const from={lat:53.19,lon:5.78},to={lat:53.192,lon:5.78};
@@ -79,14 +79,6 @@ test('For you mixes favourite stops, favourite carrier lines and saved direction
  const rows=forYouDepartures(entries,[a],['25|QBUZZ'],[{line:'4',direction:'Busstation',stop:c}],now);
  assert.deepEqual(rows.map(r=>r.item.id),['line','journey','stop']);assert.equal(rows[1].stale,true);
  assert.deepEqual(forYouDepartures(entries,[],[],[],now),[]);assert.equal(forYouDepartures(entries,[a,b,c],[],[],now,2).length,2);
-});
-test('direction choice preserves separate stop_ids even at identical coordinates and derives main destinations only from upcoming departures',()=>{
- const a=stop('a'),b=stop('b'),c=stop('c',{name:'Other stop'});const area={...a,variants:[a,b,a]};
- assert.deepEqual(directionStops(a,[area]).map(s=>s.id),['a','b']);assert.deepEqual(directionStops({...a,variants:[a]}).map(s=>s.id),['a']);
- assert.deepEqual(directionStops(a,[{...c,variants:[c]}]).map(s=>s.id),['a']);
- const d=directionDescription(board(a,[dep('1',4),dep('2',8),dep('3',2,{destination:'Busstation'}),dep('4',1,{cancelled:true,destination:'Vervallen'}),dep('5',-2,{destination:'Verleden'})]),now);
- assert.equal(d.label,'Richting NijlÃ¢n / Busstation');assert.equal(d.next,'17:02');
- const delayOnly=dep('delayed',8,{effectiveAt:undefined,plannedTime:'17:04',delayMinutes:3});assert.equal(directionDescription(board(a,[delayOnly]),now).next,'17:07');
 });
 test('last opened boards survive cold restart and retain their real timestamp; corrupt, expired and future snapshots are rejected',async()=>{
  storageData.clear();readStorage=async key=>storageData.get(key)||null;
@@ -134,17 +126,6 @@ test('an offline stop board restores cached rows and timestamp, labels each last
  api.getHalte=async()=>board(s,[dep('fresh',8,{effectiveAt:new Date(Date.now()+480000).toISOString()})]);list.props.refreshControl.props.onRefresh();await tick();tree=render();const fresh=find(tree,'FlatList');assert.equal(fresh.props.data[0].id,'fresh');assert.equal(find(fresh.props.renderItem({item:fresh.props.data[0],index:0}),'DepartureLine').props.stale,false);assert.doesNotMatch(text(tree),/Geen verbinding/);
  }finally{h.destroy();}
 });
-test('direction picker skips a single platform and opens the selected exact stop_id among multiple platforms',async()=>{
- defaults();storageData.clear();freshCache();const {StopDirectionPicker}=require('../components/StopDirectionPicker.tsx');let chosen=[];
- const one=stop('one'),h=new Harness();try{h.render(()=>StopDirectionPicker({stop:{...one,variants:[one]},onChoose:(...args)=>chosen.push(args),onBack(){}}));h.flush();await tick();assert.equal(chosen.length,1);assert.equal(chosen[0][0].id,'one');}finally{h.destroy();}
- const a=stop('north'),b=stop('south'),multi={...a,variants:[a,b]},h2=new Harness();chosen=[];
- api.getHalte=async id=>board(stop(id),[dep(id,8,{effectiveAt:new Date(Date.now()+480000).toISOString(),destination:id==='north'?'NijlÃ¢n':'Busstation'})]);
- const render=()=>h2.render(()=>StopDirectionPicker({stop:multi,onChoose:(...args)=>chosen.push(args),onBack(){}}));
- try{render();h2.flush();await tick();const tree=render();assert.match(text(tree),/Kies je richting/);const list=find(tree,'FlatList');assert.deepEqual(list.props.data.map(e=>e.stop.id),['north','south']);
- const row=list.props.renderItem({item:list.props.data[1]});assert.match(text(row),/Richting Busstation/);assert.match(text(row),/Eerstvolgende vertrek/);row.props.onPress();assert.equal(chosen[0][0].id,'south');assert.equal(chosen[0][1].stop.id,'south');
- }finally{h2.destroy();}
-});
-
 test('cached perron metadata survives routine API refreshes and the on-disk cache remains bounded',async()=>{
  storageData.clear();freshCache();const a=stop('platform-a'),b=stop('platform-b');
  cacheModule.rememberBoard(board({...a,variants:[a,b]},[dep('one',8)]));await tick();
@@ -170,6 +151,63 @@ test('a known platform never falls back to another same-name stop on a server fa
  app.addRecentStop=s=>{remembered=s;};api.getHalte=async()=>{throw Error('server temporarily unavailable');};api.searchStops=async()=>{searches++;return[b];};
  const {FlowBoard}=require('../components/FlowBoard.tsx'),h=new Harness(),props={stop:{...a,variants:[a,b]},initialBoard:board(a,[dep('x',8,{effectiveAt:new Date(Date.now()+480000).toISOString()})]),onBack(){}};
  try{h.render(()=>FlowBoard(props));h.flush();await tick();assert.equal(searches,0);assert.equal(remembered.id,'exact-a');}finally{h.destroy();}
+});
+
+const {journeyStopClock,expectedTimelineLocation,timelineDisplayProgress}=require('../lib/timelineProgress.ts');
+const stopAt=(id,time,extra={})=>({id,name:id,plannedTime:time,state:'upcoming',...extra});
+test('timeline uses expected arrivals, ignores schedule-derived states and moves exactly when the next expected time arrives',()=>{
+ const rows=[stopAt('A','16:40',{expectedTime:'16:48',state:'upcoming'}),stopAt('B','16:55',{expectedTime:'17:03',state:'passed'}),stopAt('C','17:03',{expectedTime:'17:11'})];
+ assert.deepEqual(expectedTimelineLocation(rows,now),{kind:'at',index:0});assert.deepEqual(expectedTimelineLocation(rows,now+180000),{kind:'at',index:1});
+ const p=timelineDisplayProgress(rows,null,now+180000);assert.equal(p.estimated,true);assert.equal(p.passed(0),true);assert.equal(p.passed(1),false);assert.equal(p.passed(2),false);
+ assert.equal(expectedTimelineLocation(rows,now-20*60000),null);assert.equal(expectedTimelineLocation([stopAt('X','--:--')],now),null);
+ assert.equal(journeyStopClock(stopAt('X','16:55',{delayMinutes:7})),'17:02');assert.equal(journeyStopClock(stopAt('X','16:55',{expectedTime:'17:08',actualKnown:true,actualTime:'17:09'})),'17:08');
+});
+test('timeline handles midnight and live GPS always outranks the clock; old GPS is not a confirmed position',()=>{
+ const midnight=Date.parse('2026-10-25T00:03:00+02:00'),rows=[stopAt('A','23:58'),stopAt('B','00:01'),stopAt('C','00:06')];
+ assert.deepEqual(expectedTimelineLocation(rows,midnight),{kind:'at',index:1});
+ const gps={kind:'between',index:0};let p=timelineDisplayProgress(rows,gps,midnight);assert.equal(p.estimated,false);assert.equal(p.location,gps);assert.equal(p.passed(0),true);assert.equal(p.passed(1),false);
+ p=timelineDisplayProgress(rows,gps,midnight,{lastKnown:true});assert.equal(p.estimated,true);assert.deepEqual(p.location,{kind:'at',index:1});
+ p=timelineDisplayProgress(rows,{kind:'at',index:99},midnight);assert.equal(p.estimated,true);assert.equal(p.location.index,1);
+ p=timelineDisplayProgress(rows,null,midnight,{ended:true});assert.equal(p.location,null);assert.ok(rows.every((_,i)=>p.passed(i)));
+ p=timelineDisplayProgress(rows,null,midnight,{cancelled:true});assert.equal(p.location,null);assert.ok(rows.every((_,i)=>!p.passed(i)));
+});
+test('Start without favourites has one instruction and no empty personal blocks; favourites retain their departure rows',()=>{
+ defaults();const {FlowHome}=require('../components/FlowHome.tsx'),h=new Harness();
+ try{const header=find(h.render(FlowHome),'SectionList').props.ListHeaderComponent,label=text(header);assert.equal(label.split('Tik op de ster bij een halte of lijn, dan staat die hier').length-1,1);assert.doesNotMatch(label,/Voor jou|Jouw haltes|Je bewaarde haltes verschijnen|Nog geen komende vertrekken/);assert.match(label,/Haltes in de buurt/);}finally{h.destroy();}
+});
+test('opening any stop immediately creates a board screen with all platform variants, without a direction chooser',()=>{
+ defaults();const {FlowNavigationProvider}=require('../context/FlowNavigation.tsx'),h=new Harness(),s=stop('area',{variants:[stop('A'),stop('B')]});
+ try{let view=h.render(()=>FlowNavigationProvider({children:null}));view.props.value.showStop(s);view=h.render(()=>FlowNavigationProvider({children:null}));const screen=view.props.value.screens[0];assert.equal(screen.stop,s);assert.equal(screen.choosing,undefined);assert.equal(screen.stop.variants.length,2);assert.equal(view.props.value.chooseStop,undefined);}finally{h.destroy();}
+ assert.equal(fs.existsSync(require('node:path').join(__dirname,'../components/StopDirectionPicker.tsx')),false);
+});
+test('the joint stop board retains all departures and each feed-provided platform',async()=>{
+ defaults();storageData.clear();freshCache();const s=stop('area'),live=Date.now();const departures=[dep('metro1',8,{platform:'1',line:'51',mode:'metro',effectiveAt:new Date(live+480000).toISOString()}),dep('metro2',9,{platform:'2',line:'54',mode:'metro',effectiveAt:new Date(live+540000).toISOString()}),dep('tram',10,{line:'1',mode:'tram',platform:'A',effectiveAt:new Date(live+600000).toISOString()})];
+ api.getHalte=async()=>board(s,departures);const {FlowBoard}=require('../components/FlowBoard.tsx'),h=new Harness();
+ try{h.render(()=>FlowBoard({stop:s,onBack(){}}));h.flush();await tick();const list=find(h.render(()=>FlowBoard({stop:s,onBack(){}})),'FlatList');assert.equal(list.props.data.length,3);assert.deepEqual(list.props.data.map(r=>r.platform),['1','2','A']);for(const item of list.props.data)assert.match(departureLineStatus(item,live).text,/perron [12A]/);}finally{h.destroy();}
+});
+function tripModule(){
+ const path=require('node:path'),file=path.resolve(__dirname,'../app/rit/[id].tsx'),m=new Module(file,module);m.filename=file;m.paths=Module._nodeModulePaths(path.dirname(file));
+ const source=ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020,jsx:ts.JsxEmit.React}}).outputText+'\nexports.testTimeLine=TimeLine;exports.testStyles=makeStyles;';
+ m._compile(source,file);return m.exports;
+}
+test('timeline renders grey past stops and one Nu hier tag from expected time, with no repeated unconfirmed-position labels',()=>{
+ defaults();const {testTimeLine:TimeLine,testStyles}=tripModule(),h=new Harness();const {ritColors}=require('../lib/ritTheme.ts');const styles=testStyles(ritColors.light);
+ const journey={id:'trip',line:'4',destination:'C',mode:'bus',polyline:[],stops:[stopAt('A','16:50'),stopAt('B','16:59'),stopAt('C','17:08')]};
+ try{const tree=h.render(()=>TimeLine({journey,nowMs:now,liveLocation:null,boarding:{},alightIndex:0,onOpenStop(){}})),rows=findAll(tree,'Pressable').filter(r=>r.props.accessibilityLabel?.endsWith('. Vertrekbord openen'));
+ assert.equal(rows.length,3);assert.equal(text(tree).split('Nu hier').length-1,1);assert.doesNotMatch(text(tree),/Positie niet bevestigd/);
+ assert.equal(findAll(rows[0],'Text').find(n=>text(n)==='A').props.style.filter(Boolean).at(-1).color,ritColors.light.passedName);
+ assert.equal(findAll(rows[0],'Text').find(n=>text(n)==='16:50').props.style.filter(Boolean).at(-1).color,ritColors.light.passedText);
+ assert.match(text(rows[1]),/Nu hier/);assert.equal(findAll(rows[1],'Text').find(n=>text(n)==='Nu hier').props.onPress,undefined);assert.equal(styles.header.flexShrink,0);assert.equal(styles.vehicleLine.flexShrink,0);assert.equal(styles.vehicleLine.position,undefined);
+ }finally{h.destroy();}
+});
+test('the trip page displays unconfirmed position once in its own row after the title and before the scroll view',async()=>{
+ defaults();const {default:RitPage}=tripModule(),h=new Harness();const clock=minutes=>new Intl.DateTimeFormat('nl-NL',{timeZone:'Europe/Amsterdam',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(Date.now()+minutes*60000));
+ api.getRit=async()=>({id:'trip',line:'4',destination:'Nijlân',mode:'bus',live:true,polyline:[],stops:[stopAt('A',clock(-5)),stopAt('B',clock(-1)),stopAt('C',clock(8))]});
+ try{h.render(RitPage);h.flush();await tick();let tree=h.render(RitPage);h.flush();await tick();tree=h.render(RitPage);
+ assert.equal(text(tree).split('Positie niet bevestigd').length-1,1);const scroll=find(tree,'ScrollView');assert.ok(scroll);assert.doesNotMatch(text(scroll),/Positie niet bevestigd/);
+ const children=tree.props.children.flat(Infinity).filter(x=>x&&typeof x==='object'),statusIndex=children.findIndex(x=>x.type==='Pressable'&&text(x).includes('Positie niet bevestigd')),headerIndex=children.findIndex(x=>x.type==='View'&&findAll(x,'Text').some(t=>text(t).includes('Nijlân'))),scrollIndex=children.indexOf(scroll);
+ assert.ok(statusIndex>headerIndex);assert.ok(statusIndex<scrollIndex);assert.equal(children[statusIndex].props.style.flexShrink,0);assert.equal(find(children[statusIndex],'Text').props.numberOfLines,undefined);
+ }finally{h.destroy();}
 });
 
 test.after(()=>{Module._load=originalLoad;if(oldTs)Module._extensions['.ts']=oldTs;else delete Module._extensions['.ts'];if(oldTsx)Module._extensions['.tsx']=oldTsx;else delete Module._extensions['.tsx'];});

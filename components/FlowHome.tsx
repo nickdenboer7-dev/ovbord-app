@@ -309,7 +309,7 @@ export function FlowHome() {
   /** The trip opens on top of that stop's board, so Back leads to the board. */
   const openMyDeparture = (stop: StopSummary, item: DepartureItem) => {
     addRecentStop(stop);
-    showStop(stop, { line: item.line, carrier: item.carrier, exact:true });
+    showStop(stop, { line: item.line, carrier: item.carrier });
     if (item.ritId) router.push({ pathname: "/rit/[id]", params: ritParamsForDeparture(item, stop) });
   };
   /** The search icon opens the field with recently viewed stops below it. */
@@ -429,6 +429,7 @@ export function FlowHome() {
                     <Ionicons name="cloud-offline-outline" size={18} color={colors.text}/>
                     <Text style={{color:colors.text,flex:1,fontSize:12}}>{boardRefreshNotice("offline",personalUpdatedAt)}</Text>
                   </View> : null}
+                  {showMine ? <>
                   <View style={styles.headingRow}>
                     <Text style={[styles.listTitle,{color:colors.heading}]} accessibilityRole="header">Voor jou</Text>
                     {favoritesUpdating||savedLinesUpdating?<Text style={{color:colors.textMuted,fontSize:11}}>Bijwerken…</Text>:null}
@@ -441,9 +442,11 @@ export function FlowHome() {
                         detail={advice||undefined} onPress={()=>openMyDeparture(sourceStop,item)}/>;
                     })}
                     {!personalRows.length?<Text style={{color:colors.textSoft,fontSize:13,padding:16,lineHeight:19}}>
-                      {showMine?"Nog geen komende vertrekken geladen. Open een van jouw haltes.":"Bewaar een halte of lijn met de ster. De eerstvolgende vertrekken staan hier."}
+                      Nog geen komende vertrekken geladen. Open een van jouw haltes.
                     </Text>:null}
                   </View>
+                  </> : <Text style={{color:colors.textSoft,fontSize:13,padding:16,lineHeight:19}}>Tik op de ster bij een halte of lijn, dan staat die hier</Text>}
+                  {homeSavedStops.length ? <>
                   <View style={styles.headingRow}>
                     <Text style={[styles.listTitle,{color:colors.heading}]} accessibilityRole="header">Jouw haltes</Text>
                     <Pressable onPress={()=>router.navigate("/favorieten")} accessibilityRole="button" accessibilityLabel="Alle favorieten openen">
@@ -459,7 +462,7 @@ export function FlowHome() {
                       </View><Ionicons name="chevron-forward" size={18} color={colors.textMuted}/>
                     </Pressable>;
                   })}
-                  {!homeSavedStops.length?<Text style={{color:colors.textSoft,fontSize:13,paddingHorizontal:16,paddingBottom:12}}>Je bewaarde haltes verschijnen hier.</Text>:null}
+                  </> : null}
                 </View> : null}
                 {showTrip && activeTrip ? (() => {
                   const tripLine = activeTripLine(activeTrip);

@@ -62,8 +62,8 @@ test("delay under the time and the spoken row", () => {
 test("position card headline and the line that follows the trip", () => {
   assert.equal(progress.positionHeadline({ ended: false, placeText: "Tussen Rembrandtplein en Keizersgracht", live: true, cancelled: false }),
     "Tussen Rembrandtplein en Keizersgracht");
-  assert.equal(progress.positionHeadline({ ended: false, placeText: "", live: false, cancelled: false }), "Volgens dienstregeling");
-  assert.equal(progress.positionHeadline({ ended: false, placeText: "", live: true, cancelled: false }), "Live tijden · positie niet bevestigd");
+  assert.equal(progress.positionHeadline({ ended: false, placeText: "", live: false, cancelled: false }), "Positie niet bevestigd");
+  assert.equal(progress.positionHeadline({ ended: false, placeText: "", live: true, cancelled: false }), "Positie niet bevestigd");
   assert.equal(progress.positionHeadline({ ended: true, placeText: "Bij Dam", live: true, cancelled: false }), "Rit beëindigd");
   assert.equal(progress.positionHeadline({ ended: false, placeText: "Bij Dam", live: true, cancelled: true }), "Deze rit rijdt niet");
 
@@ -300,7 +300,7 @@ test("trip page: one bar that follows the trip and a simple menu", () => {
   // V5.7: no permanent alighting bar; a warning only when the alighting stop is next or reached.
   assert.match(rit, /alightLine && \(alightState\.status === "next" \|\| alightState\.status === "at"\) \? <View style=\{styles\.alightWarning\}/);
   assert.match(rit, />Je stapt hier uit</);
-  assert.match(rit, />Vertrokken</);
+  assert.match(rit, /progress\.estimated \? "Gepasseerd" : "Vertrokken"/);
   assert.match(rit, /<Text style=\{styles\.vehicleLineStrong\}>\{headline\}<\/Text>/);
   assert.match(rit, /title="Meer acties voor deze rit"/);
   assert.match(rit, /description: "Rit-ID: " \+ tripId/);

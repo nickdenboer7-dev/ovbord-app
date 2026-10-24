@@ -6,12 +6,11 @@ import { useApp } from "../context/AppProvider";
 import { BackHandler, StyleSheet, View } from "react-native";
 import { useFlowNavigation } from "../context/FlowNavigation";
 import { FlowBoard } from "./FlowBoard";
-import { StopDirectionPicker } from "./StopDirectionPicker";
 import { DepartureSkeleton } from "./DepartureSkeleton";
 
 /** Invisible earlier boards stay mounted. The FlatList offset and open journey survive back navigation. */
 export function FlowWorkspace() {
-  const { screens, back, chooseStop, pendingStopName, pendingStopError, clearPendingError } = useFlowNavigation();
+  const { screens, back, pendingStopName, pendingStopError, clearPendingError } = useFlowNavigation();
   const { colors } = useApp();
   const router = useRouter();
   const goBack = useCallback(() => {
@@ -43,8 +42,7 @@ export function FlowWorkspace() {
             accessibilityElementsHidden={!visible}
             importantForAccessibility={visible ? "auto" : "no-hide-descendants"}
           >
-            {screen.choosing ? <StopDirectionPicker stop={screen.stop} onBack={goBack}
-              onChoose={(stop,board,at,stale)=>chooseStop(screen.key,stop,board,at,stale)}/> : <FlowBoard
+            <FlowBoard
               key={screen.stop.id}
               stop={screen.stop}
               initialBoard={screen.initialBoard}
@@ -53,7 +51,7 @@ export function FlowWorkspace() {
               initialLine={screen.initialLine}
               visible={visible}
               onBack={goBack}
-            />}
+            />
           </View>
         );
       })}

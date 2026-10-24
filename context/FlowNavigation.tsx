@@ -5,9 +5,9 @@ import { loadJourneyStopBoard } from "../lib/stopBoardLookup";
 import type { HalteBoardData, JourneyStop, Mode, StopSummary } from "../types/api";
 
 /** initialLine: a board line filter key to preselect (e.g. when opening a favourite trip). */
-export type FlowScreen = { key: number; stop: StopSummary; initialBoard?: HalteBoardData; choosing?: boolean; initialFetchedAt?:number; initialStale?:boolean;
+export type FlowScreen = { key: number; stop: StopSummary; initialBoard?: HalteBoardData; initialFetchedAt?:number; initialStale?:boolean;
   initialLine?: string; returnTrip?: Record<string, string> & { id: string } };
-export type ShowStopOptions = { line?: string; carrier?: string; exact?: boolean };
+export type ShowStopOptions = { line?: string; carrier?: string };
 /** Boards stay mounted for instant Back; cap the stack so long trip↔stop chains do not grow memory forever. */
 export const MAX_FLOW_SCREENS = 8;
 type FlowContextValue = {
@@ -16,7 +16,6 @@ type FlowContextValue = {
   pendingStopError: string | null;
   clearPendingError: () => void;
   showStop: (stop: StopSummary, options?: ShowStopOptions) => void;
-  chooseStop: (key:number,stop:StopSummary,board?:HalteBoardData,fetchedAt?:number,stale?:boolean)=>void;
   followJourneyStop: (stop: JourneyStop, mode: Mode, returnTrip?: Record<string, string> & { id: string }) => void;
   back: () => void;
   close: () => void;
@@ -45,11 +44,8 @@ export function FlowNavigationProvider({ children }: { children: React.ReactNode
   const showStop = useCallback((stop: StopSummary, options?: ShowStopOptions) => {
     cancelPending();
     const initialLine = options?.line ? boardLineFilterKey(options.line, options.carrier) : undefined;
-    setScreens([{ key: ++nextScreenKey, stop, initialLine, choosing: !options?.exact }]);
+    setScreens([{ key: ++nextScreenKey, stop, initialLine }]);
   }, [cancelPending]);
-  const chooseStop=useCallback((key:number,stop:StopSummary,initialBoard?:HalteBoardData,initialFetchedAt?:number,initialStale?:boolean)=>{
-    setScreens(previous=>previous.map(screen=>screen.key===key?{...screen,stop,initialBoard,initialFetchedAt,initialStale,choosing:false}:screen));
-  },[]);
   const followJourneyStop = useCallback((stop: JourneyStop, mode: Mode, returnTrip?: Record<string, string> & { id: string }) => {
     if (!stop.name) return;
     const sequence = ++pendingSequence.current;
@@ -83,8 +79,8 @@ export function FlowNavigationProvider({ children }: { children: React.ReactNode
   const requestSearch = useCallback(() => { cancelPending(); setScreens([]); setSearchRequest((n) => n + 1); }, [cancelPending]);
   const [homeRequest, setHomeRequest] = useState(0);
   const goHome = useCallback(() => { cancelPending(); setScreens([]); setHomeRequest((n) => n + 1); }, [cancelPending]);
-  const value = useMemo(() => ({ screens, pendingStopName, pendingStopError, clearPendingError, showStop, chooseStop, followJourneyStop, back, close, requestSearch, searchRequest, goHome, homeRequest }),
-    [screens, pendingStopName, pendingStopError, clearPendingError, showStop, chooseStop, followJourneyStop, back, close, requestSearch, searchRequest, goHome, homeRequest]);
+  const value = useMemo(() => ({ screens, pendingStopName, pendingStopError, clearPendingError, showStop, followJourneyStop, back, close, requestSearch, searchRequest, goHome, homeRequest }),
+    [screens, pendingStopName, pendingStopError, clearPendingError, showStop, followJourneyStop, back, close, requestSearch, searchRequest, goHome, homeRequest]);
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 export function useFlowNavigation() {

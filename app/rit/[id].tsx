@@ -18,7 +18,7 @@ import { tripCancellation } from "../../lib/ritCancellation";
 import { continuationText, estimatedSpeedKmh, nextTripDecision, notTheTappedTrip, otherTripMessage, tripSignature, vehiclePlaceText } from "../../lib/ritIdentity";
 import type { TripSignature } from "../../lib/ritIdentity";
 import { journeyEnded, ritShareText } from "../../lib/ritLifecycle";
-import {shiftClock} from "../../lib/format";
+import { journeyStopClock, expectedTimelineLocation, timelineDisplayProgress } from "../../lib/timelineProgress";
 import { journeyExtras } from "../../lib/flowLiveDetails";
 import { disruptionSummary } from "../../lib/haltebordV4";
 import { upcomingJourneyNotices } from "../../lib/upcomingJourneyNotices";
@@ -78,12 +78,7 @@ function stopShort(name: string): string {
 }
 function isTime(value: string | undefined) { return /^\d{1,2}:\d{2}$/.test(value || ""); }
 function timeOf(stop: JourneyStop, passed = stop.state==="passed"): string {
-  // Actual observations belong to passed stops; all upcoming clocks share the journey's effective ETA.
-  if(passed && stop.actualKnown && isTime(stop.actualTime))return stop.actualTime!;
-  if(isTime(stop.expectedTime))return stop.expectedTime!;
-  if(isTime(stop.plannedTime) && typeof stop.delayMinutes==="number")
-    return shiftClock(stop.plannedTime,stop.delayMinutes);
-  return isTime(stop.plannedTime)?stop.plannedTime:"—";
+  return journeyStopClock(stop,passed);
 }
 function minutesSuffix(value: number | undefined) {
   return typeof value === "number" && Number.isFinite(value) && value !== 0 ? (value > 0 ? "+" + value : "−" + Math.abs(value)) : "";
@@ -267,8 +262,11 @@ function platformLabel(stop: JourneyStop, mode: RitData["mode"]): string {
 }
 
 function TimeLine({ journey, liveLocation, boarding, onOpenStop, lastKnown = false,
-  alightIndex = -1, choosing = false, minAlightIndex = 1, onChooseAlight, onFocusVehicle, skipped, onRowLayout }: {
+  alightIndex = -1, choosing = false, minAlightIndex = 1, onChooseAlight, onFocusVehicle, skipped, onRowLayout, nowMs, ended = false, cancelled = false }: {
   journey: RitData;
+  nowMs: number;
+  ended?: boolean;
+  cancelled?: boolean;
   liveLocation: { kind: "at" | "between"; index: number } | null | undefined;
   boarding: BoardingHint;
   onOpenStop: (stop: JourneyStop) => void;
@@ -295,19 +293,19 @@ function TimeLine({ journey, liveLocation, boarding, onOpenStop, lastKnown = fal
   // choosing where to get off scrolls to the first stop that can be chosen. Nothing is hidden.
   const visible = stops;
   const start = 0;
-  const nextIndex = verifiedNextStopIndex(liveLocation || null, stops.length);
+  const progress = timelineDisplayProgress(stops,liveLocation,nowMs,{lastKnown,ended,cancelled});
+  const shownLocation = progress.location;
+  const nextIndex = verifiedNextStopIndex(shownLocation, stops.length);
   const GRAY_RAIL = c.grayRail;
   const icon = vehicleIcon(journey.mode);
 
   return <View style={styles.timeLine}>
     {visible.map((stop, offset) => {
       const index = start + offset;
-      // The backend's schedule-derived "passed/current" states aren't GPS observations.
-      const passed = liveLocation
-        ? (liveLocation.kind === "at" ? index < liveLocation.index : index <= liveLocation.index)
-        : false;
-      const atStop = liveLocation?.kind === "at" && liveLocation.index === index;
-      const between = liveLocation?.kind === "between" && liveLocation.index === index;
+      // Timetable fallback changes presentation only; it never becomes verified GPS.
+      const passed = progress.passed(index);
+      const atStop = shownLocation?.kind === "at" && shownLocation.index === index;
+      const between = shownLocation?.kind === "between" && shownLocation.index === index;
       const last = index === stops.length - 1;
       const isBoarding = index === boardingIndex;
       const isNext = nextIndex !== null && index === nextIndex && !passed;
@@ -330,7 +328,7 @@ function TimeLine({ journey, liveLocation, boarding, onOpenStop, lastKnown = fal
           isTime(stop.plannedDepartureTime) ? stop.plannedDepartureTime! : timeOf(stop, passed))
         : timeOf(stop, passed);
       const label = timelineStopLabel({ name: stop.name, clock: stopClock, delayMinutes: stop.delayMinutes, platform,
-        passed, vehicleHere: atStop, next: isNext, boarding: isBoarding, alight: isAlight, last, lastKnown, skipped: skip });
+        passed, vehicleHere: atStop, next: isNext, boarding: isBoarding, alight: isAlight, last, lastKnown, estimated:progress.estimated, skipped: skip });
       // Tap opens the stop board; a long press (or tapping while choosing) picks the alighting stop.
       return <Pressable key={stop.id + "-" + index}
         onLayout={onRowLayout ? (event: LayoutChangeEvent) => onRowLayout(index, event.nativeEvent.layout.y) : undefined}
@@ -357,7 +355,7 @@ function TimeLine({ journey, liveLocation, boarding, onOpenStop, lastKnown = fal
           <View style={styles.timelineActualLine}>
             {/* The time column has a fixed width (the vehicle marker is positioned from it): cap large system fonts. */}
             <Text maxFontSizeMultiplier={1.25} style={[styles.timelineTime, passed && styles.passedText, afterAlight && styles.afterAlightText,
-              (isBoarding || isNext || atStop) && !passed && styles.timelineImportantTime, isAlight && styles.alightTime]}>{stopClock}</Text>
+              (isBoarding || isNext || atStop) && !passed && styles.timelineImportantTime, isAlight && styles.alightTime, passed && styles.passedText]}>{stopClock}</Text>
             {delay && !passed ? <Text maxFontSizeMultiplier={1.25} style={[styles.delayText, { color: delay.startsWith("+") ? c.red : c.green }]}>{delay}</Text> : null}
           </View>
           {platform && !passed ? <Text maxFontSizeMultiplier={1.25} style={[styles.timelinePlatform, stop.platformChanged && styles.timelinePlatformChanged]}
@@ -365,7 +363,7 @@ function TimeLine({ journey, liveLocation, boarding, onOpenStop, lastKnown = fal
         </View>
         <View style={styles.timelineRail}>
           {index > 0 ? <View style={[styles.railTop, { backgroundColor: railAbove }]}/> : null}
-          {atStop ? <View style={[styles.railVehicle, { backgroundColor: lastKnown ? c.muted : c.green }]}>
+          {atStop ? <View style={[styles.railVehicle, { backgroundColor: progress.estimated ? c.muted : c.green }]}>
             <Ionicons name={icon} size={14} color="#FFFFFF"/>
           </View> : isAlight ? <View style={[styles.railAlight, { borderColor: c.alightTagText }]}>
             <View style={[styles.railAlightDot, { backgroundColor: c.alightTagText }]}/>
@@ -379,16 +377,16 @@ function TimeLine({ journey, liveLocation, boarding, onOpenStop, lastKnown = fal
           <View style={styles.timelineNameRow}>
             <Text style={[styles.timelineName, passed && styles.passedName, afterAlight && styles.afterAlightText,
               (isBoarding || isNext || atStop) && !passed && styles.timelineImportantName, last && styles.lastStop,
-              isAlight && styles.alightName, skip && styles.skippedName]} numberOfLines={2}>{displayName}</Text>
+              isAlight && styles.alightName, skip && styles.skippedName, passed && styles.passedName]} numberOfLines={2}>{displayName}</Text>
             {skip ? <Text style={styles.skipTag}>Vervalt</Text> : null}
-            {atStop ? <Text onPress={onFocusVehicle} accessibilityRole={onFocusVehicle ? "button" : undefined}
-              accessibilityLabel={onFocusVehicle ? vehicleNoun(journey.mode) + " is hier. Volg op de kaart" : undefined}
-              style={[styles.nowTag, lastKnown && styles.tagMuted]}>{lastKnown ? "Laatst hier" : "Nu hier"}</Text> : null}
+            {atStop ? <Text onPress={!progress.estimated ? onFocusVehicle : undefined} accessibilityRole={!progress.estimated && onFocusVehicle ? "button" : undefined}
+              accessibilityLabel={progress.estimated ? "Nu hier volgens verwachte tijden" : vehicleNoun(journey.mode) + " is hier. Volg op de kaart"}
+              style={[styles.nowTag, progress.estimated && styles.tagMuted]}>Nu hier</Text> : null}
           </View>
           {isNext && !atStop && !isAlight && !isBoarding && !skip ? <Text style={styles.nextTag}>Volgende halte</Text> : null}
           {/* One small line under the name, as in OVinfo. */}
-          {isAlight ? <Text style={styles.alightSub}>Je stapt hier uit</Text>
-            : passed ? <Text style={styles.passedSub}>Vertrokken</Text> : null}
+          {passed ? <Text style={styles.passedSub}>{progress.estimated ? "Gepasseerd" : "Vertrokken"}</Text>
+            : isAlight ? <Text style={styles.alightSub}>Je stapt hier uit</Text> : null}
         </View>
         {!choosing ? <Ionicons name="chevron-forward" size={16} color={passed ? c.passedName : c.muted} /> : null}
         {between ? <Pressable onPress={onFocusVehicle} disabled={!onFocusVehicle} hitSlop={10} style={[styles.vehicleOnRail, lastKnown && { backgroundColor: c.muted }]}
@@ -628,7 +626,7 @@ export default function RitScreen() {
   const lastKnown = Boolean(failure && journey);
   // Short: this sits next to the map button on narrow screens.
   // "Tussen Prinsengracht en Frederiksplein": only from GPS-verified progress.
-  const placeText = journey && !ended ? vehiclePlaceText(journey.stops.map((stop) => stopShort(stop.name)), verifiedLive, lastKnown) : "";
+  const placeText = journey && !ended && !lastKnown ? vehiclePlaceText(journey.stops.map((stop) => stopShort(stop.name)), verifiedLive, lastKnown) : "";
   const speedText = placeText && !lastKnown && speedKmh !== null && speedKmh >= 5 ? " · ± " + speedKmh + " km/u" : "";
   const positionText = ritPositionText({ ended, gpsFresh, gpsAgeSeconds: shownGpsAge,
     estimated: journey?.estimatedPosition, lastKnown });
@@ -697,7 +695,7 @@ export default function RitScreen() {
   const positionSub = cancelled ? (cancellation.source === "haltebord"
       ? "Het vertrekbord meldt deze rit als uitgevallen. Kijk daar voor een alternatief."
       : "De vervoerder meldt deze rit als uitgevallen. Kijk op het vertrekbord voor een alternatief.")
-    : ended ? "" : positionText + speedText;
+    : ended || !verifiedLive || lastKnown ? "" : positionText + speedText;
   // Minutes until the boarding stop; negative once its time has passed (then, without GPS, the line goes).
   const boardingRemaining = boardingStop ? clockRemainingMs(timeOf(boardingStop), nowMs) : null;
   const boardingLine = journey && boardingStop && !cancelled && !ended ? boardingProgress({ name: stopShort(boardingStop.name),
@@ -715,7 +713,7 @@ export default function RitScreen() {
     return true;
   }
   // Where the page opens: the verified vehicle, otherwise the boarding stop. Never a guessed position.
-  const scrollTarget = verifiedLive ? verifiedLive.index : boardingIndex;
+  const scrollTarget = verifiedLive && !lastKnown ? verifiedLive.index : journey ? expectedTimelineLocation(journey.stops,nowMs)?.index ?? boardingIndex : boardingIndex;
   function autoScroll() {
     if (autoScrolled.current || mapOpen || choosingAlight || scrollTarget < 0) return;
     if (scrollToStop(scrollTarget, false)) autoScrolled.current = true;
@@ -802,7 +800,7 @@ export default function RitScreen() {
   return <View style={styles.page}>
     <Stack.Screen options={{ headerShown: false }} />
     <ExpoStatusBar style={c.statusBar} />
-    <View style={[styles.header, { paddingTop: Platform.OS === "android" ? NativeStatusBar.currentHeight || 24 : 30 }]}>
+    <View style={[styles.header, { paddingTop: Math.max(insets.top, Platform.OS === "android" ? NativeStatusBar.currentHeight || 24 : 30) }]}>
       <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel={boardingName ? "Terug naar haltebord" : "Terug"} style={styles.headerButton}><Ionicons name="arrow-back" color={c.text} size={25}/></Pressable>
       <View style={styles.headerBadge}><LijnBadge line={line} carrier={carrier} tone="accent" /></View>
       <View style={styles.headerTitles} accessibilityRole="header"><Text maxFontSizeMultiplier={1.2} style={[styles.headerTitle, destination.length > 18 && styles.headerTitleLong]} numberOfLines={3}><Text style={styles.headerNaar}>naar </Text>{destination}</Text></View>
@@ -812,6 +810,15 @@ export default function RitScreen() {
       </Pressable> : null}
       <MenuButton onPress={() => setMenuOpen(true)} color={c.text} label="Meer opties voor deze rit" />
     </View>
+      {/* Where the vehicle is: one small line; the vehicle itself is in the timeline. */}
+      {journey && !cancelled ? <Pressable onPress={verifiedLive && !lastKnown ? focusVehicle : toggleMap} accessibilityRole="button"
+        accessibilityLabel={(vehicleLabel ? vehicleLabel + ". " : "") + headline + ". " + positionSub + ". Op kaart"} style={styles.vehicleLine}>
+        <Ionicons name={lastKnown ? "cloud-offline-outline" : verifiedLive ? "radio-outline" : "time-outline"} size={15} color={verifiedLive && !lastKnown ? c.green : c.muted}/>
+        <Text style={styles.vehicleLineText} maxFontSizeMultiplier={1.3}>
+          {vehicleLabel ? <Text style={styles.vehicleNumber}>{vehicleLabel + "  "}</Text> : null}
+          <Text style={styles.vehicleLineStrong}>{headline}</Text>{positionSub && positionSub !== headline ? " · " + positionSub.replace("Live GPS · ", "live ").replace(" geleden", "") : ""}
+        </Text>
+      </Pressable> : null}
     {/* Choosing where to get off is a temporary mode: this bar stays in view while the list scrolls. */}
     {choosingAlight && journey && !mapOpen ? <View style={styles.chooseBanner} accessibilityRole="alert">
       <Ionicons name="flag-outline" color={c.alightTagText} size={17}/>
@@ -860,15 +867,6 @@ export default function RitScreen() {
           <Ionicons name="warning-outline" size={16} color={c.red}/>
           <Text style={[styles.positionLineText, { color: c.red }]}>Let op: stopt niet bij {stopShort(stop.name)} (melding: halte vervalt)</Text>
         </View>)}
-      {/* Where the vehicle is: one small line; the vehicle itself is in the timeline. */}
-      {!cancelled ? <Pressable onPress={verifiedLive ? focusVehicle : toggleMap} accessibilityRole="button"
-        accessibilityLabel={(vehicleLabel ? vehicleLabel + ". " : "") + headline + ". " + positionSub + ". Op kaart"} style={styles.vehicleLine}>
-        <Ionicons name={lastKnown ? "cloud-offline-outline" : verifiedLive ? "radio-outline" : "time-outline"} size={15} color={verifiedLive && !lastKnown ? c.green : c.muted}/>
-        <Text style={styles.vehicleLineText} numberOfLines={2}>
-          {vehicleLabel ? <Text style={styles.vehicleNumber}>{vehicleLabel + "  "}</Text> : null}
-          <Text style={styles.vehicleLineStrong}>{headline}</Text>{positionSub && positionSub !== headline ? " · " + positionSub.replace("Live GPS · ", "live ").replace(" geleden", "") : ""}
-        </Text>
-      </Pressable> : null}
       {/* All notices as one compact row; the details open on tap. */}
       {disruptions.length ? <View style={[styles.ritAlertGroup, alertWarning && styles.ritAlertWarning]}>
         <Pressable onPress={() => setAlertsOpen((open) => !open)} accessibilityRole="button" accessibilityState={{ expanded: alertsOpen }}
@@ -916,7 +914,7 @@ export default function RitScreen() {
       </> : null}
       {failure ? <Text style={styles.refreshError}>{ritRefreshNotice(failure, fetchedAt)}</Text> : null}
       {mapOpen ? null : <View onLayout={(event: LayoutChangeEvent) => { timelineTop.current = event.nativeEvent.layout.y; autoScroll(); }}>
-        <TimeLine journey={journey} liveLocation={verifiedLive} boarding={boarding} onOpenStop={openStopBoard} lastKnown={lastKnown} onFocusVehicle={focusVehicle}
+        <TimeLine journey={journey} nowMs={nowMs} ended={ended} cancelled={cancelled} liveLocation={verifiedLive} boarding={boarding} onOpenStop={openStopBoard} lastKnown={lastKnown} onFocusVehicle={focusVehicle}
           alightIndex={alightIndex} choosing={choosingAlight} minAlightIndex={minAlightIndex} onChooseAlight={canChooseAlight ? chooseAlight : undefined}
           skipped={skipped} onRowLayout={onRowLayout}/>
       </View>}
@@ -938,7 +936,7 @@ function makeStyles(c: RitColors) {
   return StyleSheet.create({
   page: { flex: 1, backgroundColor: c.page },
   // V5.7: white header with a hairline; the green line badge is the accent.
-  header: { backgroundColor: c.surface, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.border,
+  header: { flexShrink: 0, backgroundColor: c.surface, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.border,
     flexDirection: "row", alignItems: "center", paddingBottom: 10, paddingHorizontal: 6, minHeight: 76 },
   headerButton: { width: 39, height: 42, alignItems: "center", justifyContent: "center" },
   headerBadge: { marginLeft: 2, marginRight: 10 },
@@ -979,7 +977,7 @@ function makeStyles(c: RitColors) {
   tripBarLabel: { color: c.muted, fontSize: 12.5, lineHeight: 16 },
   tripBarMain: { color: c.text, fontSize: 15.5, lineHeight: 20 },
   skipWarning: { flexDirection: "row", alignItems: "center", gap: 8, marginHorizontal: 14, marginBottom: 6 },
-  vehicleLine: { flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 16, paddingVertical: 6 },
+  vehicleLine: { flexShrink: 0, minHeight: 40, backgroundColor: c.surface, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.border, flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 16, paddingVertical: 8 },
   vehicleLineText: { flex: 1, color: c.muted, fontSize: 12.5, lineHeight: 17 },
   vehicleLineStrong: { color: c.text, fontWeight: "700" },
   vehicleNumber: { color: c.muted, fontWeight: "800" },

@@ -13,7 +13,7 @@ export function positionHeadline(input: { ended: boolean; placeText: string; liv
   if (input.cancelled) return "Deze rit rijdt niet";
   if (input.ended) return "Rit beëindigd";
   if (input.placeText) return input.placeText;
-  return input.live ? "Live tijden · positie niet bevestigd" : "Volgens dienstregeling";
+  return "Positie niet bevestigd";
 }
 
 function countdown(minutes: number | null, lastKnown: boolean): string {
@@ -66,7 +66,7 @@ export function alightRow(input: {
 /** Spoken label of one timeline stop: name, time, and what it means for this trip. */
 export function timelineStopLabel(input: {
   name: string; clock: string; delayMinutes?: number; platform?: string;
-  passed: boolean; vehicleHere: boolean; next: boolean; boarding: boolean; alight: boolean; last: boolean; lastKnown: boolean;
+  passed: boolean; vehicleHere: boolean; next: boolean; boarding: boolean; alight: boolean; last: boolean; lastKnown: boolean; estimated?: boolean;
   /** A notice says the vehicle does not call here. */
   skipped?: boolean;
 }): string {
@@ -76,7 +76,7 @@ export function timelineStopLabel(input: {
     parts.push(Math.abs(Math.round(d)) + (Math.abs(Math.round(d)) === 1 ? " minuut " : " minuten ") + (d > 0 ? "later" : "eerder"));
   }
   if (input.platform && !input.passed) parts.push(input.platform);
-  if (input.vehicleHere) parts.push(input.lastKnown ? "voertuig was hier" : "voertuig is hier");
+  if (input.vehicleHere) parts.push(input.estimated ? "huidige halte volgens verwachte tijden" : input.lastKnown ? "voertuig was hier" : "voertuig is hier");
   else if (input.passed) parts.push("gepasseerd");
   else if (input.next) parts.push(input.lastKnown ? "laatst bekend als volgende halte" : "volgende halte");
   if (input.boarding) parts.push("jouw halte");
