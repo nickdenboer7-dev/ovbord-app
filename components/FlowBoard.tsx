@@ -1,9 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { StatusBar as ExpoStatusBar } from "expo-status-bar";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { DepartureHeading, DepartureLine } from "./DepartureLine";
+import { DepartureHeading } from "./DepartureLine";
+import { StopBoardRow } from "./StopBoardRow";
+import { BOARD_MODE_LABEL, STOP_BOARD_BLUE, stopBoardHeader, stopBoardModes } from "../lib/stopBoardDesign";
 import { DepartureSkeleton } from "./DepartureSkeleton";
 import { MenuButton, OverflowMenu } from "./OverflowMenu";
 import type { MenuItem } from "./OverflowMenu";
@@ -33,7 +36,7 @@ import { ritParamsForDeparture } from "../lib/ritRoute";
 import type { FailureKind } from "../lib/offline";
 import type { PlatformChanges } from "../lib/haltebordV4";
 import type { DepartureTimeChanges } from "../lib/boardSmartness";
-import type { DepartureItem, HalteBoardData, ReliabilityInfo, StopSummary } from "../types/api";
+import type { DepartureItem, HalteBoardData, ReliabilityInfo, StopSummary, Mode } from "../types/api";
 
 type BoardTab = "departures" | "arrivals" | "lines" | "disruptions";
 type Props = {
@@ -77,6 +80,9 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
   const [refreshFailure, setRefreshFailure] = useState<FailureKind | null>(null);
   const [retryBoard, setRetryBoard] = useState(0);
   const [tab, setTab] = useState<BoardTab>("departures");
+  const [selectedMode,setSelectedMode]=useState<Mode|null>(null);
+  const headerInfo=stopBoardHeader(stop,board);
+  const modes=stopBoardModes(stop,board);
   const [selectedLine, setSelectedLine] = useState<string | null>(initialLine || null);
   /** Destination filter (departures only), combined with the line filter. */
   const [selectedDirection, setSelectedDirection] = useState<string | null>(null);
@@ -255,8 +261,8 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
   /** Favourite lines (a star in the Lijnen tab) are shown in "Jouw lijnen". */
   const favoriteKeySet = useMemo(() => new Set(favoriteLines), [favoriteLines]);
   const lineEntries = useMemo(
-    () => source.filter((item) => matchesBoardLineFilter(item, selectedLine)),
-    [source, selectedLine]
+    () => source.filter((item) => (!selectedMode||(item.mode||stop.mode)===selectedMode)&&matchesBoardLineFilter(item, selectedLine)),
+    [source, selectedLine, selectedMode]
   );
   const directions = useMemo(() => tab === "departures" ? boardDirectionChoices(lineEntries) : [], [tab, lineEntries]);
   const entries = useMemo(
@@ -265,7 +271,7 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
   );
   // "Jouw lijnen": up to three rows above "Alle vertrekken"; those rows are not repeated below.
   const pinned = useMemo(() => tab === "departures" && !selectedLine && selectedDirection === null
-    ? pinnedDepartures(source, favoriteLines, nowMs, MAX_PINNED_ROWS) : [], [tab, selectedLine, selectedDirection, source, favoriteLines, nowMs]);
+    ? pinnedDepartures(source.filter(item=>!selectedMode||(item.mode||stop.mode)===selectedMode), favoriteLines, nowMs, MAX_PINNED_ROWS) : [], [tab, selectedLine, selectedDirection, selectedMode, source, favoriteLines, nowMs]);
   const listRows = useMemo(() => {
     if (!pinned.length) return entries;
     const shown = new Set(pinned.map((item) => boardDepartureIdentity(item)));
@@ -276,6 +282,7 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
       source.find((item) => matchesBoardDirection(item, selectedDirection))?.destination || "";
 
   const selectTab = (next: BoardTab) => { setTab(next); setSelectedLine(null); setSelectedDirection(null); setDirectionsOpen(false); };
+  const selectMode=(mode:Mode|null)=>{selectTab("departures");setSelectedMode(mode);listRef.current?.scrollToOffset({offset:0,animated:false});};
   const selectDirection = (key: string | null) => {
     setSelectedDirection(key);
     setDirectionsOpen(false);
@@ -299,11 +306,12 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
     try { await reloadBoardRef.current(); } finally { setRefreshing(false); }
   };
 
-  const viewTitle = tab === "disruptions" ? "Storingen" : "";
+  const viewTitle = tab === "disruptions" ? "Storingen" : tab === "arrivals" ? "Aankomsten" : "";
   const selectedLineLabel = selectedLine ? source.find((row) => matchesBoardLineFilter(row, selectedLine))?.line || selectedLine : "";
   const disruptionCount = activeNotices.length;
   // Options that do not need to be on screen all the time.
   const menuItems: MenuItem[] = [];
+  if(hasArrivals)menuItems.push({key:"arrivals",label:tab==="arrivals"?"Vertrekken":"Aankomsten",icon:"swap-vertical-outline",onPress:()=>selectTab(tab==="arrivals"?"departures":"arrivals")});
   if (tab === "departures" && selectedDirection === null && directions.length > 1) {
     menuItems.push({ key: "direction", label: "Filter op richting", icon: "navigate-outline", onPress: () => setDirectionsOpen(true) });
   }
@@ -319,7 +327,7 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
     <View>
       <DepartureHeading title="Jouw lijnen" star />
       {pinned.map((item, index) => (
-        <DepartureLine key={"pin:" + departureKey(item, index)} item={item} nowMs={nowMs} stale={staleDisplay}
+        <StopBoardRow key={"pin:" + departureKey(item, index)} item={item} nowMs={nowMs} stale={staleDisplay}
           detail={!staleDisplay ? walkingDepartureAdvice(item,position,board?.stop||stop,nowMs) || undefined : undefined}
           onPress={() => openTrip(item)} last={index === pinned.length - 1} />
       ))}
@@ -329,47 +337,42 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <View style={[styles.head, { paddingTop: Math.max(insets.top, 24) + 12, backgroundColor: colors.surface,
-        borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }]}>
+      {visible ? <ExpoStatusBar style="light"/> : null}
+      <View style={[styles.head,{paddingTop:Math.max(insets.top,24)+6,backgroundColor:STOP_BOARD_BLUE}]}>
         <View style={styles.headRow}>
-          <Pressable onPress={onBack} accessibilityRole="button" accessibilityLabel="Terug" style={styles.back}>
-            <Ionicons name="arrow-back" size={22} color={colors.text} />
+          <Pressable onPress={onBack} accessibilityRole="button" accessibilityLabel="Terug" style={styles.back}><Ionicons name="arrow-back" size={23} color="#fff"/></Pressable>
+          <Text maxFontSizeMultiplier={1.3} style={styles.title} numberOfLines={1} ellipsizeMode="tail" accessibilityRole="header" accessibilityLabel={stop.name}>{headerInfo.title}</Text>
+          <Pressable onPress={requestSearch} accessibilityRole="button" accessibilityLabel="Zoek halte, lijn of plaats" hitSlop={6} style={styles.back}><Ionicons name="search-outline" size={22} color="#fff"/></Pressable>
+          <Pressable onPress={()=>toggleFavoriteStop(board?.stop||stop)} accessibilityRole="button"
+            accessibilityLabel={isFavoriteStop(board?.stop.id||stop.id)?"Verwijder favoriete halte":"Bewaar als favoriete halte"}
+            accessibilityState={{selected:isFavoriteStop(board?.stop.id||stop.id)}} style={styles.back}>
+            <Ionicons name={isFavoriteStop(board?.stop.id||stop.id)?"star":"star-outline"} size={23} color="#fff"/>
           </Pressable>
-          <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
-            <Text maxFontSizeMultiplier={1.2} style={[styles.title, { color: colors.heading, flex: undefined }]} numberOfLines={3} accessibilityRole="header">{stop.name}</Text>
-            {fetchedAt ? <Text style={{ color: colors.textSoft, fontSize: 12 }}>Bijgewerkt om {new Date(fetchedAt).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}{refreshFailure ? " · laatst bekend" : ""}</Text> : null}
-          </View>
-          <Pressable onPress={() => toggleFavoriteStop(board?.stop || stop)} accessibilityRole="button"
-            accessibilityLabel={isFavoriteStop(board?.stop.id || stop.id) ? "Verwijder favoriete halte" : "Bewaar als favoriete halte"}
-            accessibilityState={{ selected: isFavoriteStop(board?.stop.id || stop.id) }} style={styles.back}>
-            <Ionicons name={isFavoriteStop(board?.stop.id || stop.id) ? "star" : "star-outline"} size={24}
-              color={isFavoriteStop(board?.stop.id || stop.id) ? "#FFD86B" : colors.textSoft} />
-          </Pressable>
-          <Pressable onPress={requestSearch} accessibilityRole="button" accessibilityLabel="Zoek halte, lijn of plaats"
-            hitSlop={6} style={styles.back}>
-            <Ionicons name="search-outline" size={22} color={colors.text} />
-          </Pressable>
-          <MenuButton onPress={() => setMenuOpen(true)} color={colors.text} label="Meer opties voor deze halte" />
+          <MenuButton onPress={()=>setMenuOpen(true)} color="#fff" label="Meer opties voor deze halte"/>
         </View>
-        {/* Two tabs, as in OVinfo; arrivals only where the feed has them. Compact white-green header (V5.8). */}
-        <View style={styles.segments} accessibilityRole="tablist">
-          {([["departures", "Vertrekken"], ["lines", "Lijnen"], ...(hasArrivals ? [["arrivals", "Aankomsten"] as const] : [])] as const).map(([value, label]) => {
-            const active = tab === value;
-            return (
-              <Pressable key={value} onPress={() => selectTab(value)} accessibilityRole="tab" accessibilityState={{ selected: active }}
-                style={[styles.segment, { borderBottomColor: active ? colors.accent : "transparent" }]}>
-                <Text style={[styles.segmentText, { color: active ? colors.heading : colors.textSoft }]}>{label}</Text>
-              </Pressable>
-            );
-          })}
+        <View style={styles.subtitleRow}>
+          <View accessibilityLabel={dataCurrent?"Actueel":"Gegevens niet actueel"} style={[styles.statusDot,{backgroundColor:dataCurrent?"#66e69c":staleDisplay?"#b8c5d2":"#ffd175"}]}/>
+          <Text style={styles.subtitle} numberOfLines={1} maxFontSizeMultiplier={1.3}>
+            {[headerInfo.city,headerInfo.count+" "+(headerInfo.count===1?"lijn":"lijnen"),fetchedAt?"bijgewerkt "+new Intl.DateTimeFormat("nl-NL",{hour:"2-digit",minute:"2-digit",timeZone:"Europe/Amsterdam"}).format(fetchedAt):"bijwerken…"].filter(Boolean).join(" · ")}
+          </Text>
         </View>
       </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.modeFilterBar,{backgroundColor:colors.surface,borderBottomColor:colors.border}]} contentContainerStyle={styles.modeFilters}>
+        {[{key:"all",label:"Alle",mode:null},...modes.map(mode=>({key:mode,label:BOARD_MODE_LABEL[mode],mode})),{key:"lines",label:"Lijnen",mode:null}].map(option=>{
+          const active=option.key==="lines"?tab==="lines":tab!=="lines"&&(option.key==="all"?!selectedMode:selectedMode===option.mode);
+          return <Pressable key={option.key} accessibilityRole="button" accessibilityState={{selected:active}} accessibilityLabel={option.key==="lines"?"Lijnen op deze halte":option.key==="all"?"Alle vertrekken":option.label+" filter"}
+            onPress={()=>option.key==="lines"?selectTab("lines"):selectMode(option.mode)}
+            style={[styles.modeFilter,{backgroundColor:active?STOP_BOARD_BLUE:colors.surface,borderColor:active?STOP_BOARD_BLUE:colors.border}]}>
+            <Text maxFontSizeMultiplier={1.3} numberOfLines={1} style={[styles.modeFilterText,{color:active?"#fff":colors.text}]}>{option.label}</Text>
+          </Pressable>;
+        })}
+      </ScrollView>
 
       {viewTitle ? (
         <View style={[styles.viewBar, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-          <Text style={[styles.viewTitle, { color: colors.text }]} accessibilityRole="header">{viewTitle}</Text>
+          <Text maxFontSizeMultiplier={1.3} style={[styles.viewTitle, { color: colors.text }]} accessibilityRole="header">{viewTitle}</Text>
           <Pressable onPress={() => selectTab("departures")} accessibilityRole="button" accessibilityLabel="Terug naar vertrekken" hitSlop={6} style={styles.viewBack}>
-            <Text style={[styles.viewBackText, { color: colors.accentText }]}>Vertrekken</Text>
+            <Text maxFontSizeMultiplier={1.3} style={[styles.viewBackText, { color: colors.accentText }]}>Vertrekken</Text>
             <Ionicons name="close" size={17} color={colors.accentText} />
           </Pressable>
         </View>
@@ -382,7 +385,7 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
             style={styles.alertLine}>
             <Ionicons name={activeNotices.some((n) => n.severity === "warning") ? "warning-outline" : "information-circle-outline"}
               size={17} color={activeNotices.some((n) => n.severity === "warning") ? colors.danger : colors.accentText} />
-            <Text numberOfLines={1} style={[styles.alertLineText, { color: colors.text }]}>
+            <Text maxFontSizeMultiplier={1.3} numberOfLines={1} style={[styles.alertLineText, { color: colors.text }]}>
               {disruptionSummary("", activeNotices).title}{noticesExpanded ? "" : " · tik voor meer"}
             </Text>
             <Ionicons name={noticesExpanded ? "chevron-up" : "chevron-down"} size={16} color={colors.textMuted} />
@@ -390,8 +393,8 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
           {noticesExpanded ? activeNotices.map((notice,index) =>
             <View key={index} style={[styles.disruptionItem, { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border }]}>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.alertHeadline, { color: colors.text }]}>{notice.title}</Text>
-                {notice.description ? <Text style={[styles.alertDescription, { color: colors.textSoft }]}>{notice.description}</Text> : null}
+                <Text maxFontSizeMultiplier={1.3} style={[styles.alertHeadline, { color: colors.text }]}>{notice.title}</Text>
+                {notice.description ? <Text maxFontSizeMultiplier={1.3} style={[styles.alertDescription, { color: colors.textSoft }]}>{notice.description}</Text> : null}
               </View>
             </View>) : null}
         </View>
@@ -404,23 +407,23 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
             freshness.level === "stale" ? "cloud-offline-outline" : "help-circle-outline"}
             size={16} color={freshness.level === "aging" ? (resolvedScheme === "dark" ? colors.warning : "#B76B00") :
               freshness.level === "stale" ? colors.danger : colors.textSoft} />
-          <Text style={[styles.freshnessText, { color: colors.text }]}>{freshness.label}</Text>
-          <Text style={{ fontSize: 10, color: colors.textSoft }}>
+          <Text maxFontSizeMultiplier={1.3} style={[styles.freshnessText, { color: colors.text }]}>{freshness.label}</Text>
+          <Text maxFontSizeMultiplier={1.3} style={{ fontSize: 10, color: colors.textSoft }}>
             {freshness.level === "stale" ? "Ververs om te controleren" : "Laatste bekende gegevens"}
           </Text>
         </View>
       ) : null}
-      {board && refreshFailure ? <View style={[styles.refreshWarning, { backgroundColor: colors.warningSoft, borderBottomColor: colors.border }]}><Ionicons name="cloud-offline-outline" size={16} color={colors.text} /><Text style={{ color: colors.text, flex: 1, fontSize: 12 }}>{boardRefreshNotice(refreshFailure, fetchedAt)}</Text><Pressable accessibilityRole="button" accessibilityLabel="Vertrektijden opnieuw laden" onPress={() => setRetryBoard((n) => n + 1)}><Ionicons name="refresh" size={19} color={colors.accentText} /></Pressable></View> : null}
+      {board && refreshFailure ? <View style={[styles.refreshWarning, { backgroundColor: colors.warningSoft, borderBottomColor: colors.border }]}><Ionicons name="cloud-offline-outline" size={16} color={colors.text} /><Text maxFontSizeMultiplier={1.3} style={{ color: colors.text, flex: 1, fontSize: 12 }}>{boardRefreshNotice(refreshFailure, fetchedAt)}</Text><Pressable accessibilityRole="button" accessibilityLabel="Vertrektijden opnieuw laden" onPress={() => setRetryBoard((n) => n + 1)}><Ionicons name="refresh" size={19} color={colors.accentText} /></Pressable></View> : null}
       {loading && !board ? (
-        <DepartureSkeleton />
+        <DepartureSkeleton rowHeight={52} />
       ) : error && !board ? (
         <View style={styles.center}>
-          <Text style={{ color: colors.textSoft }}>{error}</Text>
+          <Text maxFontSizeMultiplier={1.3} style={{ color: colors.textSoft }}>{error}</Text>
           <Pressable onPress={() => setRetryBoard((value) => value + 1)} accessibilityRole="button" accessibilityLabel="Vertrektijden opnieuw laden" style={styles.retry}>
             <Ionicons name="refresh" size={17} color={colors.accentText} />
-            <Text style={{ color: colors.accentText }}>Probeer opnieuw</Text>
+            <Text maxFontSizeMultiplier={1.3} style={{ color: colors.accentText }}>Probeer opnieuw</Text>
           </Pressable>
-          <Pressable onPress={onBack} accessibilityRole="button" style={styles.retry}><Text style={{ color: colors.textSoft }}>Terug naar vorige halte</Text></Pressable>
+          <Pressable onPress={onBack} accessibilityRole="button" style={styles.retry}><Text maxFontSizeMultiplier={1.3} style={{ color: colors.textSoft }}>Terug naar vorige halte</Text></Pressable>
         </View>
       ) : tab === "disruptions" ? (
         <View style={styles.alerts}>
@@ -429,19 +432,19 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
               <Ionicons name={notice.severity === "warning" ? "warning-outline" : "information-circle-outline"}
                 color={notice.severity === "warning" ? colors.danger : colors.accentText} size={18} />
               <View style={{ flex: 1 }}>
-                <Text style={[styles.alertHeadline, { color: colors.text }]}>{notice.title}</Text>
-                {notice.description ? <Text style={[styles.alertDescription, { color: colors.textSoft }]}>
+                <Text maxFontSizeMultiplier={1.3} style={[styles.alertHeadline, { color: colors.text }]}>{notice.title}</Text>
+                {notice.description ? <Text maxFontSizeMultiplier={1.3} style={[styles.alertDescription, { color: colors.textSoft }]}>
                   {notice.description}</Text> : null}
               </View>
             </View>
-          )) : <Text style={{ color: colors.textSoft }}>
+          )) : <Text maxFontSizeMultiplier={1.3} style={{ color: colors.textSoft }}>
             {board?.disruptionsAvailable ? "Geen storingen gemeld." :
               "Storingsinformatie wordt nog niet door deze halte-API geleverd."}
           </Text>}
         </View>
       ) : tab === "lines" ? (
         <FlowLineGroups
-          departures={sortBoardDepartures(visibleDepartures, nowMs).map(row => withBoardFreshness(row, timingCurrent))}
+          departures={sortBoardDepartures(visibleDepartures.filter(row=>!selectedMode||(row.mode||stop.mode)===selectedMode), nowMs).map(row => withBoardFreshness(row, timingCurrent))}
           onSelectLine={(line) => { setTab("departures"); setSelectedDirection(null); selectLine(line); }}
           onOpenDeparture={openTrip}
           favoriteKeys={favoriteKeySet}
@@ -457,7 +460,7 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
                     accessibilityLabel={"Lijnfilter " + selectedLineLabel + " wissen"}
                     style={[styles.directionActive, { backgroundColor: colors.accentSoft }]}>
                     <Ionicons name="funnel-outline" size={14} color={colors.accentText} />
-                    <Text style={[styles.chipText, { color: colors.text, flexShrink: 1 }]} numberOfLines={1}>Lijn {selectedLineLabel}</Text>
+                    <Text maxFontSizeMultiplier={1.3} style={[styles.chipText, { color: colors.text, flexShrink: 1 }]} numberOfLines={1}>Lijn {selectedLineLabel}</Text>
                     <Ionicons name="close" size={15} color={colors.textSoft} />
                   </Pressable>
                 </View>
@@ -468,7 +471,7 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
                     accessibilityLabel={"Richtingfilter " + selectedDirectionLabel + " wissen"}
                     style={[styles.directionActive, { backgroundColor: colors.accentSoft }]}>
                     <Ionicons name="navigate-outline" size={14} color={colors.accentText} />
-                    <Text style={[styles.chipText, { color: colors.text, flexShrink: 1 }]} numberOfLines={1}>Richting {selectedDirectionLabel}</Text>
+                    <Text maxFontSizeMultiplier={1.3} style={[styles.chipText, { color: colors.text, flexShrink: 1 }]} numberOfLines={1}>Richting {selectedDirectionLabel}</Text>
                     <Ionicons name="close" size={15} color={colors.textSoft} />
                   </Pressable>
                 </View>
@@ -476,7 +479,7 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
               {directionsOpen && tab === "departures" && selectedDirection === null ? (
                 <View>
                   <View style={styles.directionHead}>
-                    <Text style={[styles.directionHeadText, { color: colors.textSoft }]}>Kies een richting</Text>
+                    <Text maxFontSizeMultiplier={1.3} style={[styles.directionHeadText, { color: colors.textSoft }]}>Kies een richting</Text>
                     <Pressable onPress={() => setDirectionsOpen(false)} accessibilityRole="button" accessibilityLabel="Richtingen verbergen" hitSlop={8}>
                       <Ionicons name="close" size={17} color={colors.textSoft} />
                     </Pressable>
@@ -491,7 +494,7 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
                       <Pressable onPress={() => selectDirection(choice.key)} accessibilityRole="button"
                         accessibilityLabel={"Alleen richting " + choice.label + ", " + choice.count + " vertrekken"}
                         style={[styles.chip, { backgroundColor: colors.surfaceSoft }]}>
-                        <Text style={[styles.chipText, { color: colors.text }]} numberOfLines={1}>{choice.label}</Text>
+                        <Text maxFontSizeMultiplier={1.3} style={[styles.chipText, { color: colors.text }]} numberOfLines={1}>{choice.label}</Text>
                       </Pressable>
                     )}
                   />
@@ -513,13 +516,13 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
             ListHeaderComponent={pinnedHeader}
             ListEmptyComponent={(selectedLine || selectedDirection !== null) && source.length ? (
               <View style={{ alignItems: "center", gap: 10 }}>
-                <Text style={[styles.empty, { color: colors.textSoft }]}>Geen {tab === "arrivals" ? "aankomsten" : "vertrekken"}
+                <Text maxFontSizeMultiplier={1.3} style={[styles.empty, { color: colors.textSoft }]}>Geen {tab === "arrivals" ? "aankomsten" : "vertrekken"}
                   {selectedLine ? " van lijn " + selectedLine : ""}{selectedDirection !== null ? " richting " + selectedDirectionLabel : ""}.</Text>
                 <Pressable accessibilityRole="button" onPress={clearFilters} style={styles.retry}>
-                  <Text style={{ color: colors.accentText, fontWeight: "800" }}>{selectedDirection !== null ? "Toon alle vertrekken" : "Toon alle lijnen"}</Text>
+                  <Text maxFontSizeMultiplier={1.3} style={{ color: colors.accentText, fontWeight: "800" }}>{selectedDirection !== null ? "Toon alle vertrekken" : "Toon alle lijnen"}</Text>
                 </Pressable>
               </View>
-            ) : pinned.length ? null : <Text style={[styles.empty, { color: colors.textSoft }]}>{tab === "arrivals" ? "Geen aankomsten beschikbaar." : "Geen vertrektijden beschikbaar."}</Text>}
+            ) : pinned.length ? null : <Text maxFontSizeMultiplier={1.3} style={[styles.empty, { color: colors.textSoft }]}>{tab === "arrivals" ? "Geen aankomsten beschikbaar." : "Geen vertrektijden beschikbaar."}</Text>}
             renderItem={({ item, index }) => {
               const changedFrom = tab === "departures" && item.cancelled !== true && item.departed !== true ? departureTimeChangeLabel(item, timeChanges, nowMs) : "";
               const platformChange = platformChangeFor(item, platformChanges, nowMs);
@@ -527,9 +530,9 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
               const afterMidnight = tab==="departures" && index>0 && isNextServiceDay(listRows[index-1],item);
               return (
                 <View>
-                  {afterMidnight ? <View style={[styles.midnightRow,{borderBottomColor:colors.border,backgroundColor:colors.surfaceAlt}]}><Text style={[styles.midnightText,{color:colors.text}]}>Na middernacht</Text></View> : null}
+                  {afterMidnight ? <View style={[styles.midnightRow,{borderBottomColor:colors.border,backgroundColor:colors.surfaceAlt}]}><Text maxFontSizeMultiplier={1.3} style={[styles.midnightText,{color:colors.text}]}>Na middernacht</Text></View> : null}
                   {/* Failed refreshes show last-known times rather than a live countdown. */}
-                  <DepartureLine item={item} nowMs={nowMs} stale={staleDisplay} note={changedFrom}
+                  <StopBoardRow item={item} nowMs={nowMs} stale={staleDisplay} note={changedFrom}
                     detail={!staleDisplay && tab==="departures" ? walkingDepartureAdvice(item,position,board?.stop||stop,nowMs) || undefined : undefined}
                     onPress={item.ritId ? () => openTrip(item) : undefined} />
                   {platformChange ? (
@@ -538,13 +541,13 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
                       borderBottomColor: colors.border
                     }]}>
                       <Ionicons name="swap-horizontal-outline" size={15} color={colors.accentText} />
-                      <Text style={[styles.platformNoticeText, { color: colors.text }]}
+                      <Text maxFontSizeMultiplier={1.3} style={[styles.platformNoticeText, { color: colors.text }]}
                         accessibilityLabel={platformName + " gewijzigd naar " + platformChange.current +
                           (platformChange.previous ? ", was " + platformChange.previous : "")}>
                         {platformName} gewijzigd: {platformChange.current}
                         {platformChange.previous ? " (was " + platformChange.previous + ")" : ""}
                       </Text>
-                      <Text style={{ fontSize: 10, color: colors.textSoft }}>
+                      <Text maxFontSizeMultiplier={1.3} style={{ fontSize: 10, color: colors.textSoft }}>
                         {nowMs - platformChange.changedAt < 60000 ? "Zojuist" :
                           Math.floor((nowMs - platformChange.changedAt) / 60000) + " min geleden"}
                       </Text>
@@ -564,10 +567,14 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  head: { paddingHorizontal: 6, paddingBottom: 13 },
+  head: { flexShrink:0,paddingHorizontal:6,paddingBottom:12 },
   headRow: { flexDirection: "row", alignItems: "center", gap: 2 },
-  back: { width: 40, height: 44, justifyContent: "center", alignItems: "center" },
-  title: { flex: 1, minWidth: 0, fontSize: 21, lineHeight: 26, fontWeight: "800", letterSpacing: -0.3, marginLeft: 2 },
+  back: { width: 36, height: 40, justifyContent: "center", alignItems: "center" },
+  title:{flex:1,minWidth:0,fontSize:19,lineHeight:25,fontWeight:"700",color:"#fff"},
+  subtitleRow:{flexDirection:"row",alignItems:"center",gap:6,paddingLeft:42,paddingRight:6,marginTop:1},
+  statusDot:{width:6,height:6,borderRadius:3,flexShrink:0},subtitle:{fontSize:11,lineHeight:16,color:"#e1edfa",flexShrink:1},
+  modeFilterBar:{flexGrow:0,flexShrink:0,borderBottomWidth:StyleSheet.hairlineWidth},modeFilters:{paddingHorizontal:12,paddingVertical:9,gap:7,alignItems:"center"},
+  modeFilter:{minHeight:32,borderRadius:17,borderWidth:StyleSheet.hairlineWidth,paddingHorizontal:15,alignItems:"center",justifyContent:"center"},modeFilterText:{fontSize:13,fontWeight:"600"},
   segments: { flexDirection: "row", borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "#D5DDD7", marginTop: 13 },
   segment: { flex: 1, minHeight: 42, borderBottomWidth: 2, alignItems: "center", justifyContent: "center" },
   segmentText: { fontSize: 14, fontWeight: "700" },

@@ -8,7 +8,7 @@ test("skeleton has six 66px placeholders with a matching row height", () => {
   assert.match(skeleton, /const SKELETON_ROWS = 6/);
   assert.match(skeleton, /DEPARTURE_ROW_HEIGHT = 66/);
   assert.match(skeleton, /height: DEPARTURE_ROW_HEIGHT/);
-  assert.match(read("components/FlowBoard.tsx"), /<DepartureSkeleton \/>/);
+  assert.match(read("components/FlowBoard.tsx"), /<DepartureSkeleton rowHeight=\{52\} \/>/);
 });
 test("search starts 150ms after typing", () => {
   assert.match(read("components/FlowHome.tsx"), /\}, 150\);/);
@@ -22,12 +22,12 @@ test("favorites restore previous boards then refresh without clearing visible ro
   assert.match(read("components/FlowHome.tsx"), /Bijwerken…/);
   assert.match(read("app\/(tabs)\/favorieten.tsx"), /Bijwerken…/);
 });
-test("Concept C is white with blue headings and green underlined tabs", () => {
+test("Concept C stays on other screens while the stop board gets its blue filters", () => {
   const colors = read("constants/colors.ts");
   assert.match(colors, /heading: "#1454A0"/);
   assert.match(colors, /background: "#FFFFFF"/);
   const board = read("components/FlowBoard.tsx");
-  assert.match(board, /borderBottomColor: active \? colors\.accent : "transparent"/);
+  assert.match(board, /backgroundColor:active\?STOP_BOARD_BLUE:colors\.surface/);
   assert.doesNotMatch(board, /backgroundColor: active \? colors\.accentSoft/);
   assert.match(read("components/DepartureLine.tsx"), /tone="plain"/);
   assert.match(read("components/DepartureLine.tsx"), /departurePresentation\(item, nowMs\)/);

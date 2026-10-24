@@ -20,7 +20,7 @@ test('OTA preview 1.0.4: stop switching never leaves prior board visible',()=>{
  assert.match(workspace,/styles\.pendingScreen/);
  assert.match(workspace,/key=\{screen\.stop\.id\}/);
  assert.match(workspace,/<DepartureSkeleton \/>/);
- assert.match(board,/\{stop\.name\}<\/Text>/);
+ assert.match(board,/accessibilityLabel=\{stop\.name\}>\{headerInfo\.title\}<\/Text>/);
 });
 test('OTA preview 1.0.4: compact expandable disruptions and timeline skeleton',()=>{
  const board=read('components/FlowBoard.tsx'),rit=read('app/rit/[id].tsx'),skel=read('components/JourneySkeleton.tsx');

@@ -186,8 +186,11 @@ test("Start: one compact trip line and a search icon", () => {
 test("stop board and trip page: options under ⋮, one row style everywhere", () => {
   const board = read("components/FlowBoard.tsx");
   assert.match(board, /<OverflowMenu open=\{menuOpen\}/);
-  // Two tabs as in OVinfo: Vertrekken and Lijnen (arrivals only where the feed has them).
-  assert.match(board, /\[\["departures", "Vertrekken"\], \["lines", "Lijnen"\]/);
+  // Stop board filters replace tabs; arrivals remain in the menu when supplied.
+  assert.match(board, /BOARD_MODE_LABEL\[mode\]/);
+  assert.match(board, /key:"all",label:"Alle"/);
+  assert.match(board, /key:"lines",label:"Lijnen"/);
+  assert.match(board, /if\(hasArrivals\)menuItems/);
   assert.doesNotMatch(board, /setCompact/);
   assert.match(board, /<DepartureHeading title="Jouw lijnen" star \/>/);
   assert.match(board, /return entries\.filter\(\(item\) => !shown\.has\(boardDepartureIdentity\(item\)\)\);/);
@@ -329,7 +332,7 @@ test("large font and choosing the alighting stop", () => {
   assert.doesNotMatch(rit, /setChoosingAlight\(true\);\s*setShowAll\(true\);/);
   assert.match(rit, /<Text maxFontSizeMultiplier=\{1\.2\} style=\{\[styles\.headerTitle/);
   const board = read("components/FlowBoard.tsx");
-  assert.match(board, /<Text maxFontSizeMultiplier=\{1\.2\} style=\{\[styles\.title/);
+  assert.match(board, /<Text maxFontSizeMultiplier=\{1\.3\} style=\{styles\.title\} numberOfLines=\{1\}/);
   assert.doesNotMatch(board, /searchBar: \{ position: "absolute"/);
 });
 

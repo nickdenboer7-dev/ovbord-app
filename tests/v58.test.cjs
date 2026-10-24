@@ -102,17 +102,15 @@ test("long destinations keep one primary row and their full accessible name", ()
 test("the stop board sorts its departures and lijnen feed by real expected time", () => {
   const board = read("components/FlowBoard.tsx");
   assert.match(board, /sortBoardDepartures\(visibleDepartures, nowMs\)/);
-  assert.match(board, /departures=\{sortBoardDepartures\(visibleDepartures, nowMs\)\.map\(row => withBoardFreshness\(row, timingCurrent\)\)\}/);
+  assert.match(board, /departures=\{sortBoardDepartures\(visibleDepartures\.filter\(row=>!selectedMode\|\|\(row\.mode\|\|stop\.mode\)===selectedMode\), nowMs\)\.map\(row => withBoardFreshness\(row, timingCurrent\)\)\}/);
 });
 
-test("the stop board has a compact white-green header, like Start and the trip page", () => {
-  const board = read("components/FlowBoard.tsx");
-  assert.match(board, /backgroundColor: colors\.surface,\s*\n\s*borderBottomWidth: StyleSheet\.hairlineWidth, borderBottomColor: colors\.border/);
-  assert.match(board, /<Ionicons name="arrow-back" size=\{22\} color=\{colors\.text\} \/>/);
-  assert.match(board, /color=\{isFavoriteStop\(board\?\.stop\.id \|\| stop\.id\) \? "#FFD86B" : colors\.textSoft\}/);
-  assert.match(board, /<MenuButton onPress=\{\(\) => setMenuOpen\(true\)\} color=\{colors\.text\}/);
-  // Active tab is the OVbord green accent; inactive tabs stay calm and light.
-  assert.match(board, /borderBottomColor: active \? colors\.accent : "transparent"/);
-  assert.match(board, /color: active \? colors\.heading : colors\.textSoft/);
-  assert.doesNotMatch(board, /#175FAD|#123C64|#FFFFFF22|#14518B/);
+test("the stop board has the requested blue header and white controls, isolated from other screens", () => {
+ const board=read("components/FlowBoard.tsx");
+ assert.match(board,/backgroundColor:STOP_BOARD_BLUE/);
+ assert.match(board,/name="arrow-back" size=\{23\} color="#fff"/);
+ assert.match(board,/name="search-outline" size=\{22\} color="#fff"/);
+ assert.match(board,/modeFilterBar/);
+ assert.doesNotMatch(board,/accessibilityRole="tablist"/);
+ assert.match(read("components/DepartureLine.tsx"),/tone="plain"/);
 });

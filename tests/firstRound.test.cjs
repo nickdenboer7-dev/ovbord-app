@@ -1,6 +1,6 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),Module=require('node:module'),ts=require('typescript');
 const originalLoad=Module._load,oldTs=Module._extensions['.ts'],oldTsx=Module._extensions['.tsx'];
-const compile=(m,f)=>m._compile(ts.transpileModule(fs.readFileSync(f,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020,jsx:ts.JsxEmit.React}}).outputText,f);
+const compile=(m,f)=>m._compile(ts.transpileModule(fs.readFileSync(f,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020,jsx:ts.JsxEmit.React,esModuleInterop:true}}).outputText,f);
 Module._extensions['.ts']=compile;Module._extensions['.tsx']=compile;global.__DEV__=false;
 let harness,app={},favorites={},api={},permission={granted:true},fix=null,cacheModule;
 const storageData=new Map();let readStorage=async key=>storageData.get(key)||null;
@@ -32,7 +32,7 @@ Module._load=function(request,parent,isMain){
  if(request.endsWith('/lib/useLocationStartup'))return{useLocationStartup:()=>false};
  if(request.endsWith('/lib/activeTripStore'))return{loadActiveTrip:async()=>null,clearActiveTrip:async()=>{},loadTripSnapshot:async()=>null,saveTripSnapshot:async()=>{},saveActiveTrip:async()=>{}};
  if(request.endsWith('/lib/location'))return{MANUAL_CITIES:[],VOORBEELD_LOCATIE_UTRECHT:{latitude:52.09,longitude:5.12}};
- for(const name of ['DepartureLine','DepartureSkeleton','NearbySkeleton','FlowWorkspace','FlowLineGroups','LijnBadge'])if(request==='./'+name||request.endsWith('/components/'+name))return{[name]:name,DepartureHeading:'DepartureHeading'};
+ for(const name of ['DepartureLine','StopBoardRow','DepartureSkeleton','NearbySkeleton','FlowWorkspace','FlowLineGroups','LijnBadge'])if(request==='./'+name||request.endsWith('/components/'+name))return{[name]:name,DepartureHeading:'DepartureHeading'};
  if(request.endsWith('/OverflowMenu'))return{MenuButton:'MenuButton',OverflowMenu:'OverflowMenu'};
  return originalLoad.call(this,request,parent,isMain);
 };
@@ -122,8 +122,8 @@ test('an offline stop board restores cached rows and timestamp, labels each last
  try{
  render();h.flush();await tick();let tree=render();h.flush();await tick();tree=render();const list=find(tree,'FlatList');assert.ok(list);assert.equal(list.props.data[0].id,'cached');
  assert.match(text(tree),/Geen verbinding · laatst bijgewerkt om/);assert.ok(text(tree).includes(new Date(received).toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})));
- let line=find(list.props.renderItem({item:list.props.data[0],index:0}),'DepartureLine');assert.equal(line.props.stale,true);assert.match(departureLineStatus(line.props.item,Date.now(),{stale:line.props.stale}).text,/^Laatst bekende tijd/);assert.equal(line.props.detail,undefined);
- api.getHalte=async()=>board(s,[dep('fresh',8,{effectiveAt:new Date(Date.now()+480000).toISOString()})]);list.props.refreshControl.props.onRefresh();await tick();tree=render();const fresh=find(tree,'FlatList');assert.equal(fresh.props.data[0].id,'fresh');assert.equal(find(fresh.props.renderItem({item:fresh.props.data[0],index:0}),'DepartureLine').props.stale,false);assert.doesNotMatch(text(tree),/Geen verbinding/);
+ let line=find(list.props.renderItem({item:list.props.data[0],index:0}),'StopBoardRow');assert.equal(line.props.stale,true);assert.match(departureLineStatus(line.props.item,Date.now(),{stale:line.props.stale}).text,/^Laatst bekende tijd/);assert.equal(line.props.detail,undefined);
+ api.getHalte=async()=>board(s,[dep('fresh',8,{effectiveAt:new Date(Date.now()+480000).toISOString()})]);list.props.refreshControl.props.onRefresh();await tick();tree=render();const fresh=find(tree,'FlatList');assert.equal(fresh.props.data[0].id,'fresh');assert.equal(find(fresh.props.renderItem({item:fresh.props.data[0],index:0}),'StopBoardRow').props.stale,false);assert.doesNotMatch(text(tree),/Geen verbinding/);
  }finally{h.destroy();}
 });
 test('cached perron metadata survives routine API refreshes and the on-disk cache remains bounded',async()=>{
@@ -187,7 +187,7 @@ test('the joint stop board retains all departures and each feed-provided platfor
 });
 function tripModule(){
  const path=require('node:path'),file=path.resolve(__dirname,'../app/rit/[id].tsx'),m=new Module(file,module);m.filename=file;m.paths=Module._nodeModulePaths(path.dirname(file));
- const source=ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020,jsx:ts.JsxEmit.React}}).outputText+'\nexports.testTimeLine=TimeLine;exports.testStyles=makeStyles;';
+ const source=ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020,jsx:ts.JsxEmit.React,esModuleInterop:true}}).outputText+'\nexports.testTimeLine=TimeLine;exports.testStyles=makeStyles;';
  m._compile(source,file);return m.exports;
 }
 test('timeline renders grey past stops and one Nu hier tag from expected time, with no repeated unconfirmed-position labels',()=>{
@@ -208,6 +208,63 @@ test('the trip page displays unconfirmed position once in its own row after the 
  const children=tree.props.children.flat(Infinity).filter(x=>x&&typeof x==='object'),statusIndex=children.findIndex(x=>x.type==='Pressable'&&text(x).includes('Positie niet bevestigd')),headerIndex=children.findIndex(x=>x.type==='View'&&findAll(x,'Text').some(t=>text(t).includes('Nijlân'))),scrollIndex=children.indexOf(scroll);
  assert.ok(statusIndex>headerIndex);assert.ok(statusIndex<scrollIndex);assert.equal(children[statusIndex].props.style.flexShrink,0);assert.equal(find(children[statusIndex],'Text').props.numberOfLines,undefined);
  }finally{h.destroy();}
+});
+
+const {stopBoardTiming,stopBoardBadge,stopBoardHeader,stopBoardModes,STOP_BOARD_BLUE}=require('../lib/stopBoardDesign.ts');
+test('stop-board clock and minutes share the expected instant with the exact 30-minute boundary',()=>{
+ assert.deepEqual(stopBoardTiming(dep('a',8),now),{primary:'8 min',secondary:'17:08',clock:'17:08'});
+ assert.equal(stopBoardTiming(dep('a',0),now).primary,'0 min');
+ assert.equal(stopBoardTiming(dep('a',30),now).primary,'30 min');assert.equal(stopBoardTiming(dep('a',30.001),now).primary,'17:30');
+ assert.deepEqual(stopBoardTiming(dep('a',31),now),{primary:'17:31',secondary:'',clock:'17:31'});
+ assert.equal(stopBoardTiming(dep('a',8,{plannedTime:'16:58',delayMinutes:10}),now).primary,'8 min');
+ for(const flags of [{departed:true},{cancelled:true},{liveDataStale:true}])assert.equal(stopBoardTiming(dep('a',8,flags),now).primary,'17:08');
+ assert.equal(stopBoardTiming(dep('a',8),now,true).primary,'17:08');assert.equal(stopBoardTiming(dep('a',-2),now).primary,'16:58');
+});
+test('stop-board badges use map route colours before carrier colours and preserve the prescribed text colour',()=>{
+ assert.deepEqual(stopBoardBadge(dep('a',8,{carrier:'GVB',mode:'tram'})),{bg:'#0863b5',text:'#ffffff'});
+ assert.deepEqual(stopBoardBadge(dep('a',8,{carrier:'NS',mode:'train',line:'IC'})),{bg:'#ffc917',text:'#003082'});
+ assert.deepEqual(stopBoardBadge(dep('a',8,{carrier:'EBS',routeColor:'112233',routeTextColor:'#aabbcc'})),{bg:'#112233',text:'#aabbcc'});
+ assert.deepEqual(stopBoardBadge(dep('a',8,{carrier:'ALLGO',routeId:'134842',line:'326',mode:'bus'})),{bg:'#e00713',text:'#ffffff'});
+ assert.notEqual(stopBoardBadge(dep('a',8,{carrier:'GVB',routeId:'134842',line:'1',mode:'tram'})).bg,'#e00713');
+ assert.equal(stopBoardBadge(dep('a',8,{carrier:'GVB',routeColor:'javascript:bad'})).bg,'#0863b5');
+});
+test('header removes only a duplicated city prefix and counts distinct modes/lines from complete stop metadata',()=>{
+ const s=stop('s',{name:'Amsterdam, Bilderdijkstraat',city:'Amsterdam',lineCount:6,modes:['bus','tram'],lines:[{line:'1',mode:'tram'},{line:'1',mode:'tram'}]});
+ const b=board(s,[dep('a',8,{line:'1',mode:'tram'}),dep('b',9,{line:'1',mode:'bus'})]);
+ assert.deepEqual(stopBoardHeader(s,b),{title:'Bilderdijkstraat',city:'Amsterdam',count:6});assert.deepEqual(stopBoardModes(s,b),['tram','bus']);
+ assert.equal(stopBoardHeader({...s,name:'Amsterdam Centraal'}).title,'Amsterdam Centraal');
+ assert.equal(stopBoardHeader({...s,name:'Amsterdam, Amsterdamlaan',city:''}).title,'Amsterdamlaan');
+ assert.equal(stopBoardHeader(stop('s',{name:'Leeuwarden',city:'Leeuwarden'})).title,'Leeuwarden');
+});
+test('the new row is 52px at default size, caps fonts, keeps delay colours and marks departed trips blue',()=>{
+ defaults();app.colors=require('../constants/colors.ts').themes.light;const {StopBoardRow,StopBoardBadge}=require('../components/StopBoardRow.tsx');const badgeView=StopBoardBadge({item:dep('badge',8,{carrier:'GVB'})});assert.equal(badgeView.props.style[1].backgroundColor,'#0863b5');assert.equal(badgeView.props.style[0].width,44);assert.equal(find(badgeView,'Text').props.maxFontSizeMultiplier,1.3);
+ let row=StopBoardRow({item:dep('r',8,{mode:'tram',platform:'A',delayMinutes:4}),nowMs:now,onPress(){}});
+ assert.equal(row.props.style({pressed:false})[0].minHeight,52);assert.match(row.props.accessibilityLabel,/perron A/i);
+ let primary=findAll(row,'Text').find(n=>text(n)==='8 min');assert.equal(primary.props.maxFontSizeMultiplier,1.3);assert.equal(primary.props.style[0].fontSize,17);assert.deepEqual(primary.props.style[0].fontVariant,['tabular-nums']);
+ let delay=findAll(row,'Text').find(n=>text(n)==='+4');assert.equal(delay.props.style.color,app.colors.delayWarning);
+ row=StopBoardRow({item:dep('r',31,{mode:'tram',platform:'A',delayMinutes:5}),nowMs:now});delay=findAll(row,'Text').find(n=>text(n)==='+5');assert.equal(delay.props.style.color,app.colors.danger);assert.ok(findAll(row,'Text').some(n=>text(n)==='17:31'));
+ row=StopBoardRow({item:dep('r',8,{departed:true}),nowMs:now,onPress(){}});assert.equal(row.props.disabled,true);const departed=findAll(row,'Text').find(n=>text(n)==='Vertrokken');assert.equal(departed.props.style.backgroundColor,STOP_BOARD_BLUE);assert.doesNotMatch(text(row),/8 min/);
+ row=StopBoardRow({item:dep('r',8),nowMs:now,stale:true});assert.match(text(row),/Laatst bekende tijd/);assert.doesNotMatch(text(row),/8 min/);
+});
+test('stop-board mode buttons and Lijnen actually filter the mixed stop, and Alle clears the filters',()=>{
+ defaults();const h=new Harness(),s=stop('mix',{name:'Amsterdam, Test',city:'Amsterdam',modes:['bus','tram']}),b=board(s,[dep('bus',8,{mode:'bus',effectiveAt:new Date(Date.now()+480000).toISOString()}),dep('tram',9,{mode:'tram',line:'1',effectiveAt:new Date(Date.now()+540000).toISOString()})]);
+ const {FlowBoard}=require('../components/FlowBoard.tsx'),props={stop:s,initialBoard:b,onBack(){}};const render=()=>h.render(()=>FlowBoard(props));
+ try{let tree=render();assert.deepEqual(find(tree,'FlatList').props.data.map(d=>d.id),['bus','tram']);assert.equal(findAll(tree,'Pressable').some(p=>p.props.accessibilityLabel==='Metro filter'),false);
+ findAll(tree,'Pressable').find(p=>p.props.accessibilityLabel==='Tram filter').props.onPress();tree=render();assert.deepEqual(find(tree,'FlatList').props.data.map(d=>d.id),['tram']);
+ findAll(tree,'Pressable').find(p=>p.props.accessibilityLabel==='Lijnen op deze halte').props.onPress();tree=render();assert.deepEqual(find(tree,'FlowLineGroups').props.departures.map(d=>d.id),['tram']);
+ findAll(tree,'Pressable').find(p=>p.props.accessibilityLabel==='Alle vertrekken').props.onPress();tree=render();assert.deepEqual(find(tree,'FlatList').props.data.map(d=>d.id),['bus','tram']);
+ const title=findAll(tree,'Text').find(t=>t.props.accessibilityRole==='header');assert.equal(text(title),'Test');assert.equal(title.props.numberOfLines,1);assert.equal(title.props.maxFontSizeMultiplier,1.3);
+ }finally{h.destroy();}
+});
+test('existing arrivals stay reachable from the stop menu while tabs are removed',()=>{
+ defaults();const h=new Harness(),s=stop('arrivals'),b={...board(s,[dep('out',8)]),arrivals:[dep('in',9)]},props={stop:s,initialBoard:b,onBack(){}};const {FlowBoard}=require('../components/FlowBoard.tsx');
+ try{let tree=h.render(()=>FlowBoard(props));const option=find(tree,'OverflowMenu').props.items.find(i=>i.key==='arrivals');assert.ok(option);option.onPress();tree=h.render(()=>FlowBoard(props));assert.deepEqual(find(tree,'FlatList').props.data.map(d=>d.id),['in']);assert.equal(findAll(tree,'View').some(v=>v.props.accessibilityRole==='tablist'),false);}finally{h.destroy();}
+});
+test('API retains feed-provided route colours and counts for the new stop board without changing time normalization',async()=>{
+ defaults();storageData.clear();freshCache();const {getHalte}=require('../lib/api.ts'),before=global.fetch;
+ try{global.fetch=async()=>({ok:true,json:async()=>({name:'Amsterdam, Test',line_count:6,departures:[{id:'x',line:'1',carrier:'GVB',mode:'tram',planned_time:'17:00',expected_time:'17:03',route_id:'route',route_color:'#abcdef',route_text_color:'112233'}]})});
+ const result=await getHalte('test');assert.equal(result.stop.lineCount,6);assert.equal(result.departures[0].routeId,'route');assert.equal(result.departures[0].routeColor,'#abcdef');assert.equal(result.departures[0].routeTextColor,'112233');assert.equal(result.departures[0].expectedTime,'17:03');
+ }finally{global.fetch=before;}
 });
 
 test.after(()=>{Module._load=originalLoad;if(oldTs)Module._extensions['.ts']=oldTs;else delete Module._extensions['.ts'];if(oldTsx)Module._extensions['.tsx']=oldTsx;else delete Module._extensions['.tsx'];});

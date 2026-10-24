@@ -129,7 +129,7 @@ test("screens are wired to V5.3", () => {
   assert.match(home, /rememberAlighting\(trip\.tripId, trip\.alighting\)/);
   assert.match(home, /walkingDepartureAdvice\(item,walkingPosition,sourceStop,nowMs\)/);
   const board = read("components/FlowBoard.tsx");
-  assert.match(board, /pinnedDepartures\(source, favoriteLines, nowMs, MAX_PINNED_ROWS\)/);
+  assert.match(board, /pinnedDepartures\(source\.filter\(item=>!selectedMode\|\|\(item\.mode\|\|stop\.mode\)===selectedMode\), favoriteLines, nowMs, MAX_PINNED_ROWS\)/);
   // V5.4: the time column lives in the shared DepartureLine row.
   // Shared Concept C row: a fixed clock column stays readable beside line and destination.
   assert.match(read("components/DepartureLine.tsx"), /right: \{ fontSize: 20,[^}]*width: 62, flexShrink: 0 \}/);
@@ -156,7 +156,7 @@ test("large system font: two-line names, smaller Buurtbord map, capped tab label
   // The approved shared row now keeps the destination on one line; the full name remains spoken.
   assert.match(read("components/DepartureLine.tsx"), /numberOfLines=\{1\} ellipsizeMode="tail">\s*\{item\.destination\}/);
   assert.match(read("components/DepartureLine.tsx"), /accessibilityLabel=\{departureLineLabel/);
-  assert.match(read("components/FlowBoard.tsx"), /<DepartureLine /);
+  assert.match(read("components/FlowBoard.tsx"), /<StopBoardRow /);
   const buurt = read("app/(tabs)/buurtbord.tsx");
   assert.match(buurt, /large && styles\.mapWrapLarge/);
   assert.match(buurt, /numberOfLines=\{large \? 2 : 1\}>\{item\.name\}/);

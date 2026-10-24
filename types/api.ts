@@ -33,6 +33,7 @@ export interface StopSummary {
   lines: LineInfo[];
   /** V5.9.1: the backend says these lines are complete for the whole stop area (no enrichment needed). */
   linesComplete?: boolean;
+  lineCount?: number;
   /** V5.9.1: the real platform/stop IDs behind this entry, when the backend sends them ("quays"). */
   variants?: StopSummary[];
   platform?: string;
@@ -51,6 +52,9 @@ export interface DepartureItem {
   expectedTime?: string;
   effectiveAt?: string;
   relativeText: string;
+  routeId?: string;
+  routeColor?: string;
+  routeTextColor?: string;
   delayMinutes?: number;
   reliability: Reliability;
   /** Actual change from multiple observed live measurements; absent means unknown. */

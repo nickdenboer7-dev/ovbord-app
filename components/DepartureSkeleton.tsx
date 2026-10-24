@@ -6,13 +6,13 @@ const SKELETON_ROWS = 6;
 export const DEPARTURE_ROW_HEIGHT = 66;
 
 /** Static placeholders: no spinner, no calls, no layout jump when departures arrive. */
-export function DepartureSkeleton() {
+export function DepartureSkeleton({rowHeight=DEPARTURE_ROW_HEIGHT}:{rowHeight?:number}={}) {
   const { colors } = useApp();
   const shade = colors.surfaceAlt;
   return (
     <View accessibilityLabel="Vertrektijden laden" accessibilityRole="progressbar">
       {Array.from({ length: SKELETON_ROWS }, (_, index) => (
-        <View key={index} style={[styles.row, { borderBottomColor: colors.border }]}>
+        <View key={index} style={[styles.row, { borderBottomColor: colors.border,height:rowHeight,minHeight:rowHeight }]}>
           <View style={[styles.number, { backgroundColor: shade }]} />
           <View style={styles.center}>
             <View style={[styles.destination, { backgroundColor: shade }]} />

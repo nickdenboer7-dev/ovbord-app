@@ -5,7 +5,7 @@ import { useApp } from "../context/AppProvider";
 import type { DepartureItem } from "../types/api";
 import {effectiveDepartureClock} from "../lib/format";
 import { departurePresentation } from "../lib/departurePresentation";
-import { LijnBadge } from "./LijnBadge";
+import { StopBoardBadge } from "./StopBoardRow";
 import { favoriteLineKey } from "../lib/favoriteLines";
 
 type Direction = { destination: string; key: string; departures: DepartureItem[] };
@@ -79,13 +79,13 @@ export function FlowLineGroups({ departures, onOpenDeparture, onSelectLine, favo
       showsVerticalScrollIndicator={false}
       ListHeaderComponent={
         <View style={styles.intro}>
-          <Text style={[styles.title, { color: colors.text }]}>Lijnen op deze halte</Text>
-          <Text style={[styles.subtitle, { color: colors.textSoft }]}>
+          <Text maxFontSizeMultiplier={1.3} style={[styles.title, { color: colors.text }]}>Lijnen op deze halte</Text>
+          <Text maxFontSizeMultiplier={1.3} style={[styles.subtitle, { color: colors.textSoft }]}>
             {groups.length} lijnen · {directionsCount} richtingen · kies een vertrektijd
           </Text>
         </View>
       }
-      ListEmptyComponent={<Text style={[styles.empty, { color: colors.textSoft }]}>Geen geplande vertrekken beschikbaar.</Text>}
+      ListEmptyComponent={<Text maxFontSizeMultiplier={1.3} style={[styles.empty, { color: colors.textSoft }]}>Geen geplande vertrekken beschikbaar.</Text>}
       renderItem={({ item: group }) => (
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={styles.header}>
@@ -95,10 +95,10 @@ export function FlowLineGroups({ departures, onOpenDeparture, onSelectLine, favo
               accessibilityRole="button"
               accessibilityLabel={`Alle vertrekken van lijn ${group.line} tonen`}
             >
-              <LijnBadge line={group.line} carrier={group.carrier} tone="plain" />
+              <StopBoardBadge item={group.directions[0].departures[0]} />
               <View style={styles.headerText}>
-                <Text style={[styles.lineCaption, { color: colors.heading }]}>Lijn {group.line}</Text>
-                <Text style={[styles.carrier, { color: colors.textSoft }]}>{group.carrier || "Vervoerder onbekend"} · {group.total} vertrekken</Text>
+                <Text maxFontSizeMultiplier={1.3} style={[styles.lineCaption, { color: colors.heading }]}>Lijn {group.line}</Text>
+                <Text maxFontSizeMultiplier={1.3} style={[styles.carrier, { color: colors.textSoft }]}>{group.carrier || "Vervoerder onbekend"} · {group.total} vertrekken</Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
             </Pressable>
@@ -115,8 +115,8 @@ export function FlowLineGroups({ departures, onOpenDeparture, onSelectLine, favo
           </View>
           {group.directions.map((direction, index) => (
             <View key={direction.key} style={[styles.direction, { borderTopColor: colors.border }]}>
-              <Text style={[styles.directionName, { color: colors.text }]} numberOfLines={2}>Richting {direction.destination}</Text>
-              <Text style={[styles.frequency,{color:colors.textSoft}]}>
+              <Text maxFontSizeMultiplier={1.3} style={[styles.directionName, { color: colors.text }]} numberOfLines={2}>Richting {direction.destination}</Text>
+              <Text maxFontSizeMultiplier={1.3} style={[styles.frequency,{color:colors.textSoft}]}>
                 {(()=>{const summary=directionSummary(direction.departures);return [
                   summary.last ? "Laatste vertrek "+summary.last : "",
                   summary.frequency ? "ca. elke "+summary.frequency+" min" : ""
@@ -137,11 +137,11 @@ export function FlowLineGroups({ departures, onOpenDeparture, onSelectLine, favo
                       onPress={() => onOpenDeparture(dep)}
                       style={[styles.timeChip, { backgroundColor: colors.surface, borderColor: colors.border }]}
                     >
-                      <Text style={[styles.timeText, { color: cancelled ? colors.danger : departed ? colors.textMuted : colors.text }, (cancelled || departed) && {textDecorationLine:"line-through"}]}>{expected}</Text>
-                      {delayed || early ? <Text style={[styles.delta, { color: delayed ? colors.danger : colors.accentText }]}>
+                      <Text maxFontSizeMultiplier={1.3} style={[styles.timeText, { color: cancelled ? colors.danger : departed ? colors.textMuted : colors.text }, (cancelled || departed) && {textDecorationLine:"line-through"}]}>{expected}</Text>
+                      {delayed || early ? <Text maxFontSizeMultiplier={1.3} style={[styles.delta, { color: delayed ? colors.danger : colors.accentText }]}>
                         {delayed ? "+" : "−"}{Math.abs(dep.delayMinutes || 0)}m
                       </Text> : null}
-                      {cancelled ? <Text style={{color:colors.danger,fontSize:9,fontWeight:"900"}}>Rijdt niet</Text> : departed ? <Text style={{color:colors.textMuted,fontSize:9,fontWeight:"800"}}>Vertrokken</Text> : dep.liveDataStale === true ? <Text style={{color:colors.warning,fontSize:9,fontWeight:"800"}}>Live-info oud</Text> : dep.isLive === true ? <View style={[styles.dot, { backgroundColor: colors.success }]} /> : null}
+                      {cancelled ? <Text maxFontSizeMultiplier={1.3} style={{color:colors.danger,fontSize:9,fontWeight:"900"}}>Rijdt niet</Text> : departed ? <Text maxFontSizeMultiplier={1.3} style={{color:colors.textMuted,fontSize:9,fontWeight:"800"}}>Vertrokken</Text> : dep.liveDataStale === true ? <Text maxFontSizeMultiplier={1.3} style={{color:colors.warning,fontSize:9,fontWeight:"800"}}>Live-info oud</Text> : dep.isLive === true ? <View style={[styles.dot, { backgroundColor: colors.success }]} /> : null}
                     </Pressable>
                   );
                 })}
@@ -151,7 +151,7 @@ export function FlowLineGroups({ departures, onOpenDeparture, onSelectLine, favo
                     accessibilityRole="button"
                     style={styles.more}
                   >
-                    <Text style={[styles.moreText, { color: colors.accentText }]}>+{direction.departures.length - 4}</Text>
+                    <Text maxFontSizeMultiplier={1.3} style={[styles.moreText, { color: colors.accentText }]}>+{direction.departures.length - 4}</Text>
                   </Pressable>
                 ) : null}
               </View>

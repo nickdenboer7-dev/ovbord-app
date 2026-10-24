@@ -114,6 +114,7 @@ function normalizeStop(item: any): StopSummary {
     lon: num(first(item?.lon, item?.lng, item?.longitude)),
     lines: mapLines(item),
     platform: str(first(item?.platform, item?.platform_code, item?.quay_code)) || undefined,
+    ...(Number.isInteger(item?.line_count)&&item.line_count>=0?{lineCount:item.line_count}:{}),
     ...(item?.lines_complete === true || item?.complete_lines === true ? { linesComplete: true } : {})
   };
 }
@@ -187,6 +188,9 @@ export function normalizeDeparture(item: any): DepartureItem {
     expectedTime: predictedRaw !== undefined ? formatDutchClock(predictedRaw) : undefined,
     effectiveAt: absoluteRaw,
     relativeText: relativeMinutesText(absoluteRaw || predictedRaw || effectiveRaw),
+    ...(item?.route_id!==undefined?{routeId:String(item.route_id)}:{}),
+    ...(item?.route_color?{routeColor:String(item.route_color)}:{}),
+    ...(item?.route_text_color?{routeTextColor:String(item.route_text_color)}:{}),
     delayMinutes,
     reliability,
     trend: !unconfirmedEarly && ["up", "down", "flat"].includes(item?.trend) && Number(item?.trend_samples) >= 2
