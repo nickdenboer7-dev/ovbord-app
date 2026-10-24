@@ -318,5 +318,5 @@ test("Start applies only the enrichment of the list on screen, one bounded loade
   assert.match(home, /const sources = areaLineSources\(nearbyGroups\);/);
   assert.match(home, /void areaLinesLoader\.load\(sources\)\.then\(\(lines\) => \{ if \(active\) setAreaLines\(lines\); \}\);\s*return \(\) => \{ active = false; \};\s*\}, \[nearbyGroups\]\);/);
   assert.match(home, /nearbyGroupRows\(group, areaLines\)/);
-  assert.match(home, /onPress=\{\(\) => openStop\(row\.openStop\)\}/);
+  assert.match(home, /onPress=\{\(\) => openStop\(\{\.\.\.row\.openStop,variants:row\.stops\}\)\}/);
 });

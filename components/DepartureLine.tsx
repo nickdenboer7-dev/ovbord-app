@@ -14,7 +14,7 @@ type Props = {
   stale?: boolean;
   tooTight?: boolean;
   carrier?: string;
-  detail?: { text: string; icon?: any; warn?: boolean };
+  detail?: { text: string; icon?: any; warn?: boolean; label?: string };
   note?: string;
   size?: "board" | "list";
   last?: boolean;
@@ -37,7 +37,6 @@ export function DepartureLine({ item, nowMs, onPress, stale = false, tooTight = 
   const right = clock;
   const rightColor = item.cancelled === true ? colors.danger : departed ? colors.textSoft : colors.text;
   const visibleDetail = departed ? undefined : detail;
-  const extra = visibleDetail?.text || "";
   return (
     <Pressable onPress={onPress} disabled={!onPress || departed}
       accessibilityRole={onPress && !departed ? "button" : undefined}
@@ -57,12 +56,12 @@ export function DepartureLine({ item, nowMs, onPress, stale = false, tooTight = 
           <Text style={[styles.departedLabel, { backgroundColor: colors.heading, color: colors.surface }]}
             maxFontSizeMultiplier={1.3}>Vertrokken</Text>
         </View> : <Text style={[styles.sub, { color: colors.textSoft }]}
-          maxFontSizeMultiplier={wordFitScale(status.text + extra, bodyWidth, 12.5, 1.3)}
+          maxFontSizeMultiplier={wordFitScale(status.text, bodyWidth, 12.5, 1.3)}
           numberOfLines={large ? 3 : 2}>
           {statusIsLive ? <><Text style={{ color: colors.success }}>Live</Text>{statusTail}</> : statusTail}
-          {extra ? " · " : ""}
-          {visibleDetail ? <Text style={{ color: visibleDetail.warn ? colors.danger : colors.textSoft }}>{visibleDetail.text}</Text> : null}
         </Text>}
+        {visibleDetail ? <Text style={[styles.sub,{color:colors.textSoft}]} maxFontSizeMultiplier={1.3}>{visibleDetail.text}</Text> : null}
+        {visibleDetail?.label ? <Text style={[styles.sub,{color:visibleDetail.warn?colors.delayWarning:colors.accentText}]} maxFontSizeMultiplier={1.3}>{visibleDetail.label} · schatting</Text> : null}
       </View>
       <View style={styles.clockColumn}>
         <Text style={[styles.right, list && styles.rightList, large && styles.clockLarge, { color: rightColor },

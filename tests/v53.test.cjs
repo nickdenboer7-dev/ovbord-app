@@ -64,9 +64,9 @@ test("card text on Start", () => {
 test("walking minutes from the own position", () => {
   const stop = { lat: 52.3600, lon: 4.9000 };
   assert.equal(leave.walkMinutesTo(null, stop), null);
-  assert.equal(leave.walkMinutesTo({ lat: 52.3603, lon: 4.9000 }, stop), 0);
-  assert.equal(leave.walkMinutesTo({ lat: 52.3645, lon: 4.9000 }, stop), 8);
-  assert.equal(leave.walkMinutesTo({ lat: 52.40, lon: 4.9 }, stop), null);
+  assert.equal(leave.walkMinutesTo({ lat: 52.3603, lon: 4.9000 }, stop), 1);
+  assert.equal(leave.walkMinutesTo({ lat: 52.3645, lon: 4.9000 }, stop), 9);
+  assert.equal(leave.walkMinutesTo({ lat: 52.40, lon: 4.9 }, stop), 78);
   assert.equal(leave.walkMinutesTo({ lat: 52.3645, lon: 4.9 }, {}), null);
 });
 
@@ -127,7 +127,7 @@ test("screens are wired to V5.3", () => {
   const home = read("components/FlowHome.tsx");
   assert.match(home, /loadActiveTrip\(Date\.now\(\)\)/);
   assert.match(home, /rememberAlighting\(trip\.tripId, trip\.alighting\)/);
-  assert.match(home, /leaveAdvice\(rows, walkMinutesTo\(userCoords, boardStop\), nowMs\)/);
+  assert.match(home, /walkingDepartureAdvice\(item,walkingPosition,sourceStop,nowMs\)/);
   const board = read("components/FlowBoard.tsx");
   assert.match(board, /pinnedDepartures\(source, favoriteLines, nowMs, MAX_PINNED_ROWS\)/);
   // V5.4: the time column lives in the shared DepartureLine row.
@@ -161,7 +161,7 @@ test("large system font: two-line names, smaller Buurtbord map, capped tab label
   assert.match(buurt, /large && styles\.mapWrapLarge/);
   assert.match(buurt, /numberOfLines=\{large \? 2 : 1\}>\{item\.name\}/);
   assert.match(read("app/(tabs)/favorieten.tsx"), /<DepartureLine /);
-  assert.match(read("components/FlowHome.tsx"), /numberOfLines=\{large \? 2 : 1\}>\{item\.direction\}/);
+  assert.match(read("components/FlowHome.tsx"), /<DepartureLine /);
   const tabs = read("app/(tabs)/_layout.tsx");
   assert.match(tabs, /maxFontSizeMultiplier=\{1\.15\}/);
   assert.equal((tabs.match(/tabBarLabel: tabLabel\(/g) || []).length, 4);

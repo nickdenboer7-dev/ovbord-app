@@ -25,19 +25,23 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { vehicleIcon } from "../lib/ritVehicle";
 import { FlowWorkspace } from "./FlowWorkspace";
 import { useFavoritesLive } from "../context/FavoritesLive";
-import type { SavedJourney } from "../context/AppProvider";
-import { favoriteJourneyDepartures } from "../lib/favoritesLive";
 import { ritParamsForDeparture } from "../lib/ritRoute";
 import { useSmartRefresh } from "../lib/useSmartRefresh";
-import { favoriteLineKey, pinnedDepartures } from "../lib/favoriteLines";
-import { favoriteStatusText } from "./FavoriteDepartures";
+import { favoriteLineKey } from "../lib/favoriteLines";
 import { DepartureLine } from "./DepartureLine";
 import { nearbyCountText, nearbyDistance } from "../lib/nearbyPresentation";
 import { activeTripLine, activeTripValid } from "../lib/activeTrip";
 import type { ActiveTrip } from "../lib/activeTrip";
 import { clearActiveTrip, loadActiveTrip } from "../lib/activeTripStore";
 import { rememberAlighting } from "../lib/alighting";
-import { leaveAdvice, walkMinutesTo } from "../lib/leaveTime";
+import { walkingDepartureAdvice } from "../lib/leaveTime";
+import { forYouDepartures, type ForYouBoard } from "../lib/forYou";
+import { cachedBoard, cachedStops, hydrateBoardCache } from "../lib/boardCache";
+import { loadLineOrigins } from "../lib/lineOrigins";
+import { useWalkingPosition } from "../lib/useWalkingPosition";
+import { boardRefreshNotice } from "../lib/offline";
+import { distanceMeters } from "../lib/boardingMatch";
+import { runLimited } from "../lib/concurrency";
 import type { DepartureItem, LineInfo, StopSummary } from "../types/api";
 
 type ListTab = "nabij" | "recent" | "favoriet";
@@ -66,8 +70,6 @@ export function FlowHome() {
   const [nowMs, setNowMs] = useState(() => Date.now());
   /** The trip last opened on the trip page, offered on Start until shortly after arrival. */
   const [activeTrip, setActiveTrip] = useState<ActiveTrip | null>(null);
-  /** Own position (GPS only, not a chosen city) for walking advice. */
-  const [userCoords, setUserCoords] = useState<{ lat: number; lon: number } | null>(null);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   // With a large system font, names and destinations get two lines instead of being cut off.
@@ -86,6 +88,7 @@ export function FlowHome() {
   const [showCities, setShowCities] = useState(false);
   // V5.8.1: live GPS while Start is visible; disabled for a manually chosen city or the Utrecht example.
   const live = useLiveLocation(!manualCity && !useUtrechtExample);
+  const walkingPosition=useWalkingPosition(!manualCity&&!useUtrechtExample);
   const locationWaitExpired = useLocationStartup(nearbyRetry, !manualCity && !useUtrechtExample && !live.coords);
   // V5.9: judge "laatst bekend" by the newest GPS fix, not by when stops were last loaded: a
   // stationary user keeps getting fresh fixes (no reload needed) and must not see an old-location note.
@@ -153,8 +156,6 @@ export function FlowHome() {
       try {
         setLocationSource(location.bron);
         setLocationFixAt(location.fixAt);
-        setUserCoords(location.bron === "gps" || location.bron === "laatst-bekend"
-          ? { lat: location.coords.latitude, lon: location.coords.longitude } : null);
         const items = await getNearby(location.coords.latitude, location.coords.longitude);
         if (!current()) return;
         if (location.bron !== "voorbeeld") rememberNearby({ scope: nearbyScope(manualCity), location, items, previews: {}, updatedAt: Date.now() });
@@ -231,11 +232,13 @@ export function FlowHome() {
     return () => { active = false; };
   }, [nearbyGroups]);
   const nearbyCards = useMemo(() => nearbyGroups.map((group) => ({ group, rows: nearbyGroupRows(group, areaLines) })), [nearbyGroups, areaLines]);
-  const savedLineSources = useMemo(() => favoriteLines.slice(0, 3).map((key) => {
-    const candidates = [...favoriteStops, ...nearbyCards.flatMap(({ rows }) => rows.map((row) => ({ ...row.openStop, lines: row.lines })))];
-    return { key, stop: candidates.find((candidate) => candidate.lines.some((line) => favoriteLineKey(line.line, line.carrier) === key)) };
-  }), [favoriteLines, favoriteStops, nearbyCards]);
-  const [savedLineBoards, setSavedLineBoards] = useState<Record<string, Awaited<ReturnType<typeof getHalte>>>>({});
+  const [lineOrigins,setLineOrigins]=useState<Record<string,StopSummary>>({});
+  useEffect(()=>{let active=true;void Promise.all([loadLineOrigins(),hydrateBoardCache()]).then(([value])=>{if(active)setLineOrigins(value);});return()=>{active=false;};},[favoriteLines]);
+  const savedLineSources = useMemo(() => favoriteLines.map((key) => {
+    const candidates = [...favoriteStops,...recentStops,...cachedStops(), ...nearbyCards.flatMap(({ rows }) => rows.map((row) => ({ ...row.openStop, lines: row.lines })))];
+    return { key, stop: lineOrigins[key] || candidates.find((candidate) => candidate.lines.some((line) => favoriteLineKey(line.line, line.carrier) === key)) };
+  }), [favoriteLines, favoriteStops, recentStops,nearbyCards,lineOrigins]);
+  const [savedLineBoards, setSavedLineBoards] = useState<Record<string, ForYouBoard & {failure?:FailureKind}>>({});
   const [savedLinesUpdating, setSavedLinesUpdating] = useState(false);
   const savedLineIds = [...new Set(savedLineSources.flatMap(({ stop }) => stop ? [stop.id] : []))].sort().join("|");
   const savedLinesRequest = useRef(0);
@@ -243,15 +246,21 @@ export function FlowHome() {
     if (!savedLineIds) return;
     const request = ++savedLinesRequest.current;
     setSavedLinesUpdating(true);
-    const loaded = await Promise.all(savedLineIds.split("|").map(async (id) => { try { return [id, await getHalte(id)] as const; } catch { return null; } }));
+    const loaded:[string,ForYouBoard & {failure?:FailureKind}][]=[];
+    await runLimited(savedLineIds.split("|"),3,async (id) => {
+      const cached=await cachedBoard(id);
+      if(request===savedLinesRequest.current&&cached)setSavedLineBoards(previous=>previous[id]?.board?previous:{...previous,[id]:{...cached,stale:true}});
+      try { loaded.push([id,{board:await getHalte(id),fetchedAt:Date.now(),stale:false}]); }
+      catch(error) { loaded.push([id,{board:cached?.board,fetchedAt:cached?.fetchedAt,stale:true,failure:failureKind(error)}]); }
+    });
     if (request === savedLinesRequest.current) {
       // Do not show old cached departures as Live after a failed refresh.
-      setSavedLineBoards(Object.fromEntries(loaded.filter((entry): entry is NonNullable<typeof entry> => entry !== null)));
+      setSavedLineBoards(Object.fromEntries(loaded));
       setSavedLinesUpdating(false);
     }
   }, [savedLineIds]);
   useEffect(() => { void refreshSavedLines(); return () => { savedLinesRequest.current += 1; }; }, [refreshSavedLines]);
-  useSmartRefresh(refreshSavedLines, 60000, "saved-lines:" + savedLineIds, favoriteJourneys.length === 0 && screens.length === 0);
+  useSmartRefresh(refreshSavedLines, 60000, "saved-lines:" + savedLineIds, screens.length === 0);
   const sections = useMemo<SearchSection[]>(() => {
     const haltes: SearchRow[] = data.map((stop) => ({ kind: "halte", stop }));
     if (!finding && tab === "nabij") {
@@ -271,18 +280,24 @@ export function FlowHome() {
     : data.length;
   const showingBoard = screens.length > 0 && !finding;
   // "Mijn ritten": saved trips with their next departures, at the top of the nearby list.
-  const showMine = !finding && tab === "nabij" && favoriteJourneys.length > 0;
+  const showMine = !finding && tab === "nabij" && (favoriteJourneys.length+favoriteStops.length+favoriteLines.length)>0;
+  const personalBoards:Record<string,ForYouBoard>={...savedLineBoards};
+  for(const [id,entry] of Object.entries(favoriteBoards))if(entry.board&&(!personalBoards[id]?.board||(entry.fetchedAt||0)>=(personalBoards[id]?.fetchedAt||0)))personalBoards[id]=entry;
+  const personalRows=forYouDepartures(personalBoards,favoriteStops,favoriteLines,favoriteJourneys,nowMs);
+  const offline=favoritesFailure==="offline"||Object.values(savedLineBoards).some(e=>e.failure==="offline")||nearbyState==="offline"||nearbyRefreshFailure==="offline";
+  const personalUpdatedAt=Math.max(0,...Object.values(personalBoards).map(e=>e.fetchedAt||0))||null;
+  const homeSavedStops=uniqueRecentStops([...favoriteStops,...(offline?recentStops:[])]);
   // V5.8: the stop board has a white header too (like Start), so the status bar simply follows
   // the theme everywhere. Rendered only while focused, so Favorieten and Meer follow the theme.
   const [focused, setFocused] = useState(true);
   const statusBarStyle = resolvedScheme === "dark" ? "light" : "dark";
   useFocusEffect(useCallback(() => { setFocused(true); return () => setFocused(false); }, []));
   useFocusEffect(useCallback(() => {
-    if (favoriteJourneys.length) void refreshFavorites();
+    if (favoriteJourneys.length||favoriteStops.length) void refreshFavorites();
     let active = true;
     void loadActiveTrip(Date.now()).then((trip) => { if (active) setActiveTrip(trip); });
     return () => { active = false; };
-  }, [favoriteJourneys.length, refreshFavorites]));
+  }, [favoriteJourneys.length, favoriteStops.length, refreshFavorites]));
   const showTrip = !finding && tab === "nabij" && activeTripValid(activeTrip, nowMs);
   const openActiveTrip = (trip: ActiveTrip) => {
     // The alighting stop comes back too, also after the app was closed.
@@ -291,14 +306,10 @@ export function FlowHome() {
   };
   const dismissActiveTrip = () => { void clearActiveTrip(); setActiveTrip(null); };
   useSmartRefresh(() => refreshFavorites(), favoritesFailure ? 20000 : 60000, "start:" + favoritesKey, showMine && !showingBoard);
-  const openMyJourney = (item: SavedJourney) => {
-    addRecentStop(item.stop);
-    showStop(item.stop, { line: item.boardLine || item.line, carrier: item.carrier });
-  };
   /** The trip opens on top of that stop's board, so Back leads to the board. */
   const openMyDeparture = (stop: StopSummary, item: DepartureItem) => {
     addRecentStop(stop);
-    showStop(stop, { line: item.line, carrier: item.carrier });
+    showStop(stop, { line: item.line, carrier: item.carrier, exact:true });
     if (item.ritId) router.push({ pathname: "/rit/[id]", params: ritParamsForDeparture(item, stop) });
   };
   /** The search icon opens the field with recently viewed stops below it. */
@@ -393,7 +404,7 @@ export function FlowHome() {
       </View> : null}
 
       <View style={[styles.listLayer, showingBoard ? styles.hidden : null]} pointerEvents={showingBoard ? "none" : "auto"}>
-        {((finding && loadingSearch) || (!finding && tab === "nabij" && nearbyState === "loading" && !showMine)) && !resultCount ? (
+        {finding && loadingSearch && !resultCount ? (
           <View style={styles.center}><ActivityIndicator color={colors.accentText} /></View>
         ) : (
           <SectionList<SearchRow>
@@ -413,68 +424,42 @@ export function FlowHome() {
               colors={[colors.accentText]} tintColor={colors.accentText} progressBackgroundColor={colors.surface} /> : undefined}
             ListHeaderComponent={
               <View>
-                {showMine ? (
-                  <View>
-                    <View style={styles.headingRow}>
-                      <Text style={[styles.listTitle, { color: colors.heading }]} accessibilityRole="header">Jouw lijnen</Text>
-                      {favoritesUpdating && Object.values(favoriteBoards).some((entry) => Boolean(entry.board)) ? (
-                        <Text style={{ color: colors.textMuted, fontSize: 11 }}>Bijwerken…</Text>
-                      ) : null}
-                      <Pressable accessibilityRole="button" accessibilityLabel="Alle favorieten openen" hitSlop={8}
-                        onPress={() => router.navigate("/favorieten")}>
-                        <Text style={[styles.headingLink, { color: colors.accentText }]}>Alle favorieten</Text>
-                      </Pressable>
-                    </View>
-                    <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    {favoriteJourneys.slice(0, 3).map((item, index, shown) => {
-                      const entry = favoriteBoards[item.stop.id];
-                      const rows = entry?.board ? favoriteJourneyDepartures(entry.board.departures, item, nowMs) : [];
-                      const boardStop = entry?.board?.stop || item.stop;
-                      // "When do I leave": walking time from the own GPS position; not on last-known times.
-                      const advice = rows.length && !entry?.stale ? leaveAdvice(rows, walkMinutesTo(userCoords, boardStop), nowMs) : null;
-                      const last = index === shown.length - 1;
-                      // One calm row: the next departure; the walking advice replaces the status line.
-                      if (rows.length) {
-                        return <DepartureLine key={item.key} item={rows[0]} nowMs={nowMs} stale={Boolean(entry?.stale)} carrier={item.carrier}
-                          last={last} onPress={() => openMyDeparture(boardStop, rows[0])}
-                          detail={advice ? { text: advice.text, icon: "walk-outline", warn: advice.tight } : undefined}
-                          note={advice ? undefined : shortStopName(boardStop.name)} />;
-                      }
-                      return (
-                        <Pressable key={item.key} accessibilityRole="button"
-                          accessibilityLabel={"Lijn " + item.line + " naar " + item.direction + " bij " + item.stop.name + ". Vertrekbord openen"}
-                          onPress={() => openMyJourney(item)}
-                          style={[styles.mineMain, !last && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }]}>
-                          <LijnBadge line={item.line} carrier={item.carrier} compact tone="flow" />
-                          <View style={styles.stopContent}>
-                            <Text style={[styles.mineDirection, { color: colors.text }]} numberOfLines={large ? 2 : 1}>{item.direction}</Text>
-                            <Text style={[styles.stopSubtitle, { color: colors.textSoft }]} numberOfLines={large ? 2 : 1}>{favoriteStatusText(entry, false)} · {shortStopName(item.stop.name)}</Text>
-                          </View>
-                          <Ionicons name="chevron-forward" size={17} color={colors.textMuted} />
-                        </Pressable>
-                      );
-                    })}
-                    </View>
+                {!finding && tab === "nabij" ? <View>
+                  {offline ? <View style={[styles.searchWarning,{backgroundColor:colors.warningSoft}]}>
+                    <Ionicons name="cloud-offline-outline" size={18} color={colors.text}/>
+                    <Text style={{color:colors.text,flex:1,fontSize:12}}>{boardRefreshNotice("offline",personalUpdatedAt)}</Text>
+                  </View> : null}
+                  <View style={styles.headingRow}>
+                    <Text style={[styles.listTitle,{color:colors.heading}]} accessibilityRole="header">Voor jou</Text>
+                    {favoritesUpdating||savedLinesUpdating?<Text style={{color:colors.textMuted,fontSize:11}}>Bijwerken…</Text>:null}
                   </View>
-                ) : null}
-                {!finding && tab === "nabij" && !showMine ? <View>
-                  <View style={styles.headingRow}><Text style={[styles.listTitle, { color: colors.heading }]} accessibilityRole="header">Jouw lijnen</Text></View>
-                  {savedLinesUpdating ? <Text style={{ color: colors.textMuted, fontSize: 11, paddingHorizontal: 16 }}>Bijwerken…</Text> : null}
-                  {savedLineSources.length ? <View style={styles.card}>{savedLineSources.map(({ key, stop: lineStop }, index) => {
-                    const board = lineStop ? savedLineBoards[lineStop.id] : undefined;
-                    const departure = board ? pinnedDepartures(board.departures, [key], nowMs, 1)[0] : undefined;
-                    return departure && lineStop ? <DepartureLine key={key} item={departure} nowMs={nowMs} last={index === savedLineSources.length - 1}
-                      onPress={() => openMyDeparture(board?.stop || lineStop, departure)} /> :
-                      <Pressable key={key} onPress={() => lineStop ? openStop(lineStop) : router.navigate("/favorieten")} accessibilityRole="button"
-                        style={[styles.mineMain, { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth }]}>
-                        <LijnBadge line={key.split("|")[0]} carrier={key.split("|")[1]} tone="plain" />
-                        <View style={styles.stopContent}><Text style={{ color: colors.text }}>{lineStop?.name || "Favoriete lijn"}</Text>
-                          <Text style={[styles.stopSubtitle, { color: colors.textSoft }]}>Nog geen actuele vertrekken</Text></View>
-                        <Ionicons name="chevron-forward" size={17} color={colors.textMuted} />
-                      </Pressable>;
-                  })}</View> : <Text style={{ color: colors.textSoft, fontSize: 13, lineHeight: 19, paddingHorizontal: 16, paddingBottom: 8 }}>
-                    Bewaar een lijn met de ster op een haltebord. Je vindt je favorieten hier terug.
-                  </Text>}
+                  <View style={styles.card}>
+                    {personalRows.map(({stop:sourceStop,item,stale},index)=>{
+                      const advice=!stale&&!offline?walkingDepartureAdvice(item,walkingPosition,sourceStop,nowMs):null;
+                      return <DepartureLine key={sourceStop.id+":"+item.id+":"+index} item={item} nowMs={nowMs} stale={stale||offline}
+                        last={index===personalRows.length-1} note={shortStopName(sourceStop.name)}
+                        detail={advice?{...advice,warn:advice.tight}:undefined} onPress={()=>openMyDeparture(sourceStop,item)}/>;
+                    })}
+                    {!personalRows.length?<Text style={{color:colors.textSoft,fontSize:13,padding:16,lineHeight:19}}>
+                      {showMine?"Nog geen komende vertrekken geladen. Open een van jouw haltes.":"Bewaar een halte of lijn met de ster. De eerstvolgende vertrekken staan hier."}
+                    </Text>:null}
+                  </View>
+                  <View style={styles.headingRow}>
+                    <Text style={[styles.listTitle,{color:colors.heading}]} accessibilityRole="header">Jouw haltes</Text>
+                    <Pressable onPress={()=>router.navigate("/favorieten")} accessibilityRole="button" accessibilityLabel="Alle favorieten openen">
+                      <Text style={[styles.headingLink,{color:colors.accentText}]}>Alle favorieten</Text>
+                    </Pressable>
+                  </View>
+                  {homeSavedStops.map(saved=>{
+                    const distance=walkingPosition?distanceMeters(walkingPosition,saved):Infinity;
+                    const count=saved.lines.length;
+                    return <Pressable key={saved.id} onPress={()=>openStop(saved)} accessibilityRole="button" style={[styles.nearRow,{borderBottomColor:colors.border}]}>
+                      <View style={styles.stopContent}><Text style={[styles.nearName,{color:colors.text}]}>{saved.name}</Text>
+                        <Text style={[styles.stopSubtitle,{color:colors.textSoft}]}>{Number.isFinite(distance)?Math.round(distance)+" m · ":""}{count} {count===1?"lijn":"lijnen"}{!favoriteStops.some(s=>s.id===saved.id)?" · recent geopend":""}</Text>
+                      </View><Ionicons name="chevron-forward" size={18} color={colors.textMuted}/>
+                    </Pressable>;
+                  })}
+                  {!homeSavedStops.length?<Text style={{color:colors.textSoft,fontSize:13,paddingHorizontal:16,paddingBottom:12}}>Je bewaarde haltes verschijnen hier.</Text>:null}
                 </View> : null}
                 {showTrip && activeTrip ? (() => {
                   const tripLine = activeTripLine(activeTrip);
@@ -613,7 +598,7 @@ export function FlowHome() {
                     const distance = row.openStop.distanceMeters;
                     const distanceText = nearbyDistance(distance, row.walkMinutes);
                     const name = item.rows.length > 1 ? shortStopName(row.openStop.name) : group.name;
-                    return <Pressable key={row.key} onPress={() => openStop(row.openStop)} accessibilityRole="button"
+                    return <Pressable key={row.key} onPress={() => openStop({...row.openStop,variants:row.stops})} accessibilityRole="button"
                       accessibilityLabel={name + ", " + row.label + ", " + distanceText + ", " + row.lines.length + " lijnen"}
                       style={({ pressed }) => [styles.nearRow, { backgroundColor: pressed ? colors.surfaceSoft : colors.surface, borderBottomColor: colors.border }]}>
                       <View style={styles.stopContent}>

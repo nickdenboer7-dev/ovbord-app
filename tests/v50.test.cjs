@@ -182,7 +182,7 @@ test("screens are wired to the new features", () => {
   assert.match(favorites, /useFavoritesLive\(\)/);
   assert.match(favorites, /moveFavoriteJourney\(item\.key, delta\)/);
   assert.match(read("app/(tabs)/buurtbord.tsx"), /toggleFavoriteStop\(item\)/);
-  assert.match(read("components/FlowHome.tsx"), />Jouw lijnen</);
+  assert.match(read("components/FlowHome.tsx"), />Voor jou</);
 });
 
 // Gevonden bij controle: een lege sectie telt als inhoud, waardoor uitleg en knoppen op Start nooit verschenen

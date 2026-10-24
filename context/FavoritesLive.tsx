@@ -5,6 +5,7 @@ import { getHalte, searchStops } from "../lib/api";
 import { FAVORITE_BOARDS_STORAGE_KEY, favoriteBoardStops, parseStoredFavoriteBoards, serializeFavoriteBoards } from "../lib/favoritesLive";
 import { failureKind } from "../lib/offline";
 import { runLimited } from "../lib/concurrency";
+import { cachedBoard } from "../lib/boardCache";
 import type { FailureKind } from "../lib/offline";
 import type { HalteBoardData, StopSummary } from "../types/api";
 
@@ -37,7 +38,7 @@ async function loadFavoriteBoard(stop: StopSummary): Promise<HalteBoardData> {
     return await getHalte(stop.id);
   } catch (firstError) {
     // A trip saved without a public stop ID is found by name, as on the stop board.
-    if (failureKind(firstError) === "offline") throw firstError;
+    if (failureKind(firstError) === "offline" || stop.variants?.length) throw firstError;
     const normalize = (value: string) => value.toLocaleLowerCase("nl").trim();
     const found = (await searchStops(stop.name)).find((match) => normalize(match.name) === normalize(stop.name));
     if (!found) throw firstError;
@@ -48,7 +49,7 @@ async function loadFavoriteBoard(stop: StopSummary): Promise<HalteBoardData> {
 /** One loader for the favourite boards, shared by Start ("Mijn ritten") and the Favorieten tab. */
 export function FavoritesLiveProvider({ children }: { children: React.ReactNode }) {
   const { favoriteStops, favoriteJourneys } = useApp();
-  const stops = useMemo(() => favoriteBoardStops(favoriteJourneys, favoriteStops), [favoriteJourneys, favoriteStops]);
+  const stops = useMemo(() => favoriteBoardStops(favoriteJourneys, favoriteStops, 48), [favoriteJourneys, favoriteStops]);
   const stopsKey = useMemo(() => stops.map((stop) => stop.id).sort().join("|"), [stops]);
   const stopsRef = useRef(stops);
   stopsRef.current = stops;
@@ -112,6 +113,8 @@ export function FavoritesLiveProvider({ children }: { children: React.ReactNode 
         };
         // At most a few requests at once, in favourites order: the first ones are ready first.
         await runLimited(list, MAX_PARALLEL_BOARDS, async (stop) => {
+          const cached=await cachedBoard(stop.id);
+          if(cached)queue(stop.id,before=>before?.board?before:{...cached,stale:true});
           try {
             const board = await loadFavoriteBoard(stop);
             const entry = { board, fetchedAt: Date.now() };
@@ -121,7 +124,7 @@ export function FavoritesLiveProvider({ children }: { children: React.ReactNode 
             const kind = failureKind(error);
             failed = failed || kind;
             // Keep the last loaded departures, marked as no longer checked.
-            queue(stop.id, (before) => ({ board: before?.board, fetchedAt: before?.fetchedAt, failure: kind, stale: Boolean(before?.board) }));
+            queue(stop.id, (before) => ({ board: before?.board||cached?.board, fetchedAt: before?.fetchedAt||cached?.fetchedAt, failure: kind, stale: Boolean(before?.board||cached?.board) }));
           }
         });
         flush();

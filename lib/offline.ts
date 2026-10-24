@@ -24,7 +24,7 @@ export function clockLabel(ms: number | null | undefined): string {
 export function boardRefreshNotice(kind: FailureKind, lastUpdatedMs: number | null): string {
   const at = clockLabel(lastUpdatedMs);
   return kind === "offline"
-    ? "Geen internet · tijden" + (at ? " van " + at : "") + " worden niet meer gecontroleerd"
+    ? "Geen verbinding · laatst bijgewerkt" + (at ? " om " + at : " op een onbekend tijdstip")
     : "Verversen mislukt · laatst geladen tijden" + (at ? " (" + at + ")" : "") + " blijven zichtbaar";
 }
 

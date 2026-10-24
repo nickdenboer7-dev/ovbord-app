@@ -3,20 +3,25 @@ import { departureTimeRemainingMs } from "./boardSmartness";
 import { distanceMeters } from "./boardingMatch";
 import { departurePresentation } from "./departurePresentation";
 
-/** Same walking pace as the nearby list (80 m per minute), with a detour factor for streets. */
-export const WALK_METERS_PER_MINUTE = 80;
+/** 4.5 km/h = 75 m/min, with a 1.3 detour factor for streets. */
+export const WALK_METERS_PER_MINUTE = 75;
 export const WALK_DETOUR_FACTOR = 1.3;
-/** Further away a walking advice means little: the user is probably not walking there. */
-export const MAX_WALK_ADVICE_METERS = 2500;
-export const AT_STOP_METERS = 80;
-
-/** Walking minutes to a stop; null without both positions or when too far for walking advice. */
+/** Walking minutes to a stop; null without both positions. */
 export function walkMinutesTo(from: { lat?: number; lon?: number } | null, to: { lat?: number; lon?: number }): number | null {
   if (!from) return null;
   const meters = distanceMeters(from, to);
-  if (!Number.isFinite(meters) || meters > MAX_WALK_ADVICE_METERS) return null;
-  if (meters <= AT_STOP_METERS) return 0;
-  return Math.max(1, Math.round(meters * WALK_DETOUR_FACTOR / WALK_METERS_PER_MINUTE));
+  if (!Number.isFinite(meters)) return null;
+  return Math.ceil(meters * WALK_DETOUR_FACTOR / WALK_METERS_PER_MINUTE);
+}
+
+/** A cautious label, calculated against the same expected time as the departure row. */
+export function walkingDepartureAdvice(item: DepartureItem, from: {lat:number;lon:number}|null,
+  stop: {lat?:number;lon?:number}, nowMs: number): {text:string;tight:boolean;label:string}|null {
+  if (item.cancelled || item.departed || item.liveDataStale) return null;
+  const walk=walkMinutesTo(from,stop), ms=departureTimeRemainingMs(item,nowMs);
+  if(walk===null || ms===null || ms<0)return null;
+  const minutes=Math.ceil(ms/60000), tight=ms/60000-walk<3;
+  return {text:walk+" min lopen · vertrekt over "+minutes+" min",tight,label:tight?"Krap":"Haalbaar"};
 }
 
 /**

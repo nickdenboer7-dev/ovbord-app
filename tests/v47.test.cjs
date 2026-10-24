@@ -66,9 +66,9 @@ test("notices name the time of the data still on screen", () => {
   const t = at("21:14");
   assert.equal(offline.clockLabel(t), "21:14");
   assert.equal(offline.clockLabel(undefined), "");
-  assert.equal(offline.boardRefreshNotice("offline", t), "Geen internet · tijden van 21:14 worden niet meer gecontroleerd");
+  assert.equal(offline.boardRefreshNotice("offline", t), "Geen verbinding · laatst bijgewerkt om 21:14");
   assert.equal(offline.boardRefreshNotice("server", t), "Verversen mislukt · laatst geladen tijden (21:14) blijven zichtbaar");
-  assert.equal(offline.boardRefreshNotice("offline", null), "Geen internet · tijden worden niet meer gecontroleerd");
+  assert.equal(offline.boardRefreshNotice("offline", null), "Geen verbinding · laatst bijgewerkt op een onbekend tijdstip");
   assert.equal(offline.ritRefreshNotice("offline", t),
     "Geen internet · ritgegevens van 21:14. OVbord ververst automatisch zodra er weer verbinding is.");
   assert.equal(offline.ritRefreshNotice("server", t), "Ritgegevens tijdelijk niet beschikbaar · laatst opgehaald om 21:14.");

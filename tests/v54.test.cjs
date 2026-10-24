@@ -35,8 +35,8 @@ test("status line: live, planned, estimated and what can no longer be confirmed"
   assert.deepEqual(line.departureLineStatus(dep("09:42", { cancelled: true, platform: "5", mode: "train" }), now),
     { tone: "cancelled", text: "Rijdt niet · spoor 5" });
   assert.deepEqual(line.departureLineStatus(dep("09:39", { departed: true, isLive: true }), now), { tone: "departed", text: "Vertrokken" });
-  // After a failed refresh nothing is "Live" any more and the countdown is an estimate.
-  assert.deepEqual(line.departureLineStatus(dep("09:44", { isLive: true }), now, { stale: true }), { tone: "stale", text: "Laatst bekend · ± 4 min" });
+  // After a failed refresh each row explicitly shows its last-known time.
+  assert.deepEqual(line.departureLineStatus(dep("09:44", { isLive: true }), now, { stale: true }), { tone: "stale", text: "Laatst bekende tijd" });
   assert.deepEqual(line.departureLineStatus(dep("09:44", { liveDataStale: true }), now).tone, "stale");
   assert.deepEqual(line.departureLineStatus(dep("09:41", { isLive: true }), now, { tooTight: true }), { tone: "muted", text: "Te krap om te lopen" });
   // Trains add the platform; a recent time change is appended.
@@ -178,7 +178,7 @@ test("Start: one compact trip line and a search icon", () => {
   assert.match(home, /const \[searchOpen, setSearchOpen\] = useState\(false\);/);
   assert.doesNotMatch(home, /accessibilityRole="tablist"/);
   assert.doesNotMatch(home, /Snel openen/);
-  assert.match(home, /detail=\{advice \? \{ text: advice\.text, icon: "walk-outline", warn: advice\.tight \} : undefined\}/);
+  assert.match(home, /detail=\{advice\?\{\.\.\.advice,warn:advice\.tight\}:undefined\}/);
   // The live time is shown with an icon next to the destination (DepartureLine), not as a green clock.
   assert.match(read("components/DepartureLine.tsx"), /statusIsLive \? <><Text style=\{\{ color: colors\.success \}\}>Live/);
 });
@@ -359,7 +359,7 @@ test("a long word gets a slightly smaller font instead of being broken", () => {
   assert.equal(wordFitScale("Amstelveen-Stadshart", 120, 16, 1.5), 1.25); // breaks at the hyphen anyway
   const row = read("components/DepartureLine.tsx").replace(/\r\n/g, "\n");
   assert.match(row, /maxFontSizeMultiplier=\{wordFitScale\(item\.destination, bodyWidth/);
-  assert.match(row, /maxFontSizeMultiplier=\{wordFitScale\(status\.text \+ extra, bodyWidth, 12\.5, 1\.3\)\}/);
+  assert.match(row, /maxFontSizeMultiplier=\{wordFitScale\(status\.text, bodyWidth, 12\.5, 1\.3\)\}/);
   assert.match(row, /onLayout=\{large \?/);
   assert.match(row, /rowLarge: \{ gap: 8 \}/);
 });

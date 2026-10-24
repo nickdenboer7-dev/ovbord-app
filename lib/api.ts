@@ -5,6 +5,7 @@ import { formatClock, formatDutchClock, normalizeMode, relativeMinutesText, shif
 import { delayedClock } from "./ritConsistency";
 import { isUnconfirmedExtremeEarlyDeparture } from "./earlyDepartureGuard";
 import { parseDisruptions, parseStopDisruptions } from "./haltebordV4";
+import { rememberBoard } from "./boardCache";
 
 const API_BASE = "https://ovbord.nl";
 
@@ -112,6 +113,7 @@ function normalizeStop(item: any): StopSummary {
     lat: num(first(item?.lat, item?.latitude)),
     lon: num(first(item?.lon, item?.lng, item?.longitude)),
     lines: mapLines(item),
+    platform: str(first(item?.platform, item?.platform_code, item?.quay_code)) || undefined,
     ...(item?.lines_complete === true || item?.complete_lines === true ? { linesComplete: true } : {})
   };
 }
@@ -357,7 +359,7 @@ export async function searchCatalog(query: string): Promise<{ stops: StopSummary
     }
     const type = first(item?.location_type, item?.locationType);
     return Boolean(naam) && ![3, 4, "3", "4"].includes(type);
-  }).map(normalizeStop);
+  }).map(normalizeNearbyRow);
   const seen = new Set<string>();
   const journeys: SearchJourney[] = items
     .filter((item) => str(item?.kind).toLowerCase() === "rit")
@@ -391,8 +393,8 @@ export async function getNearby(lat: number, lon: number): Promise<StopSummary[]
 export async function getHalte(id: string): Promise<HalteBoardData> {
   const raw = await requestJson(`/api/halte/${encodeURIComponent(id)}`);
   const stopRaw = first(raw?.stop, raw?.halte, raw);
-  return {
-    stop: normalizeStop({ ...stopRaw, id, lines: first(raw?.lines, raw?.routes, stopRaw?.lines) }),
+  const board: HalteBoardData = {
+    stop: normalizeNearbyRow({ ...stopRaw, id, lines: first(raw?.lines, raw?.routes, stopRaw?.lines) }),
     departures: arrayOf<any>(first(raw?.departures, raw?.vertrekken, raw?.rows, raw?.items))
       .map((item) => normalizeDeparture({ ...item, feed_generated_at: raw?.generated_at })),
     arrivals: arrayOf<any>(first(raw?.arrivals, raw?.aankomsten)).map(normalizeDeparture),
@@ -403,6 +405,9 @@ export async function getHalte(id: string): Promise<HalteBoardData> {
       ? raw.feed_age_seconds : undefined,
     stale: raw?.stale === true
   };
+  if (!board.stop.lines.length) board.stop.lines = mergeLines(board.departures.map(d => ({ line:d.line,carrier:d.carrier,mode:d.mode })));
+  rememberBoard(board);
+  return board;
 }
 
 /** One bulk request for live position quality; never one request per departure. */

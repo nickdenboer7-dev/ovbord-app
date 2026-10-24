@@ -151,7 +151,7 @@ test('Start nearby groups show a line count and each original stop remains tappa
   assert.match(home, /groupNearbyStops\(nearby\)/);
   // One calm row per real transport stop; count the complete enriched line set.
   assert.match(home, /item\.rows\.map\(\(row\) =>/);
-  assert.match(home, /onPress=\{\(\) => openStop\(row\.openStop\)\}/);
+  assert.match(home, /onPress=\{\(\) => openStop\(\{\.\.\.row\.openStop,variants:row\.stops\}\)\}/);
   assert.match(home, /row\.lines\.length/);
   assert.doesNotMatch(home, /lines\.slice\(0, 4\)/);
 });

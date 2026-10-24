@@ -35,6 +35,7 @@ export interface StopSummary {
   linesComplete?: boolean;
   /** V5.9.1: the real platform/stop IDs behind this entry, when the backend sends them ("quays"). */
   variants?: StopSummary[];
+  platform?: string;
 }
 
 export interface DepartureItem {

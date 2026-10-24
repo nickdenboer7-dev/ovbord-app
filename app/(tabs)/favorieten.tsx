@@ -44,7 +44,7 @@ export default function FavorietenScreen() {
   const openStop = (stop: StopSummary, options?: ShowStopOptions) => { addRecentStop(stop); showFlowStop(stop, options); router.navigate("/"); };
   /** The trip opens on top of the stop board in Start, so Back and stop taps in the trip lead there. */
   const openDeparture = (stop: StopSummary, item: DepartureItem, options?: ShowStopOptions) => {
-    openStop(stop, options);
+    openStop(stop, {...options,exact:true});
     if (item.ritId) router.push({ pathname: "/rit/[id]", params: ritParamsForDeparture(item, stop) });
   };
   const confirmRemove = (title: string, onConfirm: () => void) => Alert.alert("Favoriet verwijderen?", title, [

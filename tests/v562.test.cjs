@@ -45,7 +45,7 @@ test("Start keeps GPS, choosing a city, search, recent stops, favourites and the
   assert.match(home, />Gebruik GPS</);
   assert.match(home, /onPress=\{\(\) => \{ setManualCity\(city\.key\); setUseUtrechtExample\(false\); setShowCities\(false\); \}\}/);
   assert.match(home, /tab === "recent" \? "Onlangs bekeken" : "Favoriete haltes"/);
-  assert.match(home, />Jouw lijnen</);
+  assert.match(home, />Voor jou</);
   assert.match(home, /onPress=\{\(\) => openActiveTrip\(activeTrip\)\}/);
   assert.match(home, /onPress=\{dismissActiveTrip\}/);
   assert.match(home, /Linking\.openSettings\(\)/);

@@ -16,7 +16,7 @@ function joined(...parts: (string | undefined | null | false)[]): string {
 
 /**
  * Status line under the destination. Only a fresh live feed says "Live"; after a
- * failed refresh (stale) the countdown becomes an estimate ("± 4 min").
+ * failed refresh (stale) the row explicitly shows "Laatst bekende tijd".
  */
 export function departureLineStatus(item: DepartureItem, nowMs: number, options: {
   stale?: boolean; tooTight?: boolean; platform?: boolean; note?: string;
@@ -27,7 +27,7 @@ export function departureLineStatus(item: DepartureItem, nowMs: number, options:
     ? (item.mode === "train" ? "spoor " : "perron ") + item.platform : "";
   if (cancelled) return { tone: "cancelled", text: joined("Rijdt niet", platform) };
   if (item.departed === true) return { tone: "departed", text: "Vertrokken" };
-  if (options.stale) return { tone: "stale", text: joined("Laatst bekend", staleCountdown(countdown), platform, options.note) };
+  if (options.stale) return { tone: "stale", text: joined("Laatst bekende tijd", platform, options.note) };
   if (item.liveDataStale === true) return { tone: "stale", text: joined("Live-info oud", staleCountdown(countdown), platform, options.note) };
   if (options.tooTight) return { tone: "muted", text: joined("Te krap om te lopen", platform) };
   const estimated = item.reliabilityDetail?.estimatedPosition === true ||

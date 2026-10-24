@@ -25,6 +25,10 @@ import { boardDirectionChoices, matchesBoardDirection } from "../lib/boardDirect
 import { favoriteLineKey, pinnedDepartures } from "../lib/favoriteLines";
 import { withBoardFreshness } from "../lib/realtimeConsistency";
 import { boardRefreshNotice, failureKind } from "../lib/offline";
+import { cachedBoard, rememberBoard } from "../lib/boardCache";
+import { useWalkingPosition } from "../lib/useWalkingPosition";
+import { walkingDepartureAdvice } from "../lib/leaveTime";
+import { rememberLineOrigin } from "../lib/lineOrigins";
 import { ritParamsForDeparture } from "../lib/ritRoute";
 import type { FailureKind } from "../lib/offline";
 import type { PlatformChanges } from "../lib/haltebordV4";
@@ -35,6 +39,8 @@ type BoardTab = "departures" | "arrivals" | "lines" | "disruptions";
 type Props = {
   stop: StopSummary;
   initialBoard?: HalteBoardData;
+  initialFetchedAt?: number;
+  initialStale?: boolean;
   /** Line filter key to preselect, e.g. when opened from a favourite trip. */
   initialLine?: string;
   visible?: boolean;
@@ -45,15 +51,17 @@ type Props = {
 export const MAX_PINNED_ROWS = 3;
 
 /** The board is rendered inside the Start tab: no Stack route, drawer, or bottom sheet. */
-export function FlowBoard({ stop, initialBoard, initialLine, onBack, visible = true }: Props) {
-  const { colors, resolvedScheme, addRecentStop, toggleFavoriteStop, isFavoriteStop, favoriteLines, toggleFavoriteLine } = useApp();
+export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=false, initialLine, onBack, visible = true }: Props) {
+  const { colors, resolvedScheme, addRecentStop, toggleFavoriteStop, isFavoriteStop, favoriteLines, toggleFavoriteLine, manualCity } = useApp();
   const { requestSearch } = useFlowNavigation();
   const router = useRouter(); // OVBORD_FLOW4_DEDICATED_RIT
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
   const [board, setBoard] = useState<HalteBoardData | null>(initialBoard || null);
   const [loading, setLoading] = useState(!initialBoard);
-  const [fetchedAt, setFetchedAt] = useState<number | null>(initialBoard ? Date.now() : null);
+  const [fetchedAt, setFetchedAt] = useState<number | null>(initialBoard ? initialFetchedAt ?? Date.now() : null);
+  const [cachePending,setCachePending]=useState(initialStale);
+  const position=useWalkingPosition(visible && !manualCity);
   const [nowMs,setNowMs] = useState(Date.now());
   const previousBoard = useRef<HalteBoardData | null>(initialBoard || null);
   const [timeChanges, setTimeChanges] = useState<DepartureTimeChanges>({});
@@ -83,7 +91,9 @@ export function FlowBoard({ stop, initialBoard, initialLine, onBack, visible = t
     isActiveStopNotice(notice, stop.id, nowMs)), [board, stop.id, nowMs]);
   // Timing expires at the existing age limit; failed requests suspend GPS/departure confirmation immediately.
   const timingCurrent = freshness.level === "fresh";
-  const dataCurrent = timingCurrent && !refreshFailure;
+  const staleDisplay=Boolean(refreshFailure)||cachePending;
+  const dataCurrent = timingCurrent && !staleDisplay;
+  useEffect(() => { addRecentStop(stop); }, [stop.id]);
   useEffect(() => {
     gpsQualityCheckedAt.current = 0;
     setGpsQuality({});
@@ -152,8 +162,8 @@ export function FlowBoard({ stop, initialBoard, initialLine, onBack, visible = t
     };
   }, [board, visible, stop.id, nowMs, departedNotices, recentDepartures, dataCurrent]);
 
-  const visibleDepartures = useMemo(() => visibleBoardDepartures(board?.departures || [], departedNotices, nowMs),
-    [board, departedNotices, nowMs]);
+  const visibleDepartures = useMemo(() => staleDisplay ? (board?.departures || []).filter(d=>!d.departed) : visibleBoardDepartures(board?.departures || [], departedNotices, nowMs),
+    [board, departedNotices, nowMs,staleDisplay]);
 
   // A refreshed board may lose arrival data while the arrivals tab is open.
   useEffect(() => {
@@ -177,7 +187,7 @@ export function FlowBoard({ stop, initialBoard, initialLine, onBack, visible = t
           result = await getHalte(stop.id);
         } catch (firstError) {
           // Offline, a name search cannot help either.
-          if (failureKind(firstError) === "offline") throw firstError;
+          if (failureKind(firstError) === "offline" || stop.variants?.length) throw firstError;
           // Trip feeds occasionally provide a journey-local stop ID instead of a public stop ID.
           // Fall back to the official stop search, and keep the UI in the same tab.
           const matches = await searchStops(stop.name);
@@ -187,7 +197,10 @@ export function FlowBoard({ stop, initialBoard, initialLine, onBack, visible = t
           result = await getHalte(found.id);
         }
         if (!active || seq !== boardRequest.current) return;
+        result={...result,stop:{...result.stop,variants:stop.variants||result.stop.variants,
+          lat:stop.lat??result.stop.lat,lon:stop.lon??result.stop.lon}};
         const receivedAt = Date.now();
+        rememberBoard(result,receivedAt);
         const before = previousBoard.current;
         const previousRows = before && before.stop.id === result.stop.id ? before.departures : null;
         setRecentDepartures(previous => recentDepartureCandidates([...previous, ...(previousRows || [])], result.departures, receivedAt));
@@ -198,11 +211,12 @@ export function FlowBoard({ stop, initialBoard, initialLine, onBack, visible = t
         setFetchedAt(receivedAt);
         setError(null);
         setRefreshFailure(null);
+        setCachePending(false);
         if (initial) addRecentStop(result.stop);
       } catch (caught) {
         if (!active) return;
         const kind = failureKind(caught);
-        if (initial) setError(kind === "offline" ? "Je bent offline. Vertrektijden van deze halte zijn nog niet geladen." : "Vertrektijden niet beschikbaar.");
+        if (initial && !previousBoard.current) setError(kind === "offline" ? "Je bent offline. Vertrektijden van deze halte zijn nog niet geladen." : "Vertrektijden niet beschikbaar.");
         else setRefreshFailure(kind);
       } finally {
         pending = false;
@@ -210,7 +224,12 @@ export function FlowBoard({ stop, initialBoard, initialLine, onBack, visible = t
       }
     };
     reloadBoardRef.current = () => load(false);
-    void load(!initialBoard);
+    void(async()=>{
+      const entry=await cachedBoard(stop.id);
+      if(!active||seq!==boardRequest.current)return;
+      if(!previousBoard.current&&entry){previousBoard.current=entry.board;setBoard(entry.board);setFetchedAt(entry.fetchedAt);setCachePending(true);setLoading(false);}
+      await load(!initialBoard&&!entry);
+    })();
     return () => { active = false; reloadBoardRef.current = async () => {}; };
   }, [stop.id, retryBoard]);
 
@@ -298,7 +317,8 @@ export function FlowBoard({ stop, initialBoard, initialLine, onBack, visible = t
     <View>
       <DepartureHeading title="Jouw lijnen" star />
       {pinned.map((item, index) => (
-        <DepartureLine key={"pin:" + departureKey(item, index)} item={item} nowMs={nowMs} stale={Boolean(refreshFailure)}
+        <DepartureLine key={"pin:" + departureKey(item, index)} item={item} nowMs={nowMs} stale={staleDisplay}
+          detail={!staleDisplay ? (()=>{const advice=walkingDepartureAdvice(item,position,board?.stop||stop,nowMs);return advice?{...advice,warn:advice.tight}:undefined;})() : undefined}
           onPress={() => openTrip(item)} last={index === pinned.length - 1} />
       ))}
       <DepartureHeading title="Alle vertrekken" />
@@ -408,7 +428,7 @@ export function FlowBoard({ stop, initialBoard, initialLine, onBack, visible = t
           onSelectLine={(line) => { setTab("departures"); setSelectedDirection(null); selectLine(line); }}
           onOpenDeparture={openTrip}
           favoriteKeys={favoriteKeySet}
-          onToggleFavorite={(line, carrier) => toggleFavoriteLine(favoriteLineKey(line, carrier))}
+          onToggleFavorite={(line, carrier) => {const key=favoriteLineKey(line,carrier);rememberLineOrigin(key,board?.stop||stop);toggleFavoriteLine(key);}}
         />
       ) : (
         <>
@@ -491,8 +511,9 @@ export function FlowBoard({ stop, initialBoard, initialLine, onBack, visible = t
               return (
                 <View>
                   {afterMidnight ? <View style={[styles.midnightRow,{borderBottomColor:colors.border,backgroundColor:colors.surfaceAlt}]}><Text style={[styles.midnightText,{color:colors.text}]}>Na middernacht</Text></View> : null}
-                  {/* While refreshing fails the countdown is an estimate from the last known time. */}
-                  <DepartureLine item={item} nowMs={nowMs} stale={Boolean(refreshFailure)} note={changedFrom}
+                  {/* Failed refreshes show last-known times rather than a live countdown. */}
+                  <DepartureLine item={item} nowMs={nowMs} stale={staleDisplay} note={changedFrom}
+                    detail={!staleDisplay && tab==="departures" ? (()=>{const advice=walkingDepartureAdvice(item,position,board?.stop||stop,nowMs);return advice?{...advice,warn:advice.tight}:undefined;})() : undefined}
                     onPress={item.ritId ? () => openTrip(item) : undefined} />
                   {platformChange ? (
                     <View style={[styles.platformNotice, {
