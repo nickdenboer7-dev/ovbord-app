@@ -123,7 +123,7 @@ test("screens are wired to V5.3", () => {
   assert.match(rit, /label: "Aankomsttijd delen"/);
   assert.match(rit, /onFocusVehicle=\{focusVehicle\}/);
   assert.match(rit, /initialFollow=\{mapFollowStart\}/);
-  assert.match(rit, /<Text maxFontSizeMultiplier=\{1\.25\} style=\{\[styles\.timelineTime/);
+  assert.match(rit, /<Text maxFontSizeMultiplier=\{1\.3\} numberOfLines=\{1\} style=\{\[styles\.timelineTime/);
   const home = read("components/FlowHome.tsx");
   assert.match(home, /loadActiveTrip\(Date\.now\(\)\)/);
   assert.match(home, /rememberAlighting\(trip\.tripId, trip\.alighting\)/);

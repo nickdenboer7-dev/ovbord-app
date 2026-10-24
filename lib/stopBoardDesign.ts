@@ -11,8 +11,8 @@ const hex=(s:unknown)=>typeof s==="string"&&/^#?[a-f0-9]{6}$/i.test(s.trim())?"#
 const fallback:Record<Mode,string>={train:"#1877f2",metro:"#d22545",tram:"#d22545",ferry:"#0b878a",bus:"#16865f"};
 const lineMeta=palette.lines as Record<string,(string|null)[]>;
 const routeMeta=palette.routes as Record<string,(string|null)[]>;
-/** Same precedence as the OVspot renderer: feed, exact GTFS route, line metadata, carrier. */
-export function stopBoardBadge(item:DepartureItem) {
+/** Shared badge palette; same OVspot precedence: feed, exact route, line metadata, carrier. */
+export function stopBoardLineBadge(item:Pick<DepartureItem,"line"|"carrier"|"mode"|"routeId"|"routeColor"|"routeTextColor">) {
   const mode=item.mode||"bus",line=item.line.trim().toUpperCase(),route=routeMeta[item.routeId||""];
   const exact=route&&String(route[1]).trim().toUpperCase()===line&&route[2]===mode?route:undefined;
   const meta=lineMeta[carrierKey(item.carrier)+"|"+line+"|"+mode];
@@ -21,6 +21,7 @@ export function stopBoardBadge(item:DepartureItem) {
   const text=hex(item.routeTextColor)||hex(exact?.[4])||hex(meta?.[1])||carrier?.text||"#ffffff";
   return {bg,text};
 }
+export const stopBoardBadge=(item:DepartureItem)=>stopBoardLineBadge(item);
 export function stopBoardHeader(stop:StopSummary,board?:HalteBoardData|null) {
   const comma=stop.name.indexOf(","),city=stop.city?.trim()||(comma>0?stop.name.slice(0,comma).trim():"");
   const prefix=comma>0?stop.name.slice(0,comma).trim():"";

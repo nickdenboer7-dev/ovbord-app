@@ -193,20 +193,21 @@ function tripModule(){
 test('timeline renders grey past stops and one Nu hier tag from expected time, with no repeated unconfirmed-position labels',()=>{
  defaults();const {testTimeLine:TimeLine,testStyles}=tripModule(),h=new Harness();const {ritColors}=require('../lib/ritTheme.ts');const styles=testStyles(ritColors.light);
  const journey={id:'trip',line:'4',destination:'C',mode:'bus',polyline:[],stops:[stopAt('A','16:50'),stopAt('B','16:59'),stopAt('C','17:08')]};
- try{const tree=h.render(()=>TimeLine({journey,nowMs:now,liveLocation:null,boarding:{},alightIndex:0,onOpenStop(){}})),rows=findAll(tree,'Pressable').filter(r=>r.props.accessibilityLabel?.endsWith('. Vertrekbord openen'));
+ try{const tree=h.render(()=>TimeLine({journey,lineColor:'#0863b5',nowMs:now,liveLocation:null,boarding:{},alightIndex:0,onOpenStop(){}})),rows=findAll(tree,'Pressable').filter(r=>r.props.accessibilityLabel?.endsWith('. Vertrekbord openen'));
  assert.equal(rows.length,3);assert.equal(text(tree).split('Nu hier').length-1,1);assert.doesNotMatch(text(tree),/Positie niet bevestigd/);
  assert.equal(findAll(rows[0],'Text').find(n=>text(n)==='A').props.style.filter(Boolean).at(-1).color,ritColors.light.passedName);
  assert.equal(findAll(rows[0],'Text').find(n=>text(n)==='16:50').props.style.filter(Boolean).at(-1).color,ritColors.light.passedText);
- assert.match(text(rows[1]),/Nu hier/);assert.equal(findAll(rows[1],'Text').find(n=>text(n)==='Nu hier').props.onPress,undefined);assert.equal(styles.header.flexShrink,0);assert.equal(styles.vehicleLine.flexShrink,0);assert.equal(styles.vehicleLine.position,undefined);
+ assert.match(text(rows[1]),/Nu hier/);assert.equal(findAll(rows[1],'Text').find(n=>text(n)==='Nu hier').props.onPress,undefined);assert.equal(styles.header.flexShrink,0);assert.equal(styles.header.backgroundColor,'#185c98');assert.equal(styles.headerStatus.flexDirection,'row');
  }finally{h.destroy();}
 });
-test('the trip page displays unconfirmed position once in its own row after the title and before the scroll view',async()=>{
+test('the trip page displays unconfirmed position once inside its blue header',async()=>{
  defaults();const {default:RitPage}=tripModule(),h=new Harness();const clock=minutes=>new Intl.DateTimeFormat('nl-NL',{timeZone:'Europe/Amsterdam',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(Date.now()+minutes*60000));
  api.getRit=async()=>({id:'trip',line:'4',destination:'Nijlân',mode:'bus',live:true,polyline:[],stops:[stopAt('A',clock(-5)),stopAt('B',clock(-1)),stopAt('C',clock(8))]});
  try{h.render(RitPage);h.flush();await tick();let tree=h.render(RitPage);h.flush();await tick();tree=h.render(RitPage);
  assert.equal(text(tree).split('Positie niet bevestigd').length-1,1);const scroll=find(tree,'ScrollView');assert.ok(scroll);assert.doesNotMatch(text(scroll),/Positie niet bevestigd/);
- const children=tree.props.children.flat(Infinity).filter(x=>x&&typeof x==='object'),statusIndex=children.findIndex(x=>x.type==='Pressable'&&text(x).includes('Positie niet bevestigd')),headerIndex=children.findIndex(x=>x.type==='View'&&findAll(x,'Text').some(t=>text(t).includes('Nijlân'))),scrollIndex=children.indexOf(scroll);
- assert.ok(statusIndex>headerIndex);assert.ok(statusIndex<scrollIndex);assert.equal(children[statusIndex].props.style.flexShrink,0);assert.equal(find(children[statusIndex],'Text').props.numberOfLines,undefined);
+ const children=tree.props.children.flat(Infinity).filter(x=>x&&typeof x==='object'),headerIndex=children.findIndex(x=>x.type==='View'&&findAll(x,'Text').some(t=>text(t).includes('Nijlân'))),scrollIndex=children.indexOf(scroll);
+ assert.ok(headerIndex>=0&&headerIndex<scrollIndex);const status=findAll(children[headerIndex],'Text').find(t=>text(t)==='Positie niet bevestigd');
+ assert.ok(status);assert.equal(status.props.numberOfLines,1);
  }finally{h.destroy();}
 });
 

@@ -303,8 +303,8 @@ test("trip page: one bar that follows the trip and a simple menu", () => {
   // V5.7: no permanent alighting bar; a warning only when the alighting stop is next or reached.
   assert.match(rit, /alightLine && \(alightState\.status === "next" \|\| alightState\.status === "at"\) \? <View style=\{styles\.alightWarning\}/);
   assert.match(rit, />Je stapt hier uit</);
-  assert.match(rit, /progress\.estimated \? "Gepasseerd" : "Vertrokken"/);
-  assert.match(rit, /<Text style=\{styles\.vehicleLineStrong\}>\{headline\}<\/Text>/);
+  assert.match(rit, /style=\{styles\.passedSub\}>Vertrokken<\/Text>/);
+  assert.match(rit, /style=\{styles\.headerStatusText\} numberOfLines=\{1\}>\{headerStatusText\}<\/Text>/);
   assert.match(rit, /title="Meer acties voor deze rit"/);
   assert.match(rit, /description: "Rit-ID: " \+ tripId/);
   assert.match(rit, /checked: vibrate, group: 1/);
@@ -330,7 +330,7 @@ test("large font and choosing the alighting stop", () => {
   // V5.7: choosing scrolls to the first stop that can be chosen; the earlier stops stay in the list.
   assert.match(rit, /scrollToStop\(Math\.max\(0, minAlightIndex - 1\), true\)/);
   assert.doesNotMatch(rit, /setChoosingAlight\(true\);\s*setShowAll\(true\);/);
-  assert.match(rit, /<Text maxFontSizeMultiplier=\{1\.2\} style=\{\[styles\.headerTitle/);
+  assert.match(rit, /<Text maxFontSizeMultiplier=\{1\.3\} style=\{\[styles\.headerTitle/);
   const board = read("components/FlowBoard.tsx");
   assert.match(board, /<Text maxFontSizeMultiplier=\{1\.3\} style=\{styles\.title\} numberOfLines=\{1\}/);
   assert.doesNotMatch(board, /searchBar: \{ position: "absolute"/);

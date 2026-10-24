@@ -9,6 +9,10 @@ export function ritParamsForDeparture(item: DepartureItem, boardStop: StopSummar
   return {
     id: item.ritId || "", line: item.line, destination: item.destination,
     carrier: item.carrier || "", boardingName: boardStop.name,
+    // Carry exact GTFS/feed colours into the trip so its badge matches the tapped stop-board row.
+    ...(item.routeId ? { routeId: item.routeId } : {}),
+    ...(item.routeColor ? { routeColor: item.routeColor } : {}),
+    ...(item.routeTextColor ? { routeTextColor: item.routeTextColor } : {}),
     boardingId: boardStop.id,
     boardingLat: typeof boardStop.lat === "number" ? String(boardStop.lat) : "",
     boardingLon: typeof boardStop.lon === "number" ? String(boardStop.lon) : "",
