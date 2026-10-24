@@ -1,9 +1,13 @@
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import React from "react";
+import React, { useEffect } from "react";
+import appConfig from "../app.json";
 import { AppProvider, useApp } from "../context/AppProvider";
 import { FavoritesLiveProvider } from "../context/FavoritesLive";
 import { FlowNavigationProvider } from "../context/FlowNavigation";
+
+const APP_VERSION = appConfig.expo.version;
+let sessionPingSent = false;
 
 function RootNavigation() {
   const { resolvedScheme, colors } = useApp();
@@ -32,6 +36,11 @@ function RootNavigation() {
 }
 
 export default function RootLayout() {
+  useEffect(() => {
+    if (sessionPingSent) return;
+    sessionPingSent = true;
+    fetch("https://ovspot.nl/api/ovbord-ping?v=" + encodeURIComponent(APP_VERSION)).catch(() => {});
+  }, []);
   return (
     <AppProvider>
       <FlowNavigationProvider><FavoritesLiveProvider><RootNavigation /></FavoritesLiveProvider></FlowNavigationProvider>

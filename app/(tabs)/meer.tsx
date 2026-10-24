@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Updates from "expo-updates";
 import React from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import appConfig from "../../app.json";
 import { ThemeMode } from "../../constants/colors";
@@ -109,6 +109,10 @@ export default function MeerScreen() {
               </View>
             ))}
           </View>
+          <Pressable accessibilityRole="link" accessibilityLabel="Feedback geven" onPress={() => { void Linking.openURL("https://docs.google.com/forms/d/e/1FAIpQLScffqygYzhnAwpBYo2eqhNWubLtWNLb6eQcUflEvt7BOx2clA/viewform").catch(() => {}); }} style={{ flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: 6, paddingVertical: 7, paddingHorizontal: 2 }}>
+            <Ionicons name="chatbubble-outline" size={15} color={colors.textSoft} />
+            <Text style={{ color: colors.textSoft, fontSize: 13 }}>Feedback geven</Text>
+          </Pressable>
         </View>
       </ScrollView>
     </View>
