@@ -12,6 +12,7 @@ import { useApp } from "../context/AppProvider";
 import { useFlowNavigation } from "../context/FlowNavigation";
 import { getHalte, getRit, getStopReliability, searchStops } from "../lib/api";
 import { useSmartRefresh } from "../lib/useSmartRefresh";
+import { useBoardFocusRefresh } from "../lib/useBoardFocusRefresh";
 import { departureKey } from "../lib/flowRitQuality";
 import { hasAvailableArrivals } from "../lib/arrivalAvailability";
 import { isNextServiceDay } from "../lib/format";
@@ -80,8 +81,9 @@ export function FlowBoard({ stop, initialBoard, initialLine, onBack, visible = t
   const freshness = feedFreshness(board || {}, fetchedAt, nowMs);
   const activeNotices = useMemo(() => (board?.disruptions || []).filter(notice =>
     isActiveStopNotice(notice, stop.id, nowMs)), [board, stop.id, nowMs]);
-  // After a failed refresh nothing is confirmed any more: no "Live" labels, no departure checks.
-  const dataCurrent = freshness.level === "fresh" && !refreshFailure;
+  // Timing expires at the existing age limit; failed requests suspend GPS/departure confirmation immediately.
+  const timingCurrent = freshness.level === "fresh";
+  const dataCurrent = timingCurrent && !refreshFailure;
   useEffect(() => {
     gpsQualityCheckedAt.current = 0;
     setGpsQuality({});
@@ -106,6 +108,7 @@ export function FlowBoard({ stop, initialBoard, initialLine, onBack, visible = t
   }, [board, stop.id, visible]);
   // Retry sooner after a failure so the board recovers quickly when the connection returns.
   useSmartRefresh(() => reloadBoardRef.current(), refreshFailure || error ? 10000 : 30000, stop.id + ":" + retryBoard, visible);
+  useBoardFocusRefresh(() => reloadBoardRef.current(), stop.id, visible);
 
   useEffect(()=>{const t=setInterval(()=>setNowMs(Date.now()),15000);return()=>clearInterval(t);},[]);
 
@@ -219,14 +222,14 @@ export function FlowBoard({ stop, initialBoard, initialLine, onBack, visible = t
     const entries = tab === "arrivals" ? board.arrivals
       : tab === "departures" ? sortBoardDepartures(visibleDepartures, nowMs) : [];
     return entries.map((rawItem) => {
-      const item = withBoardFreshness(rawItem, dataCurrent);
+      const item = withBoardFreshness(rawItem, timingCurrent);
       const quality = dataCurrent ? gpsQuality[item.ritId || ""] : undefined;
       return quality ? { ...item, reliabilityDetail: quality,
         reliability: quality.level === "very" ? "high" as const :
           quality.level === "good" || quality.level === "reasonable" ? "medium" as const : "low" as const
       } : item;
     });
-  }, [board, tab, gpsQuality, visibleDepartures, dataCurrent, nowMs]);
+  }, [board, tab, gpsQuality, visibleDepartures, dataCurrent, timingCurrent, nowMs]);
 
   /** Favourite lines (a star in the Lijnen tab) are shown in "Jouw lijnen". */
   const favoriteKeySet = useMemo(() => new Set(favoriteLines), [favoriteLines]);
@@ -401,7 +404,7 @@ export function FlowBoard({ stop, initialBoard, initialLine, onBack, visible = t
         </View>
       ) : tab === "lines" ? (
         <FlowLineGroups
-          departures={sortBoardDepartures(visibleDepartures, nowMs).map(row => withBoardFreshness(row, dataCurrent))}
+          departures={sortBoardDepartures(visibleDepartures, nowMs).map(row => withBoardFreshness(row, timingCurrent))}
           onSelectLine={(line) => { setTab("departures"); setSelectedDirection(null); selectLine(line); }}
           onOpenDeparture={openTrip}
           favoriteKeys={favoriteKeySet}

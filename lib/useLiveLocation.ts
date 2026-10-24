@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState, type AppStateStatus } from "react-native";
 import { decideLiveFix, MOVEMENT_REFRESH_METERS } from "./liveLocation";
 import { bepaalLocatie, LocatieFout, type LocatieFoutCode, type LocatieResultaat } from "./location";
+import { hydrateNearbyCache, peekLastLocation, rememberLocation } from "./nearbyCache";
 
 export type LiveLocationSnapshot = {
   coords: { latitude: number; longitude: number } | null;
@@ -45,7 +46,10 @@ export function resetLivePermissionSessionForTests(): void { permissionAskedThis
  *   caller turns this back on ("Gebruik GPS").
  */
 export function useLiveLocation(enabled: boolean): LiveLocationSnapshot & { requestFresh: () => void } {
-  const [state, setState] = useState<LiveLocationSnapshot>(initialSnapshot);
+  const [state, setState] = useState<LiveLocationSnapshot>(() => {
+    const cached = enabled ? peekLastLocation() : null;
+    return cached ? { ...initialSnapshot, coords: cached.coords, bron: cached.bron, fixAt: cached.fixAt, loading: false, refreshToken: 1 } : initialSnapshot;
+  });
   const stateRef = useRef(state);
   stateRef.current = state;
   const lastUsedCoords = useRef<{ latitude: number; longitude: number } | null>(null);
@@ -64,6 +68,7 @@ export function useLiveLocation(enabled: boolean): LiveLocationSnapshot & { requ
     const { accept, refresh: shouldBump } = decideLiveFix(currentFix, lastUsedCoords.current,
       { fixAt: result.fixAt, bron: result.bron, coords: result.coords });
     if (!accept) return;
+    rememberLocation(result);
     if (shouldBump) lastUsedCoords.current = result.coords;
     // Keep the ref in step at once, so a second fix arriving before the re-render compares correctly.
     stateRef.current = { ...current, coords: result.coords, bron: result.bron, fixAt: result.fixAt };
@@ -72,6 +77,16 @@ export function useLiveLocation(enabled: boolean): LiveLocationSnapshot & { requ
       refreshToken: shouldBump ? previous.refreshToken + 1 : previous.refreshToken
     }));
   }, []);
+
+  useEffect(() => {
+    if (!enabled) return;
+    let active = true;
+    void hydrateNearbyCache().then(() => {
+      const cached = peekLastLocation();
+      if (active && cached && (!stateRef.current.coords || cached.fixAt > (stateRef.current.fixAt || 0))) applyFix(cached);
+    });
+    return () => { active = false; };
+  }, [enabled, applyFix]);
 
   /** ask: only for an explicit user action; automatic reads never show the permission dialog. */
   const readFresh = useCallback((ask: boolean) => {

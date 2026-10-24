@@ -102,7 +102,7 @@ test("long destinations keep one primary row and their full accessible name", ()
 test("the stop board sorts its departures and lijnen feed by real expected time", () => {
   const board = read("components/FlowBoard.tsx");
   assert.match(board, /sortBoardDepartures\(visibleDepartures, nowMs\)/);
-  assert.match(board, /departures=\{sortBoardDepartures\(visibleDepartures, nowMs\)\.map\(row => withBoardFreshness\(row, dataCurrent\)\)\}/);
+  assert.match(board, /departures=\{sortBoardDepartures\(visibleDepartures, nowMs\)\.map\(row => withBoardFreshness\(row, timingCurrent\)\)\}/);
 });
 
 test("the stop board has a compact white-green header, like Start and the trip page", () => {

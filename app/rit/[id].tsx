@@ -21,6 +21,7 @@ import { journeyEnded, ritShareText } from "../../lib/ritLifecycle";
 import {shiftClock} from "../../lib/format";
 import { journeyExtras } from "../../lib/flowLiveDetails";
 import { disruptionSummary } from "../../lib/haltebordV4";
+import { upcomingJourneyNotices } from "../../lib/upcomingJourneyNotices";
 import { linesConflict } from "../../lib/flowRitQuality";
 import { minutesUntilArrival } from "../../lib/ritRedesign";
 import { alightingState, arrivalShareText, clockRemainingMs, findAlightingIndex, recallAlighting, rememberAlighting, scheduleIndex } from "../../lib/alighting";
@@ -646,7 +647,8 @@ export default function RitScreen() {
   const boardingState=boardingPosition(boardingIndex,verifiedLive);
   const alreadyPassed=boardingState==="passed";
   const arrivalDelta = !cancelled && journey?.live && typeof boardingStop?.delayMinutes === "number" ? boardingStop.delayMinutes : undefined;
-  const disruptions = journey?.disruptions || [];
+  const disruptions = useMemo(() => upcomingJourneyNotices(journey?.disruptions || [], journey?.stops || [], verifiedLive, nowMs, ended),
+    [journey, verifiedLive, nowMs, ended]);
   // "Halte vervalt": stops of this trip the vehicle does not call at.
   const skipped = useMemo(() => skippedStopIds(disruptions, journey?.stops || []), [disruptions, journey]);
   // Alighting stop: progress comes from verified GPS; without it the count starts at boarding or the timetable.

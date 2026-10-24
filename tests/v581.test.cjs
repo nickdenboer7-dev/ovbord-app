@@ -213,8 +213,8 @@ test("Start and Buurtbord reload stops and departure previews when the location 
   const home = read("components/FlowHome.tsx");
   const buurt = read("app/(tabs)/buurtbord.tsx");
   // The fetch effects depend on the movement-gated token, not on every GPS tick.
-  assert.match(home, /\}, \[nearbyRetry, manualLocation, live\.refreshToken, live\.errorCode, live\.loading, nearbyRefreshTick\]\);/);
-  assert.match(buurt, /\}, \[locatieRetry, manualCity, manualLocation, live\.refreshToken, live\.errorCode, refreshTick\]\);/);
+  assert.match(home, /\}, \[nearbyRetry, manualLocation, live\.refreshToken, live\.errorCode, live\.loading, nearbyRefreshTick, locationWaitExpired\]\);/);
+  assert.match(buurt, /\}, \[locatieRetry, manualCity, manualLocation, live\.refreshToken, live\.errorCode, refreshTick, cacheReady\]\);/);
   // Neither screen asks GPS on its own any more: one shared, live source.
   assert.doesNotMatch(home, /bepaalLocatie/);
   assert.doesNotMatch(buurt, /bepaalLocatie/);

@@ -160,12 +160,12 @@ export function feedFreshness(board: Pick<HalteBoardData, "generatedAt" | "feedA
     board.feedAgeSeconds >= 0 ? board.feedAgeSeconds + elapsed : NaN;
   if (!Number.isFinite(serverAge) && !Number.isFinite(sourceAge))
     return { level: "unknown", label: "Actualiteit onbekend" };
-  const ageSeconds = Math.ceil(Math.max(elapsed, Number.isFinite(serverAge) ? serverAge : 0,
-    Number.isFinite(sourceAge) ? sourceAge : 0));
+  const ageSeconds = Math.max(elapsed, Number.isFinite(serverAge) ? serverAge : 0,
+    Number.isFinite(sourceAge) ? sourceAge : 0);
   const level = board.stale === true || ageSeconds > 300 ? "stale" :
     ageSeconds > 90 ? "aging" : "fresh";
-  const human = ageSeconds < 60 ? ageSeconds + " sec" :
-    ageSeconds < 3600 ? Math.ceil(ageSeconds / 60) + " min" :
+  const human = ageSeconds < 60 ? Math.floor(ageSeconds) + " sec" :
+    ageSeconds < 3600 ? Math.floor(ageSeconds / 60) + " min" :
     Math.floor(ageSeconds / 3600) + " uur";
   return {
     level, ageSeconds, ageLabel: human + " oud",

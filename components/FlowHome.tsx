@@ -13,6 +13,9 @@ import { createAreaLinesLoader } from "../lib/stopLines";
 import { sortLines } from "../lib/lineSet";
 import { MANUAL_CITIES, VOORBEELD_LOCATIE_UTRECHT, type LocatieResultaat } from "../lib/location";
 import { useLiveLocation } from "../lib/useLiveLocation";
+import { useLocationStartup } from "../lib/useLocationStartup";
+import { rememberNearby, nearbyScope } from "../lib/nearbyCache";
+import { NearbySkeleton } from "./NearbySkeleton";
 import { describeLocationAge, isLocationStale, shouldApplyResponse } from "../lib/liveLocation";
 import { mergeStopResults, rankSearchStops, resolveSearchTerm, searchSavedStops } from "../lib/flowSearch";
 import { failureKind, listRefreshNotice, nearbyUnavailableMessage } from "../lib/offline";
@@ -83,6 +86,7 @@ export function FlowHome() {
   const [showCities, setShowCities] = useState(false);
   // V5.8.1: live GPS while Start is visible; disabled for a manually chosen city or the Utrecht example.
   const live = useLiveLocation(!manualCity && !useUtrechtExample);
+  const locationWaitExpired = useLocationStartup(nearbyRetry, !manualCity && !useUtrechtExample && !live.coords);
   // V5.9: judge "laatst bekend" by the newest GPS fix, not by when stops were last loaded: a
   // stationary user keeps getting fresh fixes (no reload needed) and must not see an old-location note.
   const liveBron = live.bron ?? locationSource;
@@ -130,7 +134,7 @@ export function FlowHome() {
         setNearby([]);
         setLocationSource(null);
         setNearbyRefreshFailure(null);
-        setNearbyState(live.errorCode
+        setNearbyState(locationWaitExpired
           ? live.errorCode === "permission-denied" ? "permission-denied" : live.errorCode === "outside-nl" ? "outside-nl" : "no-gps"
           : "loading");
       }
@@ -153,6 +157,7 @@ export function FlowHome() {
           ? { lat: location.coords.latitude, lon: location.coords.longitude } : null);
         const items = await getNearby(location.coords.latitude, location.coords.longitude);
         if (!current()) return;
+        if (location.bron !== "voorbeeld") rememberNearby({ scope: nearbyScope(manualCity), location, items, previews: {}, updatedAt: Date.now() });
         setNearby(items);
         setNearbyState(items.length ? "ready" : "empty");
         setNearbyRefreshFailure(null);
@@ -172,7 +177,7 @@ export function FlowHome() {
       }
     })();
     return () => { active = false; };
-  }, [nearbyRetry, manualLocation, live.refreshToken, live.errorCode, live.loading, nearbyRefreshTick]);
+  }, [nearbyRetry, manualLocation, live.refreshToken, live.errorCode, live.loading, nearbyRefreshTick, locationWaitExpired]);
 
   useEffect(() => {
     const term = resolveSearchTerm(query);
@@ -557,7 +562,7 @@ export function FlowHome() {
               </View>
             }
             ListEmptyComponent={!finding && tab === "nabij" && nearbyState === "loading" ? (
-              <View style={styles.emptyWrap}><ActivityIndicator color={colors.accentText} style={{ marginTop: 24 }} /></View>
+              <NearbySkeleton label={!manualLocation && !live.coords ? "Locatie bepalen…" : "Haltes laden…"} />
             ) : (
               <View style={styles.emptyWrap}>
                 <Text style={[styles.empty, { color: colors.textSoft }]}>

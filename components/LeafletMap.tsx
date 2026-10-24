@@ -38,8 +38,8 @@ html,body,#map{width:100%;height:100%;margin:0;padding:0;background:#f5f7f5;over
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 (function(){
-  // Netherlands overview until there is something to frame.
-  var map = L.map('map', { zoomControl: true, attributionControl: true, preferCanvas: true }).setView([52.2,5.3], 7);
+  var initialView = __INITIAL_VIEW__;
+  var map = L.map('map', { zoomControl: true, attributionControl: true, preferCanvas: true }).setView(initialView ? [initialView.lat,initialView.lon] : [52.2,5.3], initialView ? 14 : 7);
   L.tileLayer('${TILE_URL}', { maxZoom: 19, maxNativeZoom: 17, minZoom: 6, attribution: 'Kaart &copy; Kadaster' }).addTo(map);
   var route = L.polyline([], { color:'#1D6F42', weight:5, opacity:.9 }).addTo(map);
   var markerLayer = L.layerGroup().addTo(map);
@@ -89,11 +89,11 @@ html,body,#map{width:100%;height:100%;margin:0;padding:0;background:#f5f7f5;over
 </body>
 </html>`;
 
-const WEBVIEW_SOURCE = { html: HTML };
-
 export function LeafletMap({ polyline = [], markers = [], vehicle, center }: Props) {
   const ref = useRef<WebView>(null);
   const [ready, setReady] = useState(false);
+  const initialCenter = useRef(center || vehicle || (markers[0] ? { lat: markers[0].lat, lon: markers[0].lon } : null)).current;
+  const source = useMemo(() => ({ html: HTML.replace("__INITIAL_VIEW__", JSON.stringify(initialCenter)) }), [initialCenter]);
   const payload = useMemo(() => JSON.stringify({ polyline, markers, vehicle, center,
     fitKey: mapFitKey(markers, center, polyline.length) }), [polyline, markers, vehicle, center]);
 
@@ -106,7 +106,7 @@ export function LeafletMap({ polyline = [], markers = [], vehicle, center }: Pro
     <View style={styles.wrap}>
       <WebView
         ref={ref}
-        source={WEBVIEW_SOURCE}
+        source={source}
         originWhitelist={["*"]}
         javaScriptEnabled
         domStorageEnabled

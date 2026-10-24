@@ -1,9 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { largeText } from "../../lib/textScale";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { NearbySkeleton } from "../../components/NearbySkeleton";
+import { hydrateNearbyCache, nearbyScope, peekNearby, peekLastLocation, rememberNearby, sameNearbyLocation } from "../../lib/nearbyCache";
+import type { NearbyPreview } from "../../lib/nearbyCache";
 import { LeafletMap } from "../../components/LeafletMap";
 import { DepartureLine } from "../../components/DepartureLine";
 import { SettingsButton } from "../../components/SettingsButton";
@@ -15,34 +18,48 @@ import { bestNearbyStopId, buurtbordPreviewRows, reachableOnFoot } from "../../l
 import { boardRefreshNotice, failureKind } from "../../lib/offline";
 import type { FailureKind } from "../../lib/offline";
 import { useSmartRefresh } from "../../lib/useSmartRefresh";
-import { MANUAL_CITIES, VOORBEELD_LOCATIE_UTRECHT, type LocatieResultaat } from "../../lib/location";
+import { MANUAL_CITIES, type LocatieResultaat } from "../../lib/location";
 import { useLiveLocation } from "../../lib/useLiveLocation";
 import { describeLocationAge, isLocationStale, shouldApplyResponse } from "../../lib/liveLocation";
 import { DepartureItem, StopSummary } from "../../types/api";
 
 /** stale: the last refresh for this stop failed; departures are the last known ones. */
-type PreviewState = { loading: boolean; departures: DepartureItem[]; stale?: boolean };
+type PreviewState = NearbyPreview;
 
 export default function BuurtbordScreen() {
   const { colors, addRecentStop, manualCity, setManualCity, toggleFavoriteStop, isFavoriteStop } = useApp();
   const insets = useSafeAreaInsets();
+  const scope = nearbyScope(manualCity);
+  const [initialCache] = useState(() => peekNearby(scope));
+  const [cacheReady, setCacheReady] = useState(false);
+  const [updating, setUpdating] = useState(false);
+  const [itemsScope, setItemsScope] = useState(scope);
+  const [viewLocation, setViewLocation] = useState<LocatieResultaat | null>(() => initialCache?.location || peekLastLocation());
+  useEffect(() => {
+    let active = true;
+    void hydrateNearbyCache().then(() => { if (active) setCacheReady(true); });
+    return () => { active = false; };
+  }, []);
   // Large system font: a smaller map and two-line names leave room for the departures.
   const large = largeText(useWindowDimensions().fontScale);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [loadError, setLoadError] = useState(false);
   /** A refresh failed while stops are on screen: their times are no longer being checked. */
   const [refreshFailure, setRefreshFailure] = useState<FailureKind | null>(null);
-  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
+  const [updatedAt, setUpdatedAt] = useState<number | null>(initialCache?.updatedAt || null);
   const [refreshing, setRefreshing] = useState(false);
-  const [items, setItems] = useState<StopSummary[]>([]);
-  const [previews, setPreviews] = useState<Record<string, PreviewState>>({});
-  const [loading, setLoading] = useState(true);
-  const [locatieBron, setLocatieBron] = useState<LocatieResultaat["bron"] | null>(null);
-  const [locatieFixAt, setLocatieFixAt] = useState<number | null>(null);
+  const [items, setItems] = useState<StopSummary[]>(initialCache?.items || []);
+  const [previews, setPreviews] = useState<Record<string, PreviewState>>(initialCache?.previews || {});
+  const [loading, setLoading] = useState(!initialCache);
+  const [locatieBron, setLocatieBron] = useState<LocatieResultaat["bron"] | null>(initialCache ? manualCity ? "handmatig" : "laatst-bekend" : null);
+  const [locatieFixAt, setLocatieFixAt] = useState<number | null>(initialCache?.location.fixAt || null);
   const [locatieRetry, setLocatieRetry] = useState(0);
   const [showCities, setShowCities] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
-  const previousLocationKey = useRef<string | null>(null);
+  const previousLocationKey = useRef<string | null>(initialCache ? scope : null);
+  const itemsRef = useRef(items); itemsRef.current = items;
+  const previewsRef = useRef(previews); previewsRef.current = previews;
+  const viewLocationRef = useRef(viewLocation); viewLocationRef.current = viewLocation;
   /** V5.8.1: only the newest request may write stops and previews (a slow Amsterdam reply never overwrites Zaandam). */
   const nearbyRequest = useRef(0);
   // V5.8.1: live GPS while Buurtbord is visible; disabled while a city is chosen by hand.
@@ -58,7 +75,7 @@ export default function BuurtbordScreen() {
   const router = useRouter();
   const { showStop: showFlowStop } = useFlowNavigation();
 
-  // Manual city resolves instantly; a GPS failure falls back to the Utrecht example, same as before.
+  // A chosen city or last known GPS fix supplies the first view; never choose a fallback city.
   const manualLocation = useMemo<LocatieResultaat | null>(() => {
     if (!manualCity) return null;
     const manual = MANUAL_CITIES.find((city) => city.key === manualCity);
@@ -68,90 +85,90 @@ export default function BuurtbordScreen() {
   useEffect(() => {
     let stopped = false;
     const token = ++nearbyRequest.current;
-    // "cancelled" stays true for every older request once a newer one has started.
     const isCancelled = () => stopped || !shouldApplyResponse(token, nearbyRequest.current);
-    const locationKey = (manualCity || "gps") + ":" + locatieRetry;
-    const locationChanged = previousLocationKey.current !== locationKey;
-    previousLocationKey.current = locationKey;
-    if (locationChanged) {
-      setLoading(true);
-      setItems([]);
-      setPreviews({});
-      setLocatieBron(null);
+    const locatie: LocatieResultaat | null = manualLocation
+      || (live.coords && live.bron ? { coords: live.coords, bron: live.bron, fixAt: live.fixAt ?? Date.now() }
+        : cacheReady ? peekLastLocation() : null);
+    if (!locatie) {
+      if (cacheReady && live.errorCode) setLoading(false);
+      return;
+    }
+    const cached = peekNearby(scope, locatie);
+    const locationChanged = previousLocationKey.current !== scope || Boolean(viewLocationRef.current && !sameNearbyLocation(viewLocationRef.current, locatie));
+    previousLocationKey.current = scope;
+    const previousPreviews = locationChanged ? cached?.previews || {} : previewsRef.current;
+    if (locationChanged || !itemsRef.current.length && cached) {
+      setItems(cached?.items || []);
+      setPreviews(cached?.previews || {});
+      setLoading(!cached);
+      setUpdatedAt(cached?.updatedAt || null);
       setRefreshFailure(null);
     }
-    if (!manualLocation && !live.coords && !live.errorCode) return; // live fix still loading; wait for it
-    const locatie: LocatieResultaat = manualLocation
-      || (live.coords && live.bron ? { coords: live.coords, bron: live.bron, fixAt: live.fixAt ?? Date.now() }
-        // GPS failed (permission denied, no fix, outside NL): fall back to the Utrecht example, as before.
-        : { coords: VOORBEELD_LOCATIE_UTRECHT, bron: "voorbeeld", fixAt: Date.now() });
+    setItemsScope(scope);
+    setViewLocation(locatie);
+    setLocatieBron(locatie.bron);
+    setLocatieFixAt(locatie.fixAt);
+    setUpdating(true);
     void (async () => {
       try {
         setLoadError(false);
-        setLocatieBron(locatie.bron);
-        setLocatieFixAt(locatie.fixAt);
         const nearby = (await getNearby(locatie.coords.latitude, locatie.coords.longitude)).slice(0, 5);
         if (isCancelled()) return;
+        const collected: Record<string, PreviewState> = Object.fromEntries(nearby.map(stop => [
+          stop.id, previousPreviews[stop.id] || { loading: true, departures: [] }
+        ]));
         setItems(nearby);
-        setPreviews((current) => Object.fromEntries(nearby.map((stop) => [
-          stop.id, current[stop.id] || { loading: true, departures: [] }
-        ])));
+        setPreviews(collected);
         setLoading(false);
-
         let stopFailure: FailureKind | null = null;
         await Promise.all(nearby.map(async (stop) => {
           try {
             const board = await getHalte(stop.id);
             if (isCancelled()) return;
-            setPreviews((current) => ({
-              ...current,
-              // Keep more than three rows: past, departed and cancelled rows are filtered at render time.
-              [stop.id]: { loading: false, departures: board.departures.slice(0, 12), stale: false }
-            }));
+            collected[stop.id] = { loading: false, departures: board.departures.slice(0, 12), stale: false };
           } catch (error) {
-            if (__DEV__) console.warn(`Vertrekken laden mislukt voor ${stop.id}`, error);
+            if (isCancelled()) return;
             stopFailure = stopFailure || failureKind(error);
-            // Keep the last known departures instead of emptying the card (e.g. offline).
-            if (!isCancelled()) setPreviews((current) => {
-              const before = current[stop.id]?.departures || [];
-              return { ...current, [stop.id]: { loading: false, departures: before, stale: before.length > 0 } };
-            });
+            const before = collected[stop.id]?.departures || [];
+            collected[stop.id] = { loading: false, departures: before, stale: before.length > 0 };
           }
+          if (!isCancelled()) setPreviews({ ...collected });
         }));
         if (!isCancelled()) {
           setRefreshFailure(stopFailure);
-          if (!stopFailure) setUpdatedAt(Date.now());
+          const updated = stopFailure ? cached?.updatedAt || Date.now() : Date.now();
+          setUpdatedAt(updated);
+          rememberNearby({ scope, location: locatie, items: nearby, previews: collected, updatedAt: updated });
         }
       } catch (error) {
-        if (__DEV__) console.warn("Buurtbord laden mislukt", error);
-        if (!isCancelled()) {
-          setLoadError(true);
-          // Stops already on screen stay, marked as last known.
+        if (isCancelled()) return;
+        if (locationChanged ? !cached?.items.length : !itemsRef.current.length) setLoadError(true);
+        else {
           setRefreshFailure(failureKind(error));
-          setPreviews((current) => Object.fromEntries(Object.entries(current).map(([id, preview]) =>
+          setPreviews(current => Object.fromEntries(Object.entries(current).map(([id, preview]) =>
             [id, { ...preview, loading: false, stale: preview.departures.length > 0 }])));
         }
       } finally {
-        if (!isCancelled()) { setLoading(false); setRefreshing(false); }
+        if (!isCancelled()) { setLoading(false); setRefreshing(false); setUpdating(false); }
       }
     })();
     return () => { stopped = true; };
-  }, [locatieRetry, manualCity, manualLocation, live.refreshToken, live.errorCode, refreshTick]);
+  }, [locatieRetry, manualCity, manualLocation, live.refreshToken, live.errorCode, refreshTick, cacheReady]);
+
+  const activeLocation = manualLocation || (live.coords && live.bron ? { coords: live.coords, bron: live.bron, fixAt: live.fixAt || 0 }
+    : scope === "gps" ? peekLastLocation() : null) || (itemsScope === scope ? viewLocation : null);
+  const visibleItems = itemsScope === scope && (!activeLocation || !viewLocation || sameNearbyLocation(activeLocation, viewLocation)) ? items : [];
 
   // Effective (delayed) time; never recommend a cancelled or departed trip.
-  const bestStopId = useMemo(() => bestNearbyStopId(items,
+  const bestStopId = useMemo(() => bestNearbyStopId(visibleItems,
     Object.fromEntries(Object.entries(previews).map(([id, preview]) => [id, preview.departures])), nowMs),
-  [items, previews, nowMs]);
+  [visibleItems, previews, nowMs]);
 
-  // No made-up centre while stops are loading: the map keeps its overview until real stops arrive.
-  const center = useMemo(() => {
-    const first = items.find((item) => item.lat !== undefined && item.lon !== undefined);
-    return first ? { lat: first.lat!, lon: first.lon! } : undefined;
-  }, [items]);
-
-  const mapMarkers = useMemo(() => items
-    .filter((item) => item.lat !== undefined && item.lon !== undefined)
-    .map((item) => ({ id: item.id, lat: item.lat!, lon: item.lon!, title: item.name, color: modaliteitColors[item.mode] })), [items]);
+  // Start on this location before map tiles load; a cached city must never flash on screen.
+  const center = activeLocation ? { lat: activeLocation.coords.latitude, lon: activeLocation.coords.longitude } : undefined;
+  const mapMarkers = useMemo(() => visibleItems
+    .filter(item => item.lat !== undefined && item.lon !== undefined)
+    .map(item => ({ id: item.id, lat: item.lat!, lon: item.lon!, title: item.name, color: modaliteitColors[item.mode] })), [visibleItems]);
 
   const openStop = (stop: StopSummary) => {
     addRecentStop(stop);
@@ -168,6 +185,7 @@ export default function BuurtbordScreen() {
         <SettingsButton />
       </View>
 
+      {(updating || !cacheReady) ? <Text style={{ color: colors.textMuted, fontSize: 11, paddingHorizontal: 14, paddingVertical: 4 }}>Bijwerken…</Text> : null}
       <View style={{ paddingHorizontal: 14, paddingBottom: 9, flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 7 }}>
         <Pressable accessibilityRole="button" accessibilityLabel="Kies een stad voor het Buurtbord"
           onPress={() => setShowCities((value) => !value)}
@@ -194,13 +212,6 @@ export default function BuurtbordScreen() {
         <Text style={{ color: colors.textSoft, marginHorizontal: 14, marginBottom: 7, fontSize: 12 }}>
           Handmatig gekozen plaats · geen GPS-positie
         </Text>
-      ) : locatieBron === "voorbeeld" ? (
-        <View style={{ marginHorizontal: 12, marginBottom: 10, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}>
-          <Text style={{ color: colors.text }}>Je locatie is niet beschikbaar, we tonen Utrecht als voorbeeld.</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="Locatie opnieuw proberen" onPress={() => { setLocatieRetry((n) => n + 1); live.requestFresh(); }} style={{ paddingVertical: 10, alignSelf: "flex-start" }}>
-            <Text style={{ color: colors.accentText, fontWeight: "700" }}>Opnieuw proberen</Text>
-          </Pressable>
-        </View>
       ) : locatieBron && isLocationStale(liveBron, liveFixAt, nowMs) ? (
         // V5.8.1: an old or missing GPS fix is never shown as if it were current.
         <View style={{ marginHorizontal: 13, marginBottom: 4, padding: 10, borderRadius: 10, backgroundColor: colors.warningSoft, flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -218,12 +229,12 @@ export default function BuurtbordScreen() {
         </View>
       ) : null}
       <View style={[styles.mapWrap, large && styles.mapWrapLarge, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-        <LeafletMap markers={mapMarkers} center={center} />
+        {center ? <LeafletMap markers={mapMarkers} center={center} /> : <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}><Text style={{ color: colors.textMuted }}>Locatie bepalen…</Text></View>}
       </View>
 
-      {loading ? <View style={styles.center}><ActivityIndicator color={colors.accentText} /></View> : (
+      {loading && !visibleItems.length ? <NearbySkeleton label={center ? "Haltes laden…" : "Locatie bepalen…"} /> : (
         <FlatList
-          data={items}
+          data={visibleItems}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
           refreshControl={<RefreshControl refreshing={refreshing}
@@ -258,7 +269,7 @@ export default function BuurtbordScreen() {
                 <Pressable onPress={() => openStop(item)} accessible={false}>
 
                 {preview.loading ? (
-                  <View style={styles.previewLoading}><ActivityIndicator size="small" color={colors.accentText} /><Text style={[styles.previewText, { color: colors.textSoft }]}>Vertrekken laden…</Text></View>
+                  <View style={styles.previewLoading}>{[0, 1, 2].map(i => <View key={i} style={{ height: 9, marginVertical: 5, width: i === 1 ? "60%" : "85%", borderRadius: 4, backgroundColor: colors.border }} />)}</View>
                 ) : rows.length ? (
                   <View style={[styles.departureList, { borderTopColor: colors.border }]}>
                     {rows.map((departure, index) => {
@@ -286,7 +297,7 @@ export default function BuurtbordScreen() {
                 <Text style={{ color: colors.accentText, fontWeight: "800" }}>Opnieuw proberen</Text>
               </Pressable>
             </View>
-          ) : <Text style={[styles.empty, { color: colors.textSoft }]}>Geen haltes in de buurt gevonden.</Text>}
+          ) : <Text style={[styles.empty, { color: colors.textSoft }]}>{!center ? "Geen GPS-positie beschikbaar. Kies een stad of probeer GPS opnieuw." : "Geen haltes in de buurt gevonden."}</Text>}
         />
       )}
     </View>
@@ -312,7 +323,7 @@ const styles = StyleSheet.create({
   bestBadgeText: { fontSize: 11, fontWeight: "900" },
   bestBadgeBelow: { alignSelf: "flex-start", marginTop: 5 },
   star: { width: 34, height: 34, alignItems: "center", justifyContent: "center" },
-  previewLoading: { minHeight: 30, flexDirection: "row", alignItems: "center", gap: 8 },
+  previewLoading: { minHeight: 54, gap: 4 },
   previewText: { fontSize: 12, fontWeight: "600" },
   departureList: { marginTop: 8, borderTopWidth: StyleSheet.hairlineWidth },
   departureRow: { minHeight: 28, flexDirection: "row", alignItems: "center", gap: 7 },
