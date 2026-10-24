@@ -54,3 +54,19 @@ test("compact trip list keeps the line rail, vehicle, departed stops and capped 
   assert.match(screen, /style=\{styles\.passedSub\}>Vertrokken/);
   assert.match(screen, /maxFontSizeMultiplier=\{1\.3\}/);
 });
+
+test("travelled rail is 2px grey above the vehicle; the upcoming rail is 3px in line colour", () => {
+  assert.match(screen, /const GRAY_RAIL = "#9CA3AF"/);
+  assert.ok(screen.includes("const railAbovePassed = passed || atStop;"));
+  assert.match(screen, /const railBelowPassed = passed;/);
+  assert.ok(screen.includes("backgroundColor: railAbove, width: railAbovePassed ? 2 : 3"));
+  assert.ok(screen.includes("backgroundColor: railBelow, width: railBelowPassed ? 2 : 3"));
+  assert.ok(screen.includes("const railAbove = railAbovePassed ? GRAY_RAIL : lineColor;"));
+  assert.ok(screen.includes("const railBelow = railBelowPassed ? GRAY_RAIL : lineColor;"));
+});
+
+test("long trip destinations shrink to fit without truncation", () => {
+  assert.ok(screen.includes("maxFontSizeMultiplier={1.3} style={[styles.headerTitle"));
+  assert.ok(screen.includes("numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}"));
+  assert.doesNotMatch(screen, /headerNaar.*ellipsizeMode="tail"/);
+});

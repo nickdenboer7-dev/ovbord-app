@@ -298,7 +298,7 @@ function TimeLine({ journey, lineColor, lineTextColor, liveLocation, boarding, o
   const progress = timelineDisplayProgress(stops,liveLocation,nowMs,{lastKnown,ended,cancelled});
   const shownLocation = progress.location;
   const nextIndex = verifiedNextStopIndex(shownLocation, stops.length);
-  const GRAY_RAIL = c.grayRail;
+  const GRAY_RAIL = "#9CA3AF";
   const icon = vehicleIcon(journey.mode);
 
   return <View style={styles.timeLine}>
@@ -319,8 +319,11 @@ function TimeLine({ journey, lineColor, lineTextColor, liveLocation, boarding, o
       const isAlight = index === alightIndex;
       // After the alighting stop the rest of the route is shown lighter.
       const afterAlight = alightIndex >= 0 && index > alightIndex;
-      const railAbove = passed || (atStop && !isAlight) ? GRAY_RAIL : afterAlight ? c.afterAlightRail : lineColor;
-      const railBelow = passed || atStop ? (atStop ? lineColor : GRAY_RAIL) : afterAlight || isAlight ? c.afterAlightRail : lineColor;
+      // The vehicle separates the 2px grey travelled section from the 3px line-coloured route ahead.
+      const railAbovePassed = passed || atStop;
+      const railBelowPassed = passed;
+      const railAbove = railAbovePassed ? GRAY_RAIL : lineColor;
+      const railBelow = railBelowPassed ? GRAY_RAIL : lineColor;
       const selectable = Boolean(onChooseAlight) && index >= minAlightIndex;
       const skip = !passed && Boolean(skipped?.has(String(stop.id)));
       // A boarding stop's clock is its DEPARTURE, not the earlier arrival time.
@@ -367,7 +370,7 @@ function TimeLine({ journey, lineColor, lineTextColor, liveLocation, boarding, o
             numberOfLines={1}>{platform}</Text> : null}
         </View>
         <View style={styles.timelineRail}>
-          {index > 0 ? <View style={[styles.railTop, { backgroundColor: railAbove }]}/> : null}
+          {index > 0 ? <View style={[styles.railTop, { backgroundColor: railAbove, width: railAbovePassed ? 2 : 3 }]}/> : null}
           {atStop ? <View style={[styles.railVehicle, { backgroundColor: progress.estimated ? c.muted : lineColor }]}>
             <Ionicons name={icon} size={14} color={progress.estimated ? "#FFFFFF" : lineTextColor}/>
           </View> : isAlight ? <View style={[styles.railAlight, { borderColor: c.alightTagText }]}>
@@ -376,7 +379,7 @@ function TimeLine({ journey, lineColor, lineTextColor, liveLocation, boarding, o
             backgroundColor: passed ? GRAY_RAIL : c.railFill }]}>
             {passed ? <Ionicons name="checkmark" size={8} color="#FFFFFF"/> : null}
           </View>}
-          {!last ? <View style={[styles.railBottom, { backgroundColor: railBelow }]}/> : null}
+          {!last ? <View style={[styles.railBottom, { backgroundColor: railBelow, width: railBelowPassed ? 2 : 3 }]}/> : null}
         </View>
         <View style={styles.timelineLabel}>
           <View style={styles.timelineNameRow}>
@@ -824,7 +827,7 @@ export default function RitScreen() {
               style={[styles.headerLineText, { color: lineBadge.text }]}>{compactTrainLineLabel(line, carrier)}</Text>
           </View>
         </View>
-        <View style={styles.headerTitles} accessibilityRole="header"><Text maxFontSizeMultiplier={1.3} style={[styles.headerTitle, destination.length > 18 && styles.headerTitleLong]} numberOfLines={1} ellipsizeMode="tail"><Text style={styles.headerNaar}>naar </Text>{destination}</Text></View>
+        <View style={styles.headerTitles} accessibilityRole="header"><Text maxFontSizeMultiplier={1.3} style={[styles.headerTitle, destination.length > 18 && styles.headerTitleLong]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}><Text style={styles.headerNaar}>naar </Text>{destination}</Text></View>
         {journey ? <Pressable onPress={toggleMap} accessibilityRole="button" accessibilityLabel={mapOpen ? "Kaart sluiten" : "Op kaart"}
           accessibilityState={{ expanded: mapOpen }} style={styles.headerButton}>
           <Ionicons name={mapOpen ? "list-outline" : "map-outline"} color="#FFFFFF" size={22}/>
