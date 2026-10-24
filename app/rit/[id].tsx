@@ -712,7 +712,7 @@ export default function RitScreen() {
     requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: target, animated }));
     return true;
   }
-  // Where the page opens: the verified vehicle, otherwise the boarding stop. Never a guessed position.
+  // Open at verified progress, or at the current stop according to expected times.
   const scrollTarget = verifiedLive && !lastKnown ? verifiedLive.index : journey ? expectedTimelineLocation(journey.stops,nowMs)?.index ?? boardingIndex : boardingIndex;
   function autoScroll() {
     if (autoScrolled.current || mapOpen || choosingAlight || scrollTarget < 0) return;

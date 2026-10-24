@@ -15,7 +15,7 @@ Module._load=function(request,parent,isMain){
  if(request==='react')return React;if(request==='react-native')return native;
  if(request==='@react-native-async-storage/async-storage')return{default:storage,__esModule:true};
  if(request==='@expo/vector-icons')return{Ionicons:'Ionicons'};
- if(request==='expo-router')return{Stack:{Screen:'Stack.Screen'},useLocalSearchParams:()=>({id:'trip',line:'4',destination:'Nijlân'}),useFocusEffect(){},useRouter:()=>({push(){},navigate(){},back(){},replace(){}})};
+ if(request==='expo-router')return{Stack:{Screen:'Stack.Screen'},useLocalSearchParams:()=>({id:'trip',line:'4',destination:'NijlÃ¢n'}),useFocusEffect(){},useRouter:()=>({push(){},navigate(){},back(){},replace(){}})};
  if(request==='expo-status-bar')return{StatusBar:'StatusBar'};
  if(request==='expo-location')return{getForegroundPermissionsAsync:async()=>permission,requestForegroundPermissionsAsync:()=>{throw Error('Advice must never request permission');}};
  if(request==='react-native-safe-area-context')return{useSafeAreaInsets:()=>({top:24,bottom:8})};
@@ -159,7 +159,7 @@ test('timeline uses expected arrivals, ignores schedule-derived states and moves
  const rows=[stopAt('A','16:40',{expectedTime:'16:48',state:'upcoming'}),stopAt('B','16:55',{expectedTime:'17:03',state:'passed'}),stopAt('C','17:03',{expectedTime:'17:11'})];
  assert.deepEqual(expectedTimelineLocation(rows,now),{kind:'at',index:0});assert.deepEqual(expectedTimelineLocation(rows,now+180000),{kind:'at',index:1});
  const p=timelineDisplayProgress(rows,null,now+180000);assert.equal(p.estimated,true);assert.equal(p.passed(0),true);assert.equal(p.passed(1),false);assert.equal(p.passed(2),false);
- assert.equal(expectedTimelineLocation(rows,now-20*60000),null);assert.equal(expectedTimelineLocation([stopAt('X','--:--')],now),null);
+ assert.equal(expectedTimelineLocation(rows,now-20*60000),null);assert.equal(expectedTimelineLocation([stopAt('X','--:--')],now),null);assert.equal(journeyStopClock(stopAt('X','--:--')),'\u2014');
  assert.equal(journeyStopClock(stopAt('X','16:55',{delayMinutes:7})),'17:02');assert.equal(journeyStopClock(stopAt('X','16:55',{expectedTime:'17:08',actualKnown:true,actualTime:'17:09'})),'17:08');
 });
 test('timeline handles midnight and live GPS always outranks the clock; old GPS is not a confirmed position',()=>{
@@ -202,10 +202,10 @@ test('timeline renders grey past stops and one Nu hier tag from expected time, w
 });
 test('the trip page displays unconfirmed position once in its own row after the title and before the scroll view',async()=>{
  defaults();const {default:RitPage}=tripModule(),h=new Harness();const clock=minutes=>new Intl.DateTimeFormat('nl-NL',{timeZone:'Europe/Amsterdam',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(Date.now()+minutes*60000));
- api.getRit=async()=>({id:'trip',line:'4',destination:'Nijlân',mode:'bus',live:true,polyline:[],stops:[stopAt('A',clock(-5)),stopAt('B',clock(-1)),stopAt('C',clock(8))]});
+ api.getRit=async()=>({id:'trip',line:'4',destination:'NijlÃ¢n',mode:'bus',live:true,polyline:[],stops:[stopAt('A',clock(-5)),stopAt('B',clock(-1)),stopAt('C',clock(8))]});
  try{h.render(RitPage);h.flush();await tick();let tree=h.render(RitPage);h.flush();await tick();tree=h.render(RitPage);
  assert.equal(text(tree).split('Positie niet bevestigd').length-1,1);const scroll=find(tree,'ScrollView');assert.ok(scroll);assert.doesNotMatch(text(scroll),/Positie niet bevestigd/);
- const children=tree.props.children.flat(Infinity).filter(x=>x&&typeof x==='object'),statusIndex=children.findIndex(x=>x.type==='Pressable'&&text(x).includes('Positie niet bevestigd')),headerIndex=children.findIndex(x=>x.type==='View'&&findAll(x,'Text').some(t=>text(t).includes('Nijlân'))),scrollIndex=children.indexOf(scroll);
+ const children=tree.props.children.flat(Infinity).filter(x=>x&&typeof x==='object'),statusIndex=children.findIndex(x=>x.type==='Pressable'&&text(x).includes('Positie niet bevestigd')),headerIndex=children.findIndex(x=>x.type==='View'&&findAll(x,'Text').some(t=>text(t).includes('NijlÃ¢n'))),scrollIndex=children.indexOf(scroll);
  assert.ok(statusIndex>headerIndex);assert.ok(statusIndex<scrollIndex);assert.equal(children[statusIndex].props.style.flexShrink,0);assert.equal(find(children[statusIndex],'Text').props.numberOfLines,undefined);
  }finally{h.destroy();}
 });
