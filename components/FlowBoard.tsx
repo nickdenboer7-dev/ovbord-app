@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { StatusBar as ExpoStatusBar } from "expo-status-bar";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { DepartureHeading } from "./DepartureLine";
@@ -58,6 +58,8 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
   const { colors, resolvedScheme, addRecentStop, toggleFavoriteStop, isFavoriteStop, favoriteLines, toggleFavoriteLine, manualCity } = useApp();
   const { requestSearch } = useFlowNavigation();
   const router = useRouter(); // OVBORD_FLOW4_DEDICATED_RIT
+  const [focused,setFocused]=useState(false);
+  useFocusEffect(useCallback(()=>{setFocused(true);return()=>setFocused(false);},[]));
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
   const [board, setBoard] = useState<HalteBoardData | null>(initialBoard || null);
@@ -337,7 +339,7 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      {visible ? <ExpoStatusBar style="light"/> : null}
+      {visible && focused ? <ExpoStatusBar style="light"/> : null}
       <View style={[styles.head,{paddingTop:Math.max(insets.top,24)+6,backgroundColor:STOP_BOARD_BLUE}]}>
         <View style={styles.headRow}>
           <Pressable onPress={onBack} accessibilityRole="button" accessibilityLabel="Terug" style={styles.back}><Ionicons name="arrow-back" size={23} color="#fff"/></Pressable>

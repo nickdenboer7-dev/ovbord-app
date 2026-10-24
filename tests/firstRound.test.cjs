@@ -15,7 +15,7 @@ Module._load=function(request,parent,isMain){
  if(request==='react')return React;if(request==='react-native')return native;
  if(request==='@react-native-async-storage/async-storage')return{default:storage,__esModule:true};
  if(request==='@expo/vector-icons')return{Ionicons:'Ionicons'};
- if(request==='expo-router')return{Stack:{Screen:'Stack.Screen'},useLocalSearchParams:()=>({id:'trip',line:'4',destination:'Nijlân'}),useFocusEffect(){},useRouter:()=>({push(){},navigate(){},back(){},replace(){}})};
+ if(request==='expo-router')return{Stack:{Screen:'Stack.Screen'},useLocalSearchParams:()=>({id:'trip',line:'4',destination:'Nijlân'}),useFocusEffect:callback=>{if(harness)harness.focus=callback;},useRouter:()=>({push(){},navigate(){},back(){},replace(){}})};
  if(request==='expo-status-bar')return{StatusBar:'StatusBar'};
  if(request==='expo-location')return{getForegroundPermissionsAsync:async()=>permission,requestForegroundPermissionsAsync:()=>{throw Error('Advice must never request permission');}};
  if(request==='react-native-safe-area-context')return{useSafeAreaInsets:()=>({top:24,bottom:8})};
@@ -265,6 +265,13 @@ test('API retains feed-provided route colours and counts for the new stop board 
  try{global.fetch=async()=>({ok:true,json:async()=>({name:'Amsterdam, Test',line_count:6,departures:[{id:'x',line:'1',carrier:'GVB',mode:'tram',planned_time:'17:00',expected_time:'17:03',route_id:'route',route_color:'#abcdef',route_text_color:'112233'}]})});
  const result=await getHalte('test');assert.equal(result.stop.lineCount,6);assert.equal(result.departures[0].routeId,'route');assert.equal(result.departures[0].routeColor,'#abcdef');assert.equal(result.departures[0].routeTextColor,'112233');assert.equal(result.departures[0].expectedTime,'17:03');
  }finally{global.fetch=before;}
+});
+
+test('the blue stop-board status bar is removed on blur and on hidden boards, preserving other screens',()=>{
+ defaults();const h=new Harness(),{FlowBoard}=require('../components/FlowBoard.tsx'),s=stop('focus'),b=board(s,[]);let visible=true;
+ const render=()=>h.render(()=>FlowBoard({stop:s,initialBoard:b,visible,onBack(){}}));
+ try{let tree=render();assert.equal(find(tree,'StatusBar'),undefined);let blur=h.focus();tree=render();assert.equal(find(tree,'StatusBar').props.style,'light');blur();assert.equal(find(render(),'StatusBar'),undefined);
+ blur=h.focus();visible=false;assert.equal(find(render(),'StatusBar'),undefined);blur();}finally{h.destroy();}
 });
 
 test.after(()=>{Module._load=originalLoad;if(oldTs)Module._extensions['.ts']=oldTs;else delete Module._extensions['.ts'];if(oldTsx)Module._extensions['.tsx']=oldTsx;else delete Module._extensions['.tsx'];});
