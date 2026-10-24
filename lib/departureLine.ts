@@ -45,6 +45,13 @@ export function departureDelayLabel(item: DepartureItem): { text: string; late: 
   return delay > 0 ? { text: "+" + Math.round(delay) + " min", late: true } : { text: "−" + Math.round(Math.abs(delay)) + " min", late: false };
 }
 
+/** A compact positive delay below the expected clock; zero/early/cancelled stays empty. */
+export function departureClockDelay(item: DepartureItem): { text: string; tone: "orange" | "red" } | null {
+  if (item.cancelled === true || typeof item.delayMinutes !== "number" || !Number.isFinite(item.delayMinutes)) return null;
+  const minutes = Math.round(item.delayMinutes);
+  return minutes > 0 ? { text: "+" + minutes, tone: minutes >= 5 ? "red" : "orange" } : null;
+}
+
 /** What a screen reader says for one row. */
 export function departureLineLabel(item: DepartureItem, nowMs: number, status: DepartureLineStatus, opensTrip: boolean): string {
   const { clock } = departurePresentation(item, nowMs);

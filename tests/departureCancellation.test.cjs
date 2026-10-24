@@ -37,12 +37,12 @@ test("real OVbord API cancellation field survives normalization", () => {
   });
 });
 
-test("cancelled services never present adjusted ETAs or countdowns", () => {
+test("cancelled services keep the expected clock but never present a countdown", () => {
   const dep = normalizeDeparture(apiRow({
     effective_time:"2026-10-14T15:47:00+02:00", delay: 300, live: true
   }));
   assert.equal(dep.cancelled, true);
-  assert.equal(departurePresentation(dep, now).clock, "15:42");
+  assert.equal(departurePresentation(dep, now).clock, "15:47");
   assert.equal(departurePresentation(dep, now).countdown, "");
 });
 

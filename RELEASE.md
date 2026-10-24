@@ -45,3 +45,9 @@ destination on the same primary row, including narrow mobile screens. Status sta
 under the destination. Start shows metres below 1 km and counts the actual rendered
 nearby rows. The app has no browser-notification prompt or floating feedback button;
 feedback stays in Meer and the stop menu. Runtime and preview channel remain 1.0.4.
+
+Expected-clock release: line left, destination/status in the middle, expected clock
+large on the right. Positive delay sits below it as +3, orange through +4 and red
+from +5; zero and early running leave it empty. The blue Vertrokken block stays in
+the middle. Clock and countdown use the same expected instant, without adding delay
+again to an API-supplied ETA. Runtime and preview channel remain 1.0.4.

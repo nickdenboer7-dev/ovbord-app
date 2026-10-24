@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { LayoutChangeEvent, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useApp } from "../context/AppProvider";
-import { departureDelayLabel, departureLineLabel, departureLineStatus } from "../lib/departureLine";
+import { departureClockDelay, departureLineLabel, departureLineStatus } from "../lib/departureLine";
 import { departurePresentation } from "../lib/departurePresentation";
 import { largeText, wordFitScale } from "../lib/textScale";
 import type { DepartureItem } from "../types/api";
@@ -20,7 +20,7 @@ type Props = {
   last?: boolean;
 };
 
-/** Concept C: clock, line and destination share the first row; status sits below destination. */
+/** Line on the left, destination/status in the middle, expected clock and delay on the right. */
 export function DepartureLine({ item, nowMs, onPress, stale = false, tooTight = false, carrier, detail, note,
   size = "board", last = false }: Props) {
   const { colors } = useApp();
@@ -28,7 +28,7 @@ export function DepartureLine({ item, nowMs, onPress, stale = false, tooTight = 
   const departed = item.departed === true && item.cancelled !== true;
   const status = departureLineStatus(item, nowMs, { stale, tooTight, note });
   const { clock } = departurePresentation(item, nowMs);
-  const delay = departureDelayLabel(item);
+  const delay = departureClockDelay(item);
   const opensTrip = Boolean(onPress) && Boolean(item.ritId) && !departed;
   const list = size === "list";
   const [bodyWidth, setBodyWidth] = useState<number>();
@@ -37,7 +37,7 @@ export function DepartureLine({ item, nowMs, onPress, stale = false, tooTight = 
   const right = clock;
   const rightColor = item.cancelled === true ? colors.danger : departed ? colors.textSoft : colors.text;
   const visibleDetail = departed ? undefined : detail;
-  const extra = [delay?.text, visibleDetail?.text].filter(Boolean).join(" · ");
+  const extra = visibleDetail?.text || "";
   return (
     <Pressable onPress={onPress} disabled={!onPress || departed}
       accessibilityRole={onPress && !departed ? "button" : undefined}
@@ -45,9 +45,6 @@ export function DepartureLine({ item, nowMs, onPress, stale = false, tooTight = 
       style={({ pressed }) => [styles.row, list ? styles.rowList : styles.rowBoard,
         large && styles.rowLarge, !last && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
         tooTight && !departed && styles.dim, pressed && { backgroundColor: colors.surfaceAlt }]}>
-      <Text style={[styles.right, list && styles.rightList, large && styles.clockLarge, { color: rightColor },
-        item.cancelled === true && styles.cancelledClock]} maxFontSizeMultiplier={1.3}
-        numberOfLines={1}>{right}</Text>
       <View style={styles.badge}>
         <LijnBadge line={item.line} carrier={item.carrier || carrier} tone="plain" compact={list} />
       </View>
@@ -59,16 +56,20 @@ export function DepartureLine({ item, nowMs, onPress, stale = false, tooTight = 
         {departed ? <View style={styles.departedStatus}>
           <Text style={[styles.departedLabel, { backgroundColor: colors.heading, color: colors.surface }]}
             maxFontSizeMultiplier={1.3}>Vertrokken</Text>
-          {delay ? <Text style={[styles.sub, { color: delay.late ? colors.danger : colors.accentText }]}>{delay.text}</Text> : null}
         </View> : <Text style={[styles.sub, { color: colors.textSoft }]}
           maxFontSizeMultiplier={wordFitScale(status.text + extra, bodyWidth, 12.5, 1.3)}
           numberOfLines={large ? 3 : 2}>
           {statusIsLive ? <><Text style={{ color: colors.success }}>Live</Text>{statusTail}</> : statusTail}
           {extra ? " · " : ""}
-          {delay ? <Text style={{ color: delay.late ? colors.danger : colors.success }}>{delay.text}</Text> : null}
-          {delay && visibleDetail ? " · " : null}
           {visibleDetail ? <Text style={{ color: visibleDetail.warn ? colors.danger : colors.textSoft }}>{visibleDetail.text}</Text> : null}
         </Text>}
+      </View>
+      <View style={styles.clockColumn}>
+        <Text style={[styles.right, list && styles.rightList, large && styles.clockLarge, { color: rightColor },
+          item.cancelled === true && styles.cancelledClock]} maxFontSizeMultiplier={1.3}
+          numberOfLines={1}>{right}</Text>
+        {delay ? <Text style={[styles.clockDelay, { color: delay.tone === "red" ? colors.danger : colors.delayWarning }]}
+          maxFontSizeMultiplier={1.3}>{delay.text}</Text> : null}
       </View>
     </Pressable>
   );
@@ -94,7 +95,9 @@ const styles = StyleSheet.create({
   sub: { fontSize: 12.5, lineHeight: 17 },
   departedStatus: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6 },
   departedLabel: { fontSize: 11.5, lineHeight: 17, fontWeight: "700", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, overflow: "hidden" },
-  right: { fontSize: 20, lineHeight: 32, fontWeight: "700", fontVariant: ["tabular-nums"], textAlign: "left", width: 62, flexShrink: 0 },
+  clockColumn: { flexShrink: 0, alignItems: "flex-end", minWidth: 62 },
+  clockDelay: { fontSize: 12.5, lineHeight: 19, fontWeight: "700", textAlign: "right" },
+  right: { fontSize: 20, lineHeight: 32, fontWeight: "700", fontVariant: ["tabular-nums"], textAlign: "right", width: 62, flexShrink: 0 },
   rightList: { fontSize: 17, lineHeight: 27, width: 55 },
   clockLarge: { width: 78 },
   cancelledClock: { textDecorationLine: "line-through" },

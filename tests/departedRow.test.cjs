@@ -6,6 +6,8 @@ const ts = require('typescript');
 const React = require('react');
 const { renderToStaticMarkup } = require('react-dom/server');
 const { themes } = loadTs('../constants/colors.ts');
+const { departureClockDelay } = loadTs('../lib/departureLine.ts');
+const { normalizeDeparture } = loadTs('../lib/api.ts');
 let scheme = 'light';
 
 function loadTs(file) {
@@ -58,7 +60,7 @@ test('departed row keeps time, line, destination and delay with one explicit bad
   for (scheme of ['light', 'dark']) {
     const html = render({ ...row, departed: true }, { detail: { text: 'Nu vertrekken om de bus te halen' } });
     const text = html.replace(/<[^>]*>/g, '');
-    assert.match(text, /17:14395Amsterdam SloterdijkVertrokken\+3 min/);
+    assert.match(text, /395Amsterdam SloterdijkVertrokken17:14\+3/);
     assert.equal((text.match(/Vertrokken/g) || []).length, 1);
     assert.doesNotMatch(text, /Live|Gepland|over |Nu vertrekken/);
     assert.match(html, /disabled=""/);
@@ -80,10 +82,29 @@ test('live status without countdown still renders green Live; normal and cancell
   assert.match(render({ ...row, isLive: false }).replace(/<[^>]*>/g, ''), /Gepland/);
 });
 
-test('primary row is clock then line then one-line destination, with status below it', () => {
+test('primary row is line then one-line destination/status then expected clock and short delay', () => {
   const html=render({...row,destination:'Een zeer lange bestemming met meerdere woorden'});
   const text=html.replace(/<[^>]*>/g,'');
-  assert.match(text,/17:14395Een zeer lange bestemming met meerdere woordenLive/);
+  assert.match(text,/395Een zeer lange bestemming met meerdere woordenLive.*17:14\+3/);
   assert.match(html,/flex-start/);
   assert.match(html,/lineHeight.*32/);
+});
+
+test('short delay is empty at zero, orange through four minutes and red from five, below the clock', () => {
+  for (const minutes of [undefined,NaN,0,-1]) assert.equal(departureClockDelay({...row,delayMinutes:minutes}),null);
+  for (const [minutes,tone] of [[1,'orange'],[3,'orange'],[4,'orange'],[5,'red'],[12,'red']]) {
+    assert.deepEqual(departureClockDelay({...row,delayMinutes:minutes}),{text:'+'+minutes,tone});
+    const html=render({...row,delayMinutes:minutes});
+    assert.match(html.replace(/<[^>]*>/g,''),new RegExp('17:14\\+'+minutes+'$'));
+    assert.match(html,new RegExp(tone==='red'?themes.light.danger:themes.light.delayWarning));
+  }
+  assert.doesNotMatch(render({...row,delayMinutes:0}).replace(/<[^>]*>/g,''),/Op tijd|\+0/);
+});
+
+test('API expected clock and countdown share the same instant and never add the delay twice', () => {
+  const item=normalizeDeparture({line:'395',destination:'Amsterdam Sloterdijk',planned_time:'17:11',
+    planned_at:'2026-10-24T17:11:00+02:00',effective_time:'2026-10-24T17:14:00+02:00',delay:180,live:true});
+  const html=render(item,{nowMs:Date.parse('2026-10-24T17:06:00+02:00')});
+  assert.match(html.replace(/<[^>]*>/g,''),/395Amsterdam SloterdijkLive · over 8 min17:14\+3/);
+  assert.doesNotMatch(html.replace(/<[^>]*>/g,''),/17:17|17:11/);
 });
