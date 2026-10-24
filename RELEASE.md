@@ -10,9 +10,16 @@ The preview APK uses the existing EAS project and signing credentials. Runtime p
 downloaded in the background and applied on the next cold launch. Native dependency
 changes require a new version and APK; compatible JavaScript changes use preview OTA.
 
-`.eas/workflows/preview-update.yml` publishes checked Android updates after pushes to
-`feature/v591-complete-lijnen` when the repository is connected to the EAS GitHub app.
-It can also be started with `eas workflow:run preview-update.yml --non-interactive`.
+The automatic EAS push trigger is disabled. `.eas/workflows/preview-update.yml`
+is manual-only so pushes do not consume workflow minutes. Publish compatible
+Android JavaScript changes directly without starting an EAS workflow:
+
+`eas update --channel preview --message "Anoniem toestel-ID voor statistiek" --environment preview --platform android`
+
+The anonymous statistics ping sends only a random installation ID persisted in
+AsyncStorage and the app version. It sends no hardware ID, model, location or account
+data. One successful ping per Amsterdam day is sent while the app is opened;
+the server deduplicates across launches and versions.
 
 Build once in EAS with `eas build --platform android --profile preview`.
 After publishing the backend and APK, the same APK can be tested in EAS with

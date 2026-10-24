@@ -1,7 +1,5 @@
 name: OVbord preview update
 on:
-  push:
-    branches: ['feature/v591-complete-lijnen']
   workflow_dispatch: {}
 jobs:
   update:

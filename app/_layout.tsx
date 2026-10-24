@@ -1,14 +1,17 @@
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React, { useEffect } from "react";
+import { AppState } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import appConfig from "../app.json";
 import { AppProvider, useApp } from "../context/AppProvider";
 import { FavoritesLiveProvider } from "../context/FavoritesLive";
 import { FeedbackPrompt } from "../components/FeedbackPrompt";
 import { FlowNavigationProvider } from "../context/FlowNavigation";
+import { createAnonymousSessionPing } from "../lib/anonymousStats";
 
 const APP_VERSION = appConfig.expo.version;
-let sessionPingSent = false;
+const sendSessionPing = createAnonymousSessionPing(AsyncStorage, APP_VERSION, fetch);
 
 function RootNavigation() {
   const { resolvedScheme, colors } = useApp();
@@ -40,9 +43,10 @@ function RootNavigation() {
 
 export default function RootLayout() {
   useEffect(() => {
-    if (sessionPingSent) return;
-    sessionPingSent = true;
-    fetch("https://ovspot.nl/api/ovbord-ping?v=" + encodeURIComponent(APP_VERSION)).catch(() => {});
+    const ping = () => { void sendSessionPing().catch(() => {}); };
+    ping();
+    const subscription = AppState.addEventListener("change", (state) => { if (state === "active") ping(); });
+    return () => subscription.remove();
   }, []);
   return (
     <AppProvider>
