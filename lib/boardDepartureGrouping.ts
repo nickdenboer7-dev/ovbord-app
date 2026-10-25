@@ -29,25 +29,32 @@ function sameLineAndDestination(a: DepartureItem, b: DepartureItem) {
  */
 export function groupBoardDepartures(rows: readonly DepartureItem[], nowMs: number): BoardDisplayDeparture[] {
   const display: BoardDisplayDeparture[] = [];
-  let previous: DepartureItem | undefined;
   let previousMs: number | null = null;
-  let currentDisplay: BoardDisplayDeparture | undefined;
-  for (const item of rows) {
+  for (let index = 0; index < rows.length; index++) {
+    const item = rows[index];
     const ms = departureTimeRemainingMs(item, nowMs);
     const clock = effectiveDepartureClock(item);
     const validClock = /^(?:[01]?\d|2[0-3]):[0-5]\d$/.test(clock);
-    const joinsPlannedGroup = previous && currentDisplay && canGroup(previous) && canGroup(item) &&
-      previousMs !== null && ms !== null && validClock && sameLineAndDestination(previous, item);
-    if (joinsPlannedGroup && currentDisplay) {
-      const times = currentDisplay.groupedTimes || [];
-      if (times.length < MAX_GROUPED_EXTRA_TIMES) currentDisplay.groupedTimes = [...times, clock];
-    } else {
-      const gap = previousMs !== null && ms !== null && ms - previousMs > DEPARTURE_DAY_GAP_MS;
-      currentDisplay = { ...item, ...(gap && validClock ? { gapStartClock: clock } : {}) };
-      display.push(currentDisplay);
-    }
-    previous = item;
+    const gap = previousMs !== null && ms !== null && ms - previousMs > DEPARTURE_DAY_GAP_MS;
+    const currentDisplay: BoardDisplayDeparture = { ...item, ...(gap && validClock ? { gapStartClock: clock } : {}) };
+    display.push(currentDisplay);
     previousMs = ms;
+    if (!canGroup(item) || ms === null) continue;
+
+    const times: string[] = [];
+    while (index + 1 < rows.length) {
+      const next = rows[index + 1];
+      const nextMs = departureTimeRemainingMs(next, nowMs);
+      const nextClock = effectiveDepartureClock(next);
+      if (!canGroup(next) || nextMs === null || !/^(?:[01]?\d|2[0-3]):[0-5]\d$/.test(nextClock) ||
+          !sameLineAndDestination(item, next)) break;
+      // Consume EVERY sibling, even after the three displayed extra times are full.
+      index++;
+      // The next divider starts after the last consumed trip, including hidden times.
+      previousMs = nextMs;
+      if (times.length < MAX_GROUPED_EXTRA_TIMES) times.push(nextClock);
+    }
+    if (times.length) currentDisplay.groupedTimes = times;
   }
   return display;
 }

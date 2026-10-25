@@ -1,0 +1,17 @@
+{
+  "name": "Amsterdam, Bilderdijkstraat",
+  "stop_ref": "3979746",
+  "generated_at": "2026-10-25T02:24:55+02:00",
+  "feed_age_seconds": 1,
+  "stale": false,
+  "departures": [
+    { "line": "N83", "carrier": "GVB", "destination": "Centraal Station", "mode": "bus", "live": true, "planned_time": "02:25", "planned_at": "2026-10-25T02:25:37+02:00", "effective_time": "2026-10-25T02:27:07+02:00" },
+    { "line": "N83", "carrier": "GVB", "destination": "Centraal Station", "mode": "bus", "live": true, "planned_time": "02:54", "planned_at": "2026-10-25T02:54:37+02:00", "effective_time": "2026-10-25T02:54:37+02:00" },
+    { "line": "N83", "carrier": "GVB", "destination": "Centraal Station", "mode": "bus", "live": false, "planned_time": "03:23", "planned_at": "2026-10-25T03:23:37+01:00", "effective_time": "2026-10-25T03:23:37+01:00" },
+    { "line": "N83", "carrier": "GVB", "destination": "Centraal Station", "mode": "bus", "live": false, "planned_time": "03:52", "planned_at": "2026-10-25T03:52:37+01:00", "effective_time": "2026-10-25T03:52:37+01:00" },
+    { "line": "N83", "carrier": "GVB", "destination": "Centraal Station", "mode": "bus", "live": false, "planned_time": "04:23", "planned_at": "2026-10-25T04:23:00+01:00", "effective_time": "2026-10-25T04:23:00+01:00" },
+    { "line": "N83", "carrier": "GVB", "destination": "Centraal Station", "mode": "bus", "live": false, "planned_time": "04:51", "planned_at": "2026-10-25T04:51:00+01:00", "effective_time": "2026-10-25T04:51:00+01:00" },
+    { "line": "N83", "carrier": "GVB", "destination": "Centraal Station", "mode": "bus", "live": false, "planned_time": "05:18", "planned_at": "2026-10-25T05:18:37+01:00", "effective_time": "2026-10-25T05:18:37+01:00" },
+    { "line": "13", "carrier": "GVB", "destination": "Geuzenveld", "mode": "tram", "live": false, "planned_time": "07:06", "planned_at": "2026-10-25T07:06:43+01:00", "effective_time": "2026-10-25T07:06:43+01:00" }
+  ]
+}
