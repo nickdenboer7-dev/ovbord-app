@@ -1,14 +1,14 @@
 import { Ionicons } from "@expo/vector-icons";
 import React, { useMemo, useRef, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
-import { useApp } from "../context/AppProvider";
-import type { DepartureItem } from "../types/api";
+import { favoriteJourneyKey, useApp } from "../context/AppProvider";
+import type { DepartureItem, StopSummary } from "../types/api";
 import { effectiveDepartureClock } from "../lib/format";
 import { departureClockDelay } from "../lib/departureLine";
-import { stopBoardTiming } from "../lib/stopBoardDesign";
+import { STOP_BOARD_BLUE, stopBoardTiming } from "../lib/stopBoardDesign";
 import { StopBoardBadge } from "./StopBoardRow";
 import { favoriteLineKey } from "../lib/favoriteLines";
-import { localIsoDate, recallLinesTab, rememberLinesTab } from "../lib/lineSchedule";
+import { localIsoDate, recallLinesTab, rememberLinesTab, shortDateLabel } from "../lib/lineSchedule";
 import { LineSchedulePanel } from "./LineSchedulePanel";
 
 type Direction = { destination: string; key: string; departures: DepartureItem[] };
@@ -22,14 +22,17 @@ type Props = {
   onSelectLine: (line: string) => void;
   /** Halte-ID voor /api/dienstregeling; zonder ID blijft de Lijnen-tab zoals vóór de dienstregeling. */
   stopId?: string;
+  stop?: StopSummary;
 };
 
 /** One card per line, direction rows and real times only. No invented occupancy/GPS. */
-export function FlowLineGroups({ departures, onOpenDeparture, onSelectLine, favoriteKeys, onToggleFavorite, stopId }: Props) {
-  const { colors, resolvedScheme } = useApp();
+export function FlowLineGroups({ departures, onOpenDeparture, onSelectLine, favoriteKeys, onToggleFavorite, stopId, stop }: Props) {
+  const { colors, resolvedScheme, favoriteJourneys, toggleFavoriteJourney } = useApp();
   const remembered = stopId ? recallLinesTab(stopId) : null;
   const todayIso = localIsoDate(new Date());
   const [expanded, setExpanded] = useState<string | null>(remembered?.expanded ?? null);
+  const [directionLabels, setDirectionLabels] = useState<Record<string, string>>({});
+  const [jumpToken, setJumpToken] = useState(0);
   const [date, setDate] = useState<string>(remembered?.date && remembered.date >= todayIso ? remembered.date : todayIso);
   const listRef = useRef<FlatList<Group>>(null);
   const restoredScroll = useRef(false);
@@ -65,9 +68,19 @@ export function FlowLineGroups({ departures, onOpenDeparture, onSelectLine, favo
       }));
   }, [departures]);
   const directionsCount = groups.reduce((n, g) => n + g.directions.length, 0);
+  const expandedGroup = groups.find((group) => group.directions.some((direction) => direction.key === expanded));
+  const expandedDirection = expandedGroup?.directions.find((direction) => direction.key === expanded);
+  const expandedName = expandedDirection && (directionLabels[expandedDirection.key] || expandedDirection.destination);
 
   function toggle(key: string) {
     const next = expanded === key ? null : key;
+    // On reopening, the inner schedule resets to the clicked direction.
+    setDirectionLabels((previous) => {
+      if (!previous[key]) return previous;
+      const updated = { ...previous };
+      delete updated[key];
+      return updated;
+    });
     setExpanded(next);
     if (stopId) rememberLinesTab(stopId, { expanded: next });
   }
@@ -157,10 +170,23 @@ export function FlowLineGroups({ departures, onOpenDeparture, onSelectLine, favo
   }
 
   return (
+    <View style={{ flex: 1 }}>
+      {expandedGroup && expandedName ? (
+        <View style={[styles.contextBar, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+          <Text maxFontSizeMultiplier={1.3} numberOfLines={1} style={[styles.contextText, { color: colors.heading }]}>
+            {expandedGroup.line} · {expandedName} · {shortDateLabel(date)}
+          </Text>
+          <Pressable onPress={() => { setJumpToken((value) => value + 1); listRef.current?.scrollToOffset({ offset: 0, animated: true }); }}
+            accessibilityRole="button" accessibilityLabel={date === todayIso ? "Naar eerstvolgende rit" : "Terug naar boven in de dienstregeling"} style={styles.contextTop}>
+            <Ionicons name="arrow-up" size={14} color={STOP_BOARD_BLUE} />
+            <Text maxFontSizeMultiplier={1.3} style={{ color: STOP_BOARD_BLUE, fontSize: 11, fontWeight: "800" }}>{date === todayIso ? "Volgende" : "Boven"}</Text>
+          </Pressable>
+        </View>
+      ) : null}
     <FlatList
       ref={listRef}
       data={groups}
-      extraData={[expanded, date, nowMs]}
+      extraData={[expanded, date, nowMs, directionLabels]}
       keyExtractor={(group) => group.line + "/" + group.carrier}
       contentContainerStyle={styles.list}
       showsVerticalScrollIndicator={false}
@@ -210,25 +236,39 @@ export function FlowLineGroups({ departures, onOpenDeparture, onSelectLine, favo
           {group.directions.map((direction) => {
             const summary = directionSummary(direction.departures, nowMs);
             const open = Boolean(stopId) && expanded === direction.key;
+            const displayName = open ? directionLabels[direction.key] || direction.destination : direction.destination;
+            const journeyKey = stop ? favoriteJourneyKey(group.line, displayName, stop.id) : "";
+            const savedDirection = Boolean(journeyKey && favoriteJourneys?.some((item) => item.key === journeyKey));
             const summaryText = (summary.last || summary.frequency)
               ? [summary.last ? "Laatste vertrek " + summary.last : "", summary.frequency ? "ca. elke " + summary.frequency + " min" : ""].filter(Boolean).join(" · ")
               : "";
             return (
               <View key={direction.key} style={[styles.direction, { borderTopColor: colors.border }, open && { paddingBottom: 0 }]}>
+                <View style={styles.directionHeaderRow}>
                 <Pressable
                   disabled={!stopId}
                   onPress={() => toggle(direction.key)}
                   accessibilityRole={stopId ? "button" : undefined}
                   accessibilityState={stopId ? { expanded: open } : undefined}
-                  accessibilityLabel={"Lijn " + group.line + " richting " + direction.destination + (stopId ? (open ? ", dienstregeling inklappen" : ", hele dag tonen") : "")}
+                  accessibilityLabel={"Lijn " + group.line + " richting " + displayName + (stopId ? (open ? ", dienstregeling inklappen" : ", hele dag tonen") : "")}
                   style={styles.directionHead}
                 >
                   <View style={styles.directionText}>
-                    <Text maxFontSizeMultiplier={1.3} style={[styles.directionName, { color: open ? colors.heading : colors.text }]} numberOfLines={2}>Richting {direction.destination}</Text>
+                    <Text maxFontSizeMultiplier={1.3} style={[styles.directionName, { color: open ? colors.heading : colors.text }]} numberOfLines={2}>Richting {displayName}</Text>
                     {summaryText ? <Text maxFontSizeMultiplier={1.3} style={[styles.frequency, {color: colors.textSoft}]}>{summaryText}</Text> : null}
                   </View>
                   {stopId ? <Ionicons name={open ? "chevron-up" : "chevron-down"} size={18} color={open ? colors.heading : colors.textMuted} /> : null}
                 </Pressable>
+                {stop && toggleFavoriteJourney ? (
+                  <Pressable onPress={() => toggleFavoriteJourney({ key: journeyKey, line: group.line, direction: displayName,
+                    stop, carrier: group.carrier, boardLine: group.line, boardDirection: displayName })}
+                    accessibilityRole="button" accessibilityState={{ selected: savedDirection }}
+                    accessibilityLabel={(savedDirection ? "Verwijder favoriete richting " : "Bewaar favoriete richting ") + group.line + " naar " + displayName}
+                    style={styles.directionStar}>
+                    <Ionicons name={savedDirection ? "star" : "star-outline"} size={20} color={savedDirection ? colors.warning : colors.textSoft} />
+                  </Pressable>
+                ) : null}
+                </View>
                 {open && stopId ? (
                   <View style={styles.panelWrap}>
                     <LineSchedulePanel
@@ -242,6 +282,8 @@ export function FlowLineGroups({ departures, onOpenDeparture, onSelectLine, favo
                       date={date}
                       onChangeDate={changeDate}
                       onOpenDeparture={onOpenDeparture}
+                      onDisplayDirection={(label) => setDirectionLabels((previous) => previous[direction.key] === label ? previous : { ...previous, [direction.key]: label })}
+                      jumpToNextToken={jumpToken}
                       fallback={timeChips(group, direction)}
                     />
                   </View>
@@ -252,10 +294,14 @@ export function FlowLineGroups({ departures, onOpenDeparture, onSelectLine, favo
         </View>
       )}
     />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  contextBar: { minHeight: 38, paddingHorizontal: 13, flexDirection: "row", alignItems: "center", borderBottomWidth: 1, gap: 10 },
+  contextText: { flex: 1, minWidth: 0, fontSize: 12, fontWeight: "800" },
+  contextTop: { minHeight: 38, minWidth: 48, flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 3 },
   list: { paddingHorizontal: 12, paddingBottom: 32, gap: 0 },
   intro: { paddingTop: 16, paddingBottom: 4, gap: 5 },
   title: { fontSize: 17, fontWeight: "900" },
@@ -269,7 +315,9 @@ const styles = StyleSheet.create({
   lineCaption: { fontSize: 13, fontWeight: "800" },
   carrier: { fontSize: 10.5 },
   direction: { borderTopWidth: 1, paddingHorizontal: 12, paddingVertical: 10, gap: 8 },
-  directionHead: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 36 },
+  directionHeaderRow: { flexDirection: "row", alignItems: "center" },
+  directionHead: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44 },
+  directionStar: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   directionText: { flex: 1, minWidth: 0, gap: 3 },
   directionName: { fontSize: 12, fontWeight: "700" },
   panelWrap: { marginHorizontal: -12 },

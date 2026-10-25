@@ -65,6 +65,7 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
   const [refreshing, setRefreshing] = useState(false);
   const [board, setBoard] = useState<HalteBoardData | null>(initialBoard || null);
   const [loading, setLoading] = useState(!initialBoard);
+  const [fetchingBoard, setFetchingBoard] = useState(false);
   const [fetchedAt, setFetchedAt] = useState<number | null>(initialBoard ? initialFetchedAt ?? Date.now() : null);
   const [cachePending,setCachePending]=useState(initialStale);
   const position=useWalkingPosition(visible && !manualCity);
@@ -103,6 +104,9 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
   const timingCurrent = freshness.level === "fresh";
   const staleDisplay=Boolean(refreshFailure)||cachePending;
   const dataCurrent = timingCurrent && !staleDisplay;
+  // Do not present hours-old cached departures as a usable board while the first refresh is pending.
+  // If refreshing fails, keep the last-known rows visible with the existing offline warning.
+  const waitingForFreshBoard = Boolean(board && freshness.level === "stale" && fetchingBoard && !refreshFailure);
   useEffect(() => { addRecentStop(stop); }, [stop.id]);
   useEffect(() => { setNoticesExpanded(false); }, [stop.id]);
   useEffect(() => {
@@ -191,6 +195,7 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
     const load = async (initial: boolean) => {
       if (pending) return;
       pending = true;
+      setFetchingBoard(true);
       if (initial) { setLoading(true); setError(null); setRefreshFailure(null); }
       try {
         let result: HalteBoardData;
@@ -231,7 +236,7 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
         else setRefreshFailure(kind);
       } finally {
         pending = false;
-        if (active && initial) setLoading(false);
+        if (active) { setFetchingBoard(false); if (initial) setLoading(false); }
       }
     };
     reloadBoardRef.current = () => load(false);
@@ -397,8 +402,18 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
             style={styles.alertLine}>
             <Ionicons name={activeNotices.some((n) => n.severity === "warning") ? "warning-outline" : "information-circle-outline"}
               size={17} color={activeNotices.some((n) => n.severity === "warning") ? colors.danger : colors.accentText} />
-            <Text maxFontSizeMultiplier={1.3} numberOfLines={1} style={[styles.alertLineText, { color: colors.text }]}>
-              {disruptionSummary("", activeNotices).title}{noticesExpanded ? "" : " · tik voor meer"}
+            <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+              <Text maxFontSizeMultiplier={1.3} numberOfLines={1} style={[styles.alertLineText, { color: colors.text }]}>
+                {activeNotices.length === 1 ? activeNotices[0].title : disruptionSummary("", activeNotices).title}
+              </Text>
+              {!noticesExpanded && activeNotices[0]?.description ? (
+                <Text maxFontSizeMultiplier={1.3} numberOfLines={1} style={{ fontSize: 11, color: colors.textSoft }}>
+                  {activeNotices[0].description}
+                </Text>
+              ) : null}
+            </View>
+            <Text maxFontSizeMultiplier={1.3} style={{ fontSize: 11, fontWeight: "800", color: colors.accentText }}>
+              {noticesExpanded ? "Sluiten" : "Bekijk melding"}
             </Text>
             <Ionicons name={noticesExpanded ? "chevron-up" : "chevron-down"} size={16} color={colors.textMuted} />
           </Pressable>
@@ -419,14 +434,14 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
             freshness.level === "stale" ? "cloud-offline-outline" : "help-circle-outline"}
             size={16} color={freshness.level === "aging" ? (resolvedScheme === "dark" ? colors.warning : "#B76B00") :
               freshness.level === "stale" ? colors.danger : colors.textSoft} />
-          <Text maxFontSizeMultiplier={1.3} style={[styles.freshnessText, { color: colors.text }]}>{freshness.label}</Text>
+          <Text maxFontSizeMultiplier={1.3} style={[styles.freshnessText, { color: colors.text }]}>{waitingForFreshBoard ? "Vertrektijden vernieuwen…" : freshness.label}</Text>
           <Text maxFontSizeMultiplier={1.3} style={{ fontSize: 10, color: colors.textSoft }}>
-            {freshness.level === "stale" ? "Ververs om te controleren" : "Laatste bekende gegevens"}
+            {waitingForFreshBoard ? "Oude gegevens worden gecontroleerd" : freshness.level === "stale" ? "Ververs om te controleren" : "Laatste bekende gegevens"}
           </Text>
         </View>
       ) : null}
       {board && refreshFailure ? <View style={[styles.refreshWarning, { backgroundColor: colors.warningSoft, borderBottomColor: colors.border }]}><Ionicons name="cloud-offline-outline" size={16} color={colors.text} /><Text maxFontSizeMultiplier={1.3} style={{ color: colors.text, flex: 1, fontSize: 12 }}>{boardRefreshNotice(refreshFailure, fetchedAt)}</Text><Pressable accessibilityRole="button" accessibilityLabel="Vertrektijden opnieuw laden" onPress={() => setRetryBoard((n) => n + 1)}><Ionicons name="refresh" size={19} color={colors.accentText} /></Pressable></View> : null}
-      {loading && !board ? (
+      {(loading && !board) || (waitingForFreshBoard && tab !== "disruptions") ? (
         <DepartureSkeleton rowHeight={52} />
       ) : error && !board ? (
         <View style={styles.center}>
@@ -460,6 +475,7 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
           onSelectLine={(line) => { setTab("departures"); setSelectedDirection(null); selectLine(line); }}
           onOpenDeparture={openTrip}
           stopId={stop.id}
+          stop={board?.stop || stop}
           favoriteKeys={favoriteKeySet}
           onToggleFavorite={(line, carrier) => {const key=favoriteLineKey(line,carrier);rememberLineOrigin(key,board?.stop||stop);toggleFavoriteLine(key);}}
         />

@@ -100,6 +100,18 @@ test("dayState: verleden en na einde dienstregeling niet kiesbaar, dagen zonder 
   assert.equal(S.dayState("2026-11-02", "2026-10-26", null), "selectable");
 });
 
+test("dienstregeling markeert gaten boven 60 minuten, ook over klokwisseling", () => {
+  const schedule = S.normalizeSchedule(raw);
+  const [midnight, firstMorning, last] = schedule.directions[0].trips;
+  assert.equal(S.scheduleGapStartClock(undefined, midnight), null);
+  assert.equal(S.scheduleGapStartClock(midnight, firstMorning), "06:30");
+  assert.equal(S.scheduleGapStartClock(firstMorning, last), "23:50");
+  const near = (at) => ({ ...midnight, plannedAt: at, plannedTime: at.slice(11, 16) });
+  assert.equal(S.scheduleGapStartClock(near("2026-10-26T10:00:00+01:00"), near("2026-10-26T11:00:00+01:00")), null);
+  assert.equal(S.scheduleGapStartClock(near("2026-10-26T10:00:00+01:00"), near("2026-10-26T11:01:00+01:00")), "11:01");
+  assert.equal(S.scheduleGapStartClock(near("2026-10-25T02:54:00+02:00"), near("2026-10-25T03:23:00+01:00")), "03:23");
+});
+
 test("showsPlatforms alleen bij meerdere haltepalen met perron", () => {
   const s = S.normalizeSchedule(raw);
   assert.equal(S.showsPlatforms(s.directions[0]), false);

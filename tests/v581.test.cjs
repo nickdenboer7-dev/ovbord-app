@@ -118,7 +118,8 @@ test("old or missing GPS is labelled 'Laatst bekende locatie' with its age", () 
   assert.equal(live.describeLocationAge(now - 26 * 3600000, now), "1 dag geleden");
   assert.equal(live.isLocationStale("laatst-bekend", now - 1000, now), true);
   assert.equal(live.isLocationStale("gps", now - 30000, now), false);
-  assert.equal(live.isLocationStale("gps", now - 5 * 60000, now), true);
+  assert.equal(live.isLocationStale("gps", now - 5 * 60000, now), false);
+  assert.equal(live.isLocationStale("gps", now - (5 * 60000 + 1), now), true);
   assert.equal(live.isLocationStale("handmatig", now - 3600000, now), false);
 });
 

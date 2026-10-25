@@ -207,8 +207,8 @@ test("stop board and trip page: options under ⋮, one row style everywhere", ()
     assert.match(read(file), /<DepartureLine /, file);
   }
   // Large font: the "Beste halte" label moves under the stop name.
-  assert.match(read("app/(tabs)/buurtbord.tsx"), /\{large && item\.id === bestStopId \?/);
-  assert.match(read("app/(tabs)/buurtbord.tsx"), /\{!large && item\.id === bestStopId \?/);
+  assert.match(read("app/(tabs)/buurtbord.tsx"), /\{large && item\.id === highlightedStopId \?/);
+  assert.match(read("app/(tabs)/buurtbord.tsx"), /\{!large && item\.id === highlightedStopId \?/);
 });
 
 // Hertest 17-10: in het ⋮-menu sloot een tik op een optie alleen het menu (Modal in de Android-build)

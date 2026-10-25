@@ -16,6 +16,7 @@ import type { ShowStopOptions } from "../../context/FlowNavigation";
 import { buurtbordPreviewRows } from "../../lib/buurtbord";
 import { favoriteJourneyDepartures } from "../../lib/favoritesLive";
 import { boardRefreshNotice } from "../../lib/offline";
+import { STOP_BOARD_BLUE } from "../../lib/stopBoardDesign";
 import { ritParamsForDeparture } from "../../lib/ritRoute";
 import { useSmartRefresh } from "../../lib/useSmartRefresh";
 import type { DepartureItem, StopSummary } from "../../types/api";
@@ -27,7 +28,7 @@ export default function FavorietenScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const large = largeText(useWindowDimensions().fontScale);
-  const { showStop: showFlowStop } = useFlowNavigation();
+  const { showStop: showFlowStop, requestSearch } = useFlowNavigation();
   const { boards, refreshFailure, refreshing: favoritesRefreshing, updatedAt, refresh, stopsKey } = useFavoritesLive();
   const [refreshing, setRefreshing] = useState(false);
   const [ordering, setOrdering] = useState(false);
@@ -179,8 +180,25 @@ export default function FavorietenScreen() {
           );
         }}
         ListEmptyComponent={favoriteJourneys.length ? null : (
-          <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={{ color: colors.textSoft }}>Nog geen favorieten. Tik op de ster bij een halte of rit om die hier te bewaren.</Text>
+          <View style={[styles.emptyState, { backgroundColor: colors.surface }]}>
+            <View style={[styles.emptyIcon, { backgroundColor: colors.accentSoft }]}>
+              <Ionicons name="star-outline" size={32} color={STOP_BOARD_BLUE} />
+            </View>
+            <Text maxFontSizeMultiplier={1.3} style={[styles.emptyTitle, { color: colors.heading }]}>Nog geen favorieten</Text>
+            <Text maxFontSizeMultiplier={1.3} style={[styles.emptyHint, { color: colors.textSoft }]}>
+              Bewaar een halte of richting met het sterretje. Dan zie je hier sneller jouw vertrekken.
+            </Text>
+            <Pressable onPress={() => { requestSearch(); router.navigate("/"); }} accessibilityRole="button"
+              accessibilityLabel="Zoek een halte om als favoriet op te slaan"
+              style={[styles.emptyPrimary, { backgroundColor: STOP_BOARD_BLUE }]}>
+              <Ionicons name="search" size={18} color="#fff" />
+              <Text maxFontSizeMultiplier={1.3} style={styles.emptyPrimaryText}>Zoek een halte</Text>
+            </Pressable>
+            <Pressable onPress={() => router.navigate("/")} accessibilityRole="button" accessibilityLabel="Haltes in de buurt bekijken"
+              style={[styles.emptySecondary, { borderColor: colors.border }]}>
+              <Ionicons name="location-outline" size={18} color={STOP_BOARD_BLUE} />
+              <Text maxFontSizeMultiplier={1.3} style={[styles.emptySecondaryText, { color: STOP_BOARD_BLUE }]}>Haltes in de buurt</Text>
+            </Pressable>
           </View>
         )}
       />
@@ -192,6 +210,14 @@ const styles = StyleSheet.create({
   screen: { flex: 1 }, headerRow: { paddingHorizontal: 14, marginBottom: 7, flexDirection: "row", alignItems: "center", gap: 12 }, headerCopy: { flex: 1 }, title: { fontSize: 21, fontWeight: "800" }, subtitle: { marginTop: 3, fontSize: 12 }, content: { padding: 13, gap: 8, paddingBottom: 28 }, card: { borderWidth: 0, borderRadius: 0, padding: 12 }, cardTitle: { fontSize: 15, fontWeight: "800", marginBottom: 10 }, stopRow: { flexDirection: "row", gap: 12, alignItems: "flex-start" }, modeDot: { width: 16, height: 16, borderRadius: 999, marginTop: 4 }, stopTitle: { fontSize: 16, fontWeight: "800" }, stopMeta: { marginTop: 4, fontSize: 13 }, lineWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 }, removeButton: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
   headerList: { gap: 8 },
   notice: { flexDirection: "row", alignItems: "center", gap: 8, padding: 10, borderRadius: 10 },
+  emptyState: { marginTop: 30, padding: 22, alignItems: "center", gap: 13, borderRadius: 15 },
+  emptyIcon: { width: 66, height: 66, borderRadius: 33, alignItems: "center", justifyContent: "center", marginBottom: 6 },
+  emptyTitle: { fontSize: 18, fontWeight: "900" },
+  emptyHint: { textAlign: "center", fontSize: 13, lineHeight: 19, marginBottom: 7 },
+  emptyPrimary: { alignSelf: "stretch", minHeight: 48, borderRadius: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9 },
+  emptyPrimaryText: { color: "#fff", fontWeight: "800", fontSize: 14 },
+  emptySecondary: { alignSelf: "stretch", minHeight: 48, borderWidth: 1, borderRadius: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9 },
+  emptySecondaryText: { fontWeight: "800", fontSize: 14 },
   journey: { borderTopWidth: 1, paddingBottom: 8 },
   journeyTop: { flexDirection: "row", alignItems: "center" },
   journeyMain: { flex: 1, paddingVertical: 8, flexDirection: "row", alignItems: "center", gap: 8 },

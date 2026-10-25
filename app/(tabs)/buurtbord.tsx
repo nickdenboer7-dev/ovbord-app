@@ -9,12 +9,13 @@ import { hydrateNearbyCache, nearbyScope, peekNearby, peekLastLocation, remember
 import type { NearbyPreview } from "../../lib/nearbyCache";
 import { LeafletMap } from "../../components/LeafletMap";
 import { DepartureLine } from "../../components/DepartureLine";
+import { LijnBadge } from "../../components/LijnBadge";
 import { SettingsButton } from "../../components/SettingsButton";
 import { modaliteitColors } from "../../constants/vervoerders";
 import { useApp } from "../../context/AppProvider";
 import { useFlowNavigation } from "../../context/FlowNavigation";
 import { getHalte, getNearby } from "../../lib/api";
-import { bestNearbyStopId, buurtbordPreviewRows, reachableOnFoot } from "../../lib/buurtbord";
+import { bestNearbyStopId, buurtbordPreviewRows, compareNearbyDepartures, reachableOnFoot } from "../../lib/buurtbord";
 import { boardRefreshNotice, failureKind } from "../../lib/offline";
 import type { FailureKind } from "../../lib/offline";
 import { useSmartRefresh } from "../../lib/useSmartRefresh";
@@ -55,6 +56,7 @@ export default function BuurtbordScreen() {
   const [locatieFixAt, setLocatieFixAt] = useState<number | null>(initialCache?.location.fixAt || null);
   const [locatieRetry, setLocatieRetry] = useState(0);
   const [showCities, setShowCities] = useState(false);
+  const [compareOpen, setCompareOpen] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
   const previousLocationKey = useRef<string | null>(initialCache ? scope : null);
   const itemsRef = useRef(items); itemsRef.current = items;
@@ -159,10 +161,21 @@ export default function BuurtbordScreen() {
     : scope === "gps" ? peekLastLocation() : null) || (itemsScope === scope ? viewLocation : null);
   const visibleItems = itemsScope === scope && (!activeLocation || !viewLocation || sameNearbyLocation(activeLocation, viewLocation)) ? items : [];
 
+  // Estimates are meaningful only for a recent GPS fix, not a manually chosen city or old cache.
+  const hasCurrentGps = !manualCity && liveBron === "gps" && liveFixAt !== null
+    && !isLocationStale(liveBron, liveFixAt, nowMs);
+  const options = useMemo(() => compareNearbyDepartures(visibleItems,
+    Object.fromEntries(Object.entries(previews).map(([id, preview]) => [id, preview.departures])), nowMs,
+    new Set(Object.entries(previews).filter(([, preview]) => preview.stale || preview.loading).map(([id]) => id))),
+    [visibleItems, previews, nowMs]);
+  const previewsAreFresh = !updating && !refreshFailure && updatedAt !== null && nowMs - updatedAt <= 120_000;
+  const bestOption = hasCurrentGps && previewsAreFresh ? options[0] : undefined;
+
   // Effective (delayed) time; never recommend a cancelled or departed trip.
   const bestStopId = useMemo(() => bestNearbyStopId(visibleItems,
     Object.fromEntries(Object.entries(previews).map(([id, preview]) => [id, preview.departures])), nowMs),
   [visibleItems, previews, nowMs]);
+  const highlightedStopId = bestOption?.stop.id || (previewsAreFresh ? bestStopId : "");
 
   // Start on this location before map tiles load; a cached city must never flash on screen.
   const center = activeLocation ? { lat: activeLocation.coords.latitude, lon: activeLocation.coords.longitude } : undefined;
@@ -228,6 +241,73 @@ export default function BuurtbordScreen() {
           <Text style={{ color: colors.text, flex: 1, fontSize: 12 }}>{boardRefreshNotice(refreshFailure, updatedAt)}</Text>
         </View>
       ) : null}
+      {bestOption ? (
+        <View style={[styles.adviceCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={styles.adviceTop}>
+            <View style={{ flex: 1 }}>
+              <Text maxFontSizeMultiplier={1.3} style={[styles.adviceTitle, { color: colors.heading }]}>Beste vertrek vanaf hier</Text>
+              <Text maxFontSizeMultiplier={1.3} style={[styles.adviceHint, { color: colors.textSoft }]}>Indicatie op basis van je GPS en looptijd</Text>
+            </View>
+            <View style={[styles.advicePill, { backgroundColor: bestOption.tight ? colors.warningSoft : colors.successSoft }]}>
+              <Text maxFontSizeMultiplier={1.3} style={[styles.advicePillText, { color: bestOption.tight ? colors.delayWarning : colors.accentText }]}>
+                {bestOption.tight ? "Krap" : "Haalbaar"}
+              </Text>
+            </View>
+          </View>
+          <Pressable accessibilityRole="button" accessibilityLabel={"Open halte " + bestOption.stop.name + " voor lijn " + bestOption.departure.line}
+            onPress={() => openStop(bestOption.stop)} style={styles.adviceTrip}>
+            <LijnBadge line={bestOption.departure.line} carrier={bestOption.departure.carrier} compact tone="flow" />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text maxFontSizeMultiplier={1.3} style={[styles.adviceDestination, { color: colors.text }]} numberOfLines={1}>{bestOption.departure.destination}</Text>
+              <Text maxFontSizeMultiplier={1.3} style={[styles.adviceHint, { color: colors.textSoft }]} numberOfLines={2}>
+                {bestOption.stop.name} · {bestOption.walkMinutes} min lopen
+              </Text>
+            </View>
+            <Text maxFontSizeMultiplier={1.3} style={[styles.adviceMinutes, { color: colors.heading }]}>{bestOption.departureInMinutes} min</Text>
+          </Pressable>
+          <View style={[styles.adviceFoot, { backgroundColor: bestOption.tight ? colors.warningSoft : colors.successSoft }]}>
+            <Ionicons name={bestOption.tight ? "time-outline" : "checkmark-circle-outline"} size={17}
+              color={bestOption.tight ? colors.delayWarning : colors.accentText} />
+            <Text maxFontSizeMultiplier={1.3} style={{ color: colors.text, flex: 1, fontSize: 12, fontWeight: "700" }}>
+              Vertrek nu · circa {bestOption.spareMinutes} min speling
+            </Text>
+          </View>
+          {options.length > 1 ? (
+            <Pressable onPress={() => setCompareOpen((value) => !value)} accessibilityRole="button"
+              accessibilityState={{ expanded: compareOpen }} style={styles.compareToggle}>
+              <Text maxFontSizeMultiplier={1.3} style={{ color: colors.accentText, fontSize: 12, fontWeight: "800" }}>
+                {compareOpen ? "Vergelijking sluiten" : "Vergelijk " + options.length + " haltes"}
+              </Text>
+              <Ionicons name={compareOpen ? "chevron-up" : "chevron-down"} size={16} color={colors.accentText} />
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+      {bestOption && compareOpen && options.length > 1 ? (
+        <View style={[styles.compareCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text maxFontSizeMultiplier={1.3} style={[styles.compareTitle, { color: colors.heading }]}>Haalbare vertrekken vergelijken</Text>
+          <Text maxFontSizeMultiplier={1.3} style={[styles.adviceHint, { color: colors.textSoft }]}>Bestemmingen kunnen verschillen. Kies de rit die je nodig hebt.</Text>
+          {options.slice(0, 5).map((option, index) => (
+            <Pressable key={option.stop.id} onPress={() => openStop(option.stop)} accessibilityRole="button"
+              accessibilityLabel={"Halte " + option.stop.name + ", lijn " + option.departure.line + ", " + option.departureInMinutes + " minuten tot vertrek, " + option.walkMinutes + " minuten lopen"}
+              style={[styles.compareRow, index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
+              <Ionicons name="location-outline" size={17} color={index === 0 ? colors.accentText : colors.textSoft} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text maxFontSizeMultiplier={1.3} numberOfLines={1} style={[styles.compareStop, { color: colors.text }]}>{option.stop.name}</Text>
+                <Text maxFontSizeMultiplier={1.3} numberOfLines={1} style={[styles.adviceHint, { color: colors.textSoft }]}>
+                  Lijn {option.departure.line} → {option.departure.destination} · {option.walkMinutes} min lopen
+                </Text>
+              </View>
+              <View style={{ alignItems: "flex-end" }}>
+                <Text maxFontSizeMultiplier={1.3} style={[styles.compareTime, { color: colors.heading }]}>{option.departureInMinutes} min</Text>
+                <Text maxFontSizeMultiplier={1.3} style={[styles.adviceHint, { color: option.tight ? colors.delayWarning : colors.accentText }]}>
+                  {option.spareMinutes} min speling
+                </Text>
+              </View>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
       <View style={[styles.mapWrap, large && styles.mapWrapLarge, { borderColor: colors.border, backgroundColor: colors.surface }]}>
         {center ? <LeafletMap markers={mapMarkers} center={center} /> : <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}><Text style={{ color: colors.textMuted }}>Locatie bepalen…</Text></View>}
       </View>
@@ -247,17 +327,17 @@ export default function BuurtbordScreen() {
               <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <View style={styles.topRow}>
                   <Pressable onPress={() => openStop(item)} accessibilityRole="button"
-                    accessibilityLabel={"Open halte " + item.name + (item.id === bestStopId ? ", beste halte" : "")}
+                    accessibilityLabel={"Open halte " + item.name + (item.id === highlightedStopId ? ", beste halte" : "")}
                     style={styles.nameArea}>
                     <View style={[styles.modeDot, { backgroundColor: modaliteitColors[item.mode] }]} />
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.name, { color: colors.text }]} numberOfLines={large ? 2 : 1}>{item.name}</Text>
                       <Text style={[styles.meta, { color: colors.textSoft }]}>{item.walkMinutes ? `${item.walkMinutes} min lopen` : "Nabij"}</Text>
                       {/* With a large font the label goes under the name, so the name keeps the full width. */}
-                      {large && item.id === bestStopId ? <View style={[styles.bestBadge, styles.bestBadgeBelow, { backgroundColor: colors.successSoft }]}><Text style={[styles.bestBadgeText, { color: colors.accentText }]}>Beste halte</Text></View> : null}
+                      {large && item.id === highlightedStopId ? <View style={[styles.bestBadge, styles.bestBadgeBelow, { backgroundColor: colors.successSoft }]}><Text style={[styles.bestBadgeText, { color: colors.accentText }]}>Beste halte</Text></View> : null}
                     </View>
                   </Pressable>
-                  {!large && item.id === bestStopId ? <View style={[styles.bestBadge, { backgroundColor: colors.successSoft }]}><Text style={[styles.bestBadgeText, { color: colors.accentText }]}>Beste halte</Text></View> : null}
+                  {!large && item.id === highlightedStopId ? <View style={[styles.bestBadge, { backgroundColor: colors.successSoft }]}><Text style={[styles.bestBadgeText, { color: colors.accentText }]}>Beste halte</Text></View> : null}
                   <Pressable onPress={() => toggleFavoriteStop(item)} hitSlop={6} accessibilityRole="button"
                     accessibilityLabel={(isFavoriteStop(item.id) ? "Verwijder favoriete halte " : "Bewaar als favoriete halte ") + item.name}
                     accessibilityState={{ selected: isFavoriteStop(item.id) }} style={styles.star}>
@@ -312,6 +392,22 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 12, marginTop: 3 },
   mapWrap: { margin: 13, height: 170, borderRadius: 14, overflow: "hidden", borderWidth: 1 },
   mapWrapLarge: { height: 110, marginVertical: 8 },
+  adviceCard: { marginHorizontal: 13, marginTop: 8, padding: 12, borderRadius: 12, borderWidth: 1, gap: 10 },
+  adviceTop: { flexDirection: "row", alignItems: "center", gap: 8 },
+  adviceTitle: { fontSize: 16, fontWeight: "900" },
+  adviceHint: { fontSize: 11, lineHeight: 16 },
+  advicePill: { paddingHorizontal: 9, paddingVertical: 6, borderRadius: 15 },
+  advicePillText: { fontSize: 11, fontWeight: "900" },
+  adviceTrip: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: 10 },
+  adviceDestination: { fontSize: 14, fontWeight: "800" },
+  adviceMinutes: { fontSize: 16, fontWeight: "900", fontVariant: ["tabular-nums"] },
+  adviceFoot: { minHeight: 36, paddingHorizontal: 10, flexDirection: "row", alignItems: "center", gap: 7, borderRadius: 8 },
+  compareToggle: { minHeight: 44, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 8 },
+  compareCard: { marginHorizontal: 13, marginTop: 8, padding: 12, borderWidth: 1, borderRadius: 12, gap: 5 },
+  compareTitle: { fontSize: 14, fontWeight: "900" },
+  compareRow: { minHeight: 66, flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 8 },
+  compareStop: { fontSize: 13, fontWeight: "800" },
+  compareTime: { fontSize: 14, fontWeight: "900", fontVariant: ["tabular-nums"] },
   listContent: { paddingHorizontal: 13, paddingBottom: 30, gap: 7 },
   card: { borderRadius: 12, borderWidth: 1, padding: 11, gap: 7 },
   topRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },

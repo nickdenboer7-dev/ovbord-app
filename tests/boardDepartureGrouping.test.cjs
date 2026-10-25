@@ -10,7 +10,7 @@ Module._extensions[".ts"] = (mod, filename) => mod._compile(
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true }
   }).outputText, filename
 );
-const { groupBoardDepartures, DEPARTURE_DAY_GAP_MS, MAX_GROUPED_EXTRA_TIMES } = require("../lib/boardDepartureGrouping.ts");
+const { groupBoardDepartures, DEPARTURE_DAY_GAP_MS } = require("../lib/boardDepartureGrouping.ts");
 const { sortBoardDepartures } = require("../lib/boardSmartness.ts");
 if (old) Module._extensions[".ts"] = old;
 else delete Module._extensions[".ts"];
@@ -23,80 +23,56 @@ function departure(id, clock, options = {}) {
     mode: "bus", reliability: "unknown", relativeText: "", isLive: false, ...extra };
 }
 
-test("the night gap gets a centered divider and four adjacent planned departures form one row", () => {
+test("planned departures remain individual rows while the night divider stays visible", () => {
   const rows = [
     departure("old-live", "01:56", { isLive: true }),
     departure("first", "07:07"), departure("second", "07:36"),
     departure("third", "08:05"), departure("fourth", "08:34"),
     departure("later-live", "09:12", { isLive: true })
   ];
-  const grouped = groupBoardDepartures(sortBoardDepartures(rows.slice().reverse(), now), now);
-  assert.deepEqual(grouped.map(row => row.id), ["old-live", "first", "later-live"]);
-  assert.equal(grouped[0].gapStartClock, undefined);
-  assert.equal(grouped[1].gapStartClock, "07:07");
-  assert.deepEqual(grouped[1].groupedTimes, ["07:36", "08:05", "08:34"]);
-  assert.equal(grouped[0].groupedTimes, undefined);
-  assert.equal(grouped[2].groupedTimes, undefined);
-  assert.deepEqual(rows.map(row => row.id), ["old-live", "first", "second", "third", "fourth", "later-live"]);
+  const display = groupBoardDepartures(sortBoardDepartures(rows.slice().reverse(), now), now);
+  assert.deepEqual(display.map(row => row.id), rows.map(row => row.id));
+  assert.equal(display[1].gapStartClock, "07:07");
+  assert.deepEqual(display.map(row => row.gapStartClock).filter(Boolean), ["07:07"]);
+  assert.ok(display.every(row => row.groupedTimes === undefined));
+  assert.ok(rows.every(row => row.gapStartClock === undefined && row.groupedTimes === undefined));
 });
 
-test("planned siblings merge even across 61 minutes; the next separate live row receives the divider", () => {
+test("exactly 60 minutes has no divider; more than 60 minutes does", () => {
   assert.equal(DEPARTURE_DAY_GAP_MS, 3600000);
   const sameHour = groupBoardDepartures([departure("a", "10:00"), departure("b", "11:00")], now);
-  assert.equal(sameHour.length, 1);
-  assert.deepEqual(sameHour[0].groupedTimes, ["11:00"]);
-  const afterHour = groupBoardDepartures([
+  assert.deepEqual(sameHour.map(row => row.id), ["a", "b"]);
+  assert.equal(sameHour[1].gapStartClock, undefined);
+  const next = groupBoardDepartures([
     departure("a", "10:00"), departure("b", "11:01"), departure("live", "13:00", { isLive: true })
   ], now);
-  assert.deepEqual(afterHour.map(row => row.id), ["a", "live"]);
-  assert.deepEqual(afterHour[0].groupedTimes, ["11:01"]);
-  assert.equal(afterHour[0].gapStartClock, undefined);
-  assert.equal(afterHour[1].gapStartClock, "13:00");
+  assert.deepEqual(next.map(row => row.gapStartClock), [undefined, "11:01", "13:00"]);
 });
 
-test("only the first three following clocks appear; all later planned siblings remain collapsed", () => {
-  const clocks = ["07:00","07:10","07:20","07:30","07:40","07:50"];
-  const display = groupBoardDepartures(clocks.map((clock, index) => departure(String(index), clock)), now);
-  assert.equal(MAX_GROUPED_EXTRA_TIMES, 3);
-  assert.equal(display.length, 1);
-  assert.deepEqual(display[0].groupedTimes, ["07:10", "07:20", "07:30"]);
-});
-
-test("live, stale-live, cancelled and departed trips are never folded into planned rows", () => {
-  const flags = [{ isLive: true }, { liveDataStale: true }, { cancelled: true }, { departed: true }];
-  for (const flag of flags) {
-    const rows = groupBoardDepartures([
-      departure("before", "07:00"), departure("special", "07:10", flag), departure("after", "07:20")
+test("all planned trips stay separate irrespective of line, destination and metadata", () => {
+  const changes = [{}, { line: "N84" }, { destination: "Sloterdijk" },
+    { carrier: "RET" }, { mode: "tram" }, { platform: "B" }, { liveDataStale: true },
+    { cancelled: true }, { departed: true }, { isLive: true }];
+  for (const change of changes) {
+    const display = groupBoardDepartures([
+      departure("first", "07:00"), departure("second", "07:10", change), departure("third", "07:20")
     ], now);
-    assert.deepEqual(rows.map(row => row.id), ["before", "special", "after"]);
+    assert.deepEqual(display.map(row => row.id), ["first", "second", "third"]);
+    assert.ok(display.every(row => row.groupedTimes === undefined));
   }
 });
 
-test("planned grouping depends on line and destination, not carrier or platform metadata", () => {
-  for (const change of [{ line: "N84" }, { destination: "Sloterdijk" }]) {
-    const rows = groupBoardDepartures([departure("first", "07:00"), departure("other", "07:10", change)], now);
-    assert.equal(rows.length, 2);
-  }
-  for (const change of [{ carrier: "RET" }, { mode: "tram" }, { platform: "B" }]) {
-    const rows = groupBoardDepartures([departure("first", "07:00"), departure("other", "07:10", change)], now);
-    assert.equal(rows.length, 1);
-    assert.deepEqual(rows[0].groupedTimes, ["07:10"]);
-  }
-});
-
-test("planned siblings across midnight stay grouped; the divider appears after the group", () => {
+test("midnight keeps chronological rows and marks a separate gap afterward", () => {
   const display = groupBoardDepartures([
     departure("before", "23:45"), departure("after", "00:15", { day: "2026-10-27" }),
     departure("morning", "02:00", { day: "2026-10-27" }),
     departure("later-live", "03:30", { day: "2026-10-27", isLive: true })
   ], now);
-  assert.deepEqual(display.map(row => row.id), ["before", "later-live"]);
-  assert.deepEqual(display[0].groupedTimes, ["00:15", "02:00"]);
-  assert.equal(display[0].gapStartClock, undefined);
-  assert.equal(display[1].gapStartClock, "03:30");
+  assert.deepEqual(display.map(row => row.id), ["before", "after", "morning", "later-live"]);
+  assert.deepEqual(display.map(row => row.gapStartClock), [undefined, undefined, "02:00", "03:30"]);
 });
 
-test("variant B: autumn DST gap does not split N83; separator follows the 02:54 group", () => {
+test("autumn clock change: N83 planned 02:54 remains separate, divider before 03:23", () => {
   const referenceNow = Date.parse("2026-10-25T01:00:00+02:00");
   const rows = [
     departure("live-0225", "02:25", { isLive: true, effectiveAt: "2026-10-25T02:25:00+02:00" }),
@@ -107,66 +83,36 @@ test("variant B: autumn DST gap does not split N83; separator follows the 02:54 
     departure("live-0706", "07:06", { isLive: true, effectiveAt: "2026-10-25T07:06:00+01:00" })
   ];
   const result = groupBoardDepartures(sortBoardDepartures(rows, referenceNow), referenceNow);
-  assert.deepEqual(result.map(row => row.id), ["live-0225", "planned-0254", "live-0706"]);
-  assert.equal(result[1].gapStartClock, undefined);
-  assert.deepEqual(result[1].groupedTimes, ["03:23", "03:52", "04:23"]);
-  assert.equal(result[2].gapStartClock, "07:06");
-  assert.equal(result[0].groupedTimes, undefined);
-  assert.equal(result[2].groupedTimes, undefined);
+  assert.deepEqual(result.map(row => row.id), rows.map(row => row.id));
+  assert.deepEqual(result.map(row => row.gapStartClock), [undefined, undefined, "03:23", undefined, undefined, "07:06"]);
+  assert.ok(result.every(row => row.groupedTimes === undefined));
 });
 
-test("Bilderdijkstraat: two live trips stay separate and all planned N83 trips are consumed after the clock change", () => {
+test("Bilderdijkstraat fixture preserves every departure and both separators", () => {
   const fixture = require("./fixtures/bilderdijkstraat-clock-change.json");
   const referenceNow = Date.parse(fixture.generated_at);
   const rows = fixture.departures.map((item, index) => Object.freeze(departure(String(index), item.planned_time, {
     line: item.line, destination: item.destination, isLive: item.live, effectiveAt: item.effective_time
   })));
   const result = groupBoardDepartures(sortBoardDepartures(Object.freeze(rows), referenceNow), referenceNow);
-  assert.deepEqual(result.map(row => row.id), ["0", "1", "2", "7"]);
-  assert.deepEqual(result.map(row => row.gapStartClock), [undefined, undefined, "03:23", "07:06"]);
-  assert.deepEqual(result[2].groupedTimes, ["03:52", "04:23", "04:51"]);
-  assert.equal(result[0].groupedTimes, undefined);
-  assert.equal(result[1].groupedTimes, undefined);
-  assert.ok(rows.every(row => row.groupedTimes === undefined && row.gapStartClock === undefined));
+  assert.deepEqual(result.map(row => row.id), rows.map(row => row.id));
+  assert.deepEqual(result.map(row => row.gapStartClock).filter(Boolean), ["03:23", "07:06"]);
+  assert.ok(result.every(row => row.groupedTimes === undefined));
 });
 
-test("the next divider measures from the last consumed trip, including trips omitted from daarna", () => {
-  const result = groupBoardDepartures([
-    ...["07:00", "07:10", "07:20", "07:30", "08:00"].map((clock, index) => departure(String(index), clock)),
-    departure("near-live", "08:45", { isLive: true }),
-    departure("gap-live", "09:46", { isLive: true })
-  ], now);
-  assert.deepEqual(result.map(row => row.id), ["0", "near-live", "gap-live"]);
-  assert.deepEqual(result[0].groupedTimes, ["07:10", "07:20", "07:30"]);
-  assert.equal(result[1].gapStartClock, undefined);
-  assert.equal(result[2].gapStartClock, "09:46");
+test("spring clock change also keeps every physical trip", () => {
+  const referenceNow = Date.parse("2026-03-29T01:00:00+01:00");
+  const times = ["2026-03-29T01:54:00+01:00", "2026-03-29T03:23:00+02:00",
+    "2026-03-29T03:52:00+02:00", "2026-03-29T04:23:00+02:00", "2026-03-29T04:51:00+02:00"];
+  const rows = times.map((effectiveAt, index) => departure(String(index), effectiveAt.slice(11, 16), { effectiveAt }));
+  const result = groupBoardDepartures(sortBoardDepartures(rows.reverse(), referenceNow), referenceNow);
+  assert.deepEqual(result.map(row => row.id), ["0", "1", "2", "3", "4"]);
+  assert.ok(result.every(row => row.groupedTimes === undefined));
 });
 
-test("repeated autumn wall clocks and the spring jump preserve distinct following departures", () => {
-  for (const [referenceNow, times, expected] of [
-    [Date.parse("2026-10-25T01:00:00+02:00"),
-      ["2026-10-25T02:10:00+02:00", "2026-10-25T02:40:00+02:00", "2026-10-25T02:10:00+01:00", "2026-10-25T02:40:00+01:00", "2026-10-25T03:10:00+01:00"],
-      ["02:40", "02:10", "02:40"]],
-    [Date.parse("2026-03-29T01:00:00+01:00"),
-      ["2026-03-29T01:54:00+01:00", "2026-03-29T03:23:00+02:00", "2026-03-29T03:52:00+02:00", "2026-03-29T04:23:00+02:00", "2026-03-29T04:51:00+02:00"],
-      ["03:23", "03:52", "04:23"]]
-  ]) {
-    const rows = times.map((effectiveAt, index) => departure(String(index), effectiveAt.slice(11, 16), { effectiveAt }));
-    const result = groupBoardDepartures(sortBoardDepartures(rows.reverse(), referenceNow), referenceNow);
-    assert.deepEqual(result.map(row => row.id), ["0"]);
-    assert.deepEqual(result[0].groupedTimes, expected);
-    assert.equal(result[0].gapStartClock, undefined);
-  }
-});
-
-test("the board renders the separator, blue grouping and next-times without touching the arrival view", () => {
+test("FlowBoard still renders the divider for departures, independently of arrivals", () => {
   const board = fs.readFileSync(path.join(__dirname, "../components/FlowBoard.tsx"), "utf8");
-  const row = fs.readFileSync(path.join(__dirname, "../components/StopBoardRow.tsx"), "utf8");
   assert.match(board, /groupBoardDepartures\(remaining, nowMs\)/);
   assert.match(board, /tab === "departures" && item\.gapStartClock/);
   assert.match(board, /Volgende vertrekken vanaf \{clock\}/);
-  assert.match(board, /laterTimes=\{tab==="departures"\?item\.groupedTimes:undefined\}/);
-  assert.match(row, /#EEF4FF/);
-  assert.match(row, /"daarna "\+laterTimes\.slice\(0,3\)\.join\(" · "\)/);
-  assert.match(row, /fontVariant:\["tabular-nums"\]/);
 });

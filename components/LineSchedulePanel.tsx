@@ -8,7 +8,7 @@ import { departureClockDelay } from "../lib/departureLine";
 import { STOP_BOARD_BLUE } from "../lib/stopBoardDesign";
 import {
   addDays, cachedSchedule, dayState, LineSchedule, liveByTripId, localIsoDate, longDateLabel, monthGrid, monthLabel,
-  nextTripIndex, oppositeDirection, pickDirection, scheduleCacheKey, ScheduleDirection, shortDateLabel, showsPlatforms
+  nextTripIndex, oppositeDirection, pickDirection, scheduleCacheKey, scheduleGapStartClock, ScheduleDirection, shortDateLabel, showsPlatforms
 } from "../lib/lineSchedule";
 
 type Props = {
@@ -22,6 +22,9 @@ type Props = {
   date: string;
   onChangeDate: (iso: string) => void;
   onOpenDeparture: (item: DepartureItem) => void;
+  /** Keep the expanded parent direction label aligned when the inner switch is used. */
+  onDisplayDirection?: (destination: string) => void;
+  jumpToNextToken?: number;
   /** Het bestaande compacte overzicht; zichtbaar tijdens laden en als de dienstregeling niet beschikbaar is. */
   fallback?: React.ReactNode;
 };
@@ -31,7 +34,7 @@ type DirectionChoice = { routeId: string; directionId: number | null; destinatio
 const WEEKDAYS = ["ma", "di", "wo", "do", "vr", "za", "zo"];
 
 /** Inline dienstregeling onder een richting in de Lijnen-tab: geen apart scherm, geen extra terugstap. */
-export function LineSchedulePanel({ stopId, line, routeIds, destination, gtfsTripIds, liveDepartures, date, onChangeDate, onOpenDeparture, fallback }: Props) {
+export function LineSchedulePanel({ stopId, line, routeIds, destination, gtfsTripIds, liveDepartures, date, onChangeDate, onOpenDeparture, onDisplayDirection, jumpToNextToken, fallback }: Props) {
   const { colors } = useApp();
   const [schedule, setSchedule] = useState<LineSchedule | null>(null);
   const [loading, setLoading] = useState(true);
@@ -39,6 +42,7 @@ export function LineSchedulePanel({ stopId, line, routeIds, destination, gtfsTri
   const [retry, setRetry] = useState(0);
   const [choice, setChoice] = useState<DirectionChoice | null>(null);
   const [showPast, setShowPast] = useState(false);
+  useEffect(() => { if (jumpToNextToken) setShowPast(false); }, [jumpToNextToken]);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const routeKey = routeIds.join(",");
 
@@ -58,20 +62,23 @@ export function LineSchedulePanel({ stopId, line, routeIds, destination, gtfsTri
   const tomorrow = addDays(today, 1);
   const nowMs = Date.now();
   const isToday = date === today;
+  // A newly selected date must never show yesterday's schedule during the effect transition.
+  const activeSchedule = schedule?.date === date ? schedule : null;
+  const loadingForDate = loading || Boolean(schedule && schedule.date !== date);
 
   const direction: ScheduleDirection | null = useMemo(() => {
-    if (!schedule) return null;
+    if (!activeSchedule) return null;
     if (choice) {
-      const picked = schedule.directions.find((d) => d.routeId === choice.routeId && (choice.directionId !== null
+      const picked = activeSchedule.directions.find((d) => d.routeId === choice.routeId && (choice.directionId !== null
         ? d.directionId === choice.directionId
         : d.destination.toLocaleLowerCase("nl") === choice.destination.toLocaleLowerCase("nl")));
       if (picked) return picked;
     }
-    return pickDirection(schedule, { destination, gtfsTripIds, routeIds });
-  }, [schedule, choice, destination, gtfsTripIds, routeIds]);
+    return pickDirection(activeSchedule, { destination, gtfsTripIds, routeIds });
+  }, [activeSchedule, choice, destination, gtfsTripIds, routeIds]);
 
   const live = useMemo(() => isToday ? liveByTripId(liveDepartures) : new Map<string, DepartureItem>(), [isToday, liveDepartures]);
-  const opposite = schedule && direction ? oppositeDirection(schedule, direction) : null;
+  const opposite = activeSchedule && direction ? oppositeDirection(activeSchedule, direction) : null;
   const trips = direction?.trips || [];
   const nextIndex = isToday ? nextTripIndex(trips, live, nowMs) : 0;
   const pastCount = isToday ? (nextIndex < 0 ? trips.length : nextIndex) : 0;
@@ -105,17 +112,17 @@ export function LineSchedulePanel({ stopId, line, routeIds, destination, gtfsTri
         <Text maxFontSizeMultiplier={1.3} style={[styles.status, { color: liveCount ? colors.accentText : colors.textSoft }]}>{liveCount ? "Live" : "Gepland"}</Text>
       </View>
 
-      {loading || failed ? (
+      {loadingForDate || failed ? (
         <View style={styles.fallback}>
-          {fallback}
-          {loading
+          {isToday ? fallback : null}
+          {loadingForDate
             ? <View style={styles.loading}><ActivityIndicator size="small" color={STOP_BOARD_BLUE} /><Text maxFontSizeMultiplier={1.3} style={[styles.muted, { color: colors.textSoft }]}>Dienstregeling laden…</Text></View>
             : <Pressable onPress={() => setRetry((n) => n + 1)} accessibilityRole="button" style={styles.loading}>
                 <Text maxFontSizeMultiplier={1.3} style={[styles.muted, { color: colors.textSoft }]}>Volledige dienstregeling nu niet beschikbaar.</Text>
                 <Text maxFontSizeMultiplier={1.3} style={[styles.link, { color: STOP_BOARD_BLUE }]}>Opnieuw</Text>
               </Pressable>}
         </View>
-      ) : schedule && direction ? (
+      ) : activeSchedule && direction ? (
         <>
           <View style={styles.dirRow}>
             <View style={styles.dirText}>
@@ -125,7 +132,7 @@ export function LineSchedulePanel({ stopId, line, routeIds, destination, gtfsTri
               </Text>
             </View>
             {opposite ? (
-              <Pressable onPress={() => { setShowPast(false); setChoice({ routeId: opposite.routeId, directionId: opposite.directionId, destination: opposite.destination }); }}
+              <Pressable onPress={() => { setShowPast(false); setChoice({ routeId: opposite.routeId, directionId: opposite.directionId, destination: opposite.destination }); onDisplayDirection?.(opposite.destination); }}
                 accessibilityRole="button" accessibilityLabel={"Andere richting: " + opposite.destination} hitSlop={6}
                 style={[styles.swap, { borderColor: colors.border, backgroundColor: colors.surface }]}>
                 <Ionicons name="swap-horizontal" size={18} color={STOP_BOARD_BLUE} />
@@ -156,11 +163,20 @@ export function LineSchedulePanel({ stopId, line, routeIds, destination, gtfsTri
               const isNext = isToday && index === nextIndex;
               const opens = Boolean(dep?.ritId) && !past;
               const note = [trip.variant ? "naar " + trip.destination : "", platforms && trip.platform ? "perron " + trip.platform : ""].filter(Boolean).join(" · ");
+              const gapClock = scheduleGapStartClock(i > 0 ? visible[i - 1] : undefined, trip);
               return (
-                <Pressable key={trip.tripId + ":" + trip.plannedAt} disabled={!opens} onPress={() => dep && onOpenDeparture(dep)}
+                <React.Fragment key={trip.tripId + ":" + trip.plannedAt}>
+                  {gapClock ? (
+                    <View style={styles.gapDivider} accessibilityLabel={"Volgende vertrekken vanaf " + gapClock}>
+                      <View style={[styles.gapRule, { backgroundColor: colors.border }]} />
+                      <Text maxFontSizeMultiplier={1.3} style={[styles.gapText, { color: colors.textMuted }]}>Volgende vertrekken vanaf {gapClock}</Text>
+                      <View style={[styles.gapRule, { backgroundColor: colors.border }]} />
+                    </View>
+                  ) : null}
+                <Pressable disabled={!opens} onPress={() => dep && onOpenDeparture(dep)}
                   accessibilityRole={opens ? "button" : undefined}
                   accessibilityLabel={"Lijn " + line + ", " + trip.plannedTime + (note ? ", " + note : "") + (cancelled ? ", rijdt niet" : delay ? ", " + delay.text + " minuten later" : "") + (opens ? ", rit openen" : "")}
-                  style={[styles.trip, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
+                  style={[styles.trip, i > 0 && !gapClock && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
                   <Text maxFontSizeMultiplier={1.3}
                     style={[styles.tripTime, { color: cancelled ? colors.danger : past ? colors.textMuted : isNext ? colors.heading : colors.text },
                       cancelled && { textDecorationLine: "line-through" }]}>{trip.plannedTime}</Text>
@@ -173,18 +189,19 @@ export function LineSchedulePanel({ stopId, line, routeIds, destination, gtfsTri
                       : null}
                   {opens ? <Ionicons name="chevron-forward" size={15} color={colors.textMuted} /> : null}
                 </Pressable>
+                </React.Fragment>
               );
             })}
           </View>
         </>
-      ) : schedule ? (
+      ) : activeSchedule ? (
         <View style={styles.emptyBox}>
           <Text maxFontSizeMultiplier={1.3} style={[styles.empty, { color: colors.textSoft }]}>
-            {!schedule.inFeed ? "Voor deze dag is nog geen dienstregeling bekend."
-              : schedule.directions.length ? "Op deze dag geen ritten in deze richting."
+            {!activeSchedule.inFeed ? "Voor deze dag is nog geen dienstregeling bekend."
+              : activeSchedule.directions.length ? "Op deze dag geen ritten in deze richting."
               : "Lijn " + line + " rijdt op deze dag niet vanaf deze halte."}
           </Text>
-          {schedule.directions.map((d) => (
+          {activeSchedule.directions.map((d) => (
             <Pressable key={d.key} onPress={() => setChoice({ routeId: d.routeId, directionId: d.directionId, destination: d.destination })} accessibilityRole="button">
               <Text maxFontSizeMultiplier={1.3} style={[styles.link, { color: STOP_BOARD_BLUE }]}>Toon richting {d.destination}</Text>
             </Pressable>
@@ -245,7 +262,7 @@ function ScheduleCalendar({ visible, today, selected, schedule, onClose, onPick 
                 const disabled = state === "unavailable";
                 return (
                   <Pressable key={iso} disabled={disabled} onPress={() => onPick(iso)} accessibilityRole="button"
-                    accessibilityLabel={longDateLabel(iso) + (state === "noService" ? ", geen ritten" : "")}
+                    accessibilityLabel={longDateLabel(iso) + (state === "noService" ? ", geen ritten" : state === "unavailable" ? ", niet beschikbaar" : "")}
                     accessibilityState={{ selected: active, disabled }}
                     style={[styles.cell, active && { backgroundColor: STOP_BOARD_BLUE, borderRadius: 10 }]}>
                     <Text maxFontSizeMultiplier={1.2} style={[styles.cellText, {
@@ -259,7 +276,10 @@ function ScheduleCalendar({ visible, today, selected, schedule, onClose, onPick 
             </View>
           ))}
           {schedule?.serviceDates.length ? (
-            <Text maxFontSizeMultiplier={1.3} style={[styles.calHint, { color: colors.textMuted }]}>Grijze dagen: deze lijn rijdt dan niet vanaf deze halte.</Text>
+            <View style={styles.calLegend}>
+              <Text maxFontSizeMultiplier={1.3} style={[styles.calHint, { color: colors.textMuted }]}>Grijs: deze lijn rijdt niet op die dag.</Text>
+              <Text maxFontSizeMultiplier={1.3} style={[styles.calHint, { color: colors.textMuted }]}>Lichtgrijs: dienstregeling nog niet beschikbaar.</Text>
+            </View>
           ) : null}
         </Pressable>
       </Pressable>
@@ -285,7 +305,10 @@ const styles = StyleSheet.create({
   swap: { width: 44, height: 44, borderRadius: 10, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   pastToggle: { flexDirection: "row", alignItems: "center", gap: 5, minHeight: 30 },
   list: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 10, overflow: "hidden" },
-  trip: { minHeight: 46, paddingHorizontal: 12, flexDirection: "row", alignItems: "center", gap: 10 },
+  gapDivider: { minHeight: 34, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12 },
+  gapRule: { flex: 1, height: StyleSheet.hairlineWidth },
+  gapText: { fontSize: 10, fontWeight: "700", fontVariant: ["tabular-nums"] },
+  trip: { minHeight: 48, paddingHorizontal: 12, flexDirection: "row", alignItems: "center", gap: 10 },
   tripTime: { fontSize: 17, fontWeight: "800", fontVariant: ["tabular-nums"], minWidth: 52 },
   delay: { fontSize: 12, fontWeight: "800", fontVariant: ["tabular-nums"] },
   note: { flex: 1, minWidth: 0, fontSize: 11.5 },
@@ -306,5 +329,6 @@ const styles = StyleSheet.create({
   cell: { flex: 1, height: 44, alignItems: "center", justifyContent: "center" },
   cellText: { fontSize: 15 },
   todayDot: { position: "absolute", bottom: 6, width: 5, height: 5, borderRadius: 3 },
-  calHint: { fontSize: 11, marginTop: 8, textAlign: "center" }
+  calLegend: { marginTop: 8, gap: 3, paddingHorizontal: 3 },
+  calHint: { fontSize: 11, textAlign: "left" }
 });

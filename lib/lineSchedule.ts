@@ -222,6 +222,16 @@ export function nextTripIndex(trips: readonly ScheduleTrip[], live: Map<string, 
   });
 }
 
+/** >60 minutes between physical departures: show a night/service-gap divider, even across DST. */
+export function scheduleGapStartClock(previous: ScheduleTrip | undefined, current: ScheduleTrip): string | null {
+  if (!previous) return null;
+  const before = Date.parse(previous.plannedAt);
+  const after = Date.parse(current.plannedAt);
+  return Number.isFinite(before) && Number.isFinite(after) && after - before > 60 * 60_000
+    ? current.plannedTime
+    : null;
+}
+
 /** Meerdere perrons in één richting: dan per rit het perron tonen. */
 export function showsPlatforms(direction: ScheduleDirection): boolean {
   return new Set(direction.trips.map((t) => t.stopId)).size > 1 && direction.trips.some((t) => t.platform);
