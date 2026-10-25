@@ -23,8 +23,9 @@ function sameLineAndDestination(a: DepartureItem, b: DepartureItem) {
 
 /**
  * Input is already sorted/filtered in visible departure order.
- * A >60-minute gap starts a new displayed row before we attempt to merge it;
- * never hide a day divider inside a collapsed group. Live data stays separate.
+ * First merge consecutive planned trips by line and destination, even when their
+ * absolute instants are >60 min apart (for example across the autumn clock change).
+ * Only then attach a gap divider to the NEXT separate visible row. Live stays separate.
  */
 export function groupBoardDepartures(rows: readonly DepartureItem[], nowMs: number): BoardDisplayDeparture[] {
   const display: BoardDisplayDeparture[] = [];
@@ -35,12 +36,13 @@ export function groupBoardDepartures(rows: readonly DepartureItem[], nowMs: numb
     const ms = departureTimeRemainingMs(item, nowMs);
     const clock = effectiveDepartureClock(item);
     const validClock = /^(?:[01]?\d|2[0-3]):[0-5]\d$/.test(clock);
-    const gap = previousMs !== null && ms !== null && ms - previousMs > DEPARTURE_DAY_GAP_MS;
-    if (!gap && previous && currentDisplay && canGroup(previous) && canGroup(item) &&
-        previousMs !== null && ms !== null && validClock && sameLineAndDestination(previous, item)) {
+    const joinsPlannedGroup = previous && currentDisplay && canGroup(previous) && canGroup(item) &&
+      previousMs !== null && ms !== null && validClock && sameLineAndDestination(previous, item);
+    if (joinsPlannedGroup && currentDisplay) {
       const times = currentDisplay.groupedTimes || [];
       if (times.length < MAX_GROUPED_EXTRA_TIMES) currentDisplay.groupedTimes = [...times, clock];
     } else {
+      const gap = previousMs !== null && ms !== null && ms - previousMs > DEPARTURE_DAY_GAP_MS;
       currentDisplay = { ...item, ...(gap && validClock ? { gapStartClock: clock } : {}) };
       display.push(currentDisplay);
     }
