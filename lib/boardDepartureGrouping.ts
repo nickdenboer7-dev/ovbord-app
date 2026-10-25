@@ -13,7 +13,8 @@ export type BoardDisplayDeparture = DepartureItem & {
 };
 
 const normalize = (text: string | undefined) => (text || "").trim().toLocaleLowerCase("nl-NL");
-const canGroup = (_item: DepartureItem) => false;
+const canGroup = (item: DepartureItem) =>
+  item.isLive !== true && !item.liveDataStale && !item.cancelled && !item.departed;
 
 function sameLineAndDestination(a: DepartureItem, b: DepartureItem) {
   return normalize(a.line) === normalize(b.line) &&

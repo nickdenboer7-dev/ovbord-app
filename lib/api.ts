@@ -161,7 +161,7 @@ export function normalizeDeparture(item: any): DepartureItem {
     ? item.live
     : item?.realtime === true
       ? true
-      : undefined;
+      : false;
   // Realtime departure TIMING is not proof of a fresh GPS position.
   const reliability: DepartureItem["reliability"] = "planned";
 
