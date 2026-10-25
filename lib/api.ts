@@ -394,7 +394,7 @@ export async function getNearby(lat: number, lon: number): Promise<StopSummary[]
   return arrayOf<any>(first(raw?.stops, raw?.items, raw?.results, raw)).map(normalizeNearbyRow);
 }
 
-export async function getHalte(id: string): Promise<HalteBoardData> {
+export async function getHalte(id: string, _skipSiblings = false): Promise<HalteBoardData> {
   const raw = await requestJson(`/api/halte/${encodeURIComponent(id)}`);
   const stopRaw = first(raw?.stop, raw?.halte, raw);
   const board: HalteBoardData = {
@@ -410,6 +410,46 @@ export async function getHalte(id: string): Promise<HalteBoardData> {
     stale: raw?.stale === true
   };
   if (!board.stop.lines.length) board.stop.lines = mergeLines(board.departures.map(d => ({ line:d.line,carrier:d.carrier,mode:d.mode })));
+
+  // Merge sibling quays: zelfde haltename, max 200m, andere ID → beide richtingen op het bord
+  if (!_skipSiblings && board.stop.lat && board.stop.lon) {
+    try {
+      const nearbyRaw = await requestJson("/api/nearby", { lat: board.stop.lat, lon: board.stop.lon });
+      const normName = (s: string) => (s || "").trim().toLocaleLowerCase("nl");
+      const myName = normName(board.stop.name);
+      const siblingIds: string[] = [];
+      const nearbyList = arrayOf<any>(first((nearbyRaw as any)?.stops, (nearbyRaw as any)?.items, (nearbyRaw as any)?.results, nearbyRaw));
+      for (const stop of nearbyList) {
+        for (const quay of arrayOf<any>((stop as any)?.quays)) {
+          const qid = str(first((quay as any)?.id, (quay as any)?.stop_id));
+          const qdist = num(first((quay as any)?.distance_m, (quay as any)?.distance_meters, (quay as any)?.distance));
+          const qname = normName(str(first((quay as any)?.name, (stop as any)?.name)));
+          if (qid && qid !== id && qname === myName && qdist !== undefined && qdist <= 200) {
+            siblingIds.push(qid);
+          }
+        }
+      }
+      if (siblingIds.length) {
+        const extras = await Promise.all(siblingIds.map(sid => getHalte(sid, true).catch(() => null)));
+        const seen = new Set(board.departures.map(d => d.ritId || (d.plannedTime + "|" + d.line + "|" + d.destination)));
+        for (const extra of extras) {
+          if (!extra) continue;
+          for (const dep of extra.departures) {
+            const key = dep.ritId || (dep.plannedTime + "|" + dep.line + "|" + dep.destination);
+            if (!seen.has(key)) { seen.add(key); board.departures.push(dep); }
+          }
+        }
+        board.departures.sort((a, b) => {
+          const ta = a.effectiveAt ? Date.parse(a.effectiveAt) : 0;
+          const tb = b.effectiveAt ? Date.parse(b.effectiveAt) : 0;
+          return ta - tb;
+        });
+      }
+    } catch {
+      // Sibling quays zijn optioneel — nooit het bord blokkeren bij een fout
+    }
+  }
+
   rememberBoard(board);
   return board;
 }
