@@ -115,6 +115,50 @@ test("variant B: autumn DST gap does not split N83; separator follows the 02:54 
   assert.equal(result[2].groupedTimes, undefined);
 });
 
+test("Bilderdijkstraat: two live trips stay separate and all planned N83 trips are consumed after the clock change", () => {
+  const fixture = require("./fixtures/bilderdijkstraat-clock-change.json");
+  const referenceNow = Date.parse(fixture.generated_at);
+  const rows = fixture.departures.map((item, index) => Object.freeze(departure(String(index), item.planned_time, {
+    line: item.line, destination: item.destination, isLive: item.live, effectiveAt: item.effective_time
+  })));
+  const result = groupBoardDepartures(sortBoardDepartures(Object.freeze(rows), referenceNow), referenceNow);
+  assert.deepEqual(result.map(row => row.id), ["0", "1", "2", "7"]);
+  assert.deepEqual(result.map(row => row.gapStartClock), [undefined, undefined, "03:23", "07:06"]);
+  assert.deepEqual(result[2].groupedTimes, ["03:52", "04:23", "04:51"]);
+  assert.equal(result[0].groupedTimes, undefined);
+  assert.equal(result[1].groupedTimes, undefined);
+  assert.ok(rows.every(row => row.groupedTimes === undefined && row.gapStartClock === undefined));
+});
+
+test("the next divider measures from the last consumed trip, including trips omitted from daarna", () => {
+  const result = groupBoardDepartures([
+    ...["07:00", "07:10", "07:20", "07:30", "08:00"].map((clock, index) => departure(String(index), clock)),
+    departure("near-live", "08:45", { isLive: true }),
+    departure("gap-live", "09:46", { isLive: true })
+  ], now);
+  assert.deepEqual(result.map(row => row.id), ["0", "near-live", "gap-live"]);
+  assert.deepEqual(result[0].groupedTimes, ["07:10", "07:20", "07:30"]);
+  assert.equal(result[1].gapStartClock, undefined);
+  assert.equal(result[2].gapStartClock, "09:46");
+});
+
+test("repeated autumn wall clocks and the spring jump preserve distinct following departures", () => {
+  for (const [referenceNow, times, expected] of [
+    [Date.parse("2026-10-25T01:00:00+02:00"),
+      ["2026-10-25T02:10:00+02:00", "2026-10-25T02:40:00+02:00", "2026-10-25T02:10:00+01:00", "2026-10-25T02:40:00+01:00", "2026-10-25T03:10:00+01:00"],
+      ["02:40", "02:10", "02:40"]],
+    [Date.parse("2026-03-29T01:00:00+01:00"),
+      ["2026-03-29T01:54:00+01:00", "2026-03-29T03:23:00+02:00", "2026-03-29T03:52:00+02:00", "2026-03-29T04:23:00+02:00", "2026-03-29T04:51:00+02:00"],
+      ["03:23", "03:52", "04:23"]]
+  ]) {
+    const rows = times.map((effectiveAt, index) => departure(String(index), effectiveAt.slice(11, 16), { effectiveAt }));
+    const result = groupBoardDepartures(sortBoardDepartures(rows.reverse(), referenceNow), referenceNow);
+    assert.deepEqual(result.map(row => row.id), ["0"]);
+    assert.deepEqual(result[0].groupedTimes, expected);
+    assert.equal(result[0].gapStartClock, undefined);
+  }
+});
+
 test("the board renders the separator, blue grouping and next-times without touching the arrival view", () => {
   const board = fs.readFileSync(path.join(__dirname, "../components/FlowBoard.tsx"), "utf8");
   const row = fs.readFileSync(path.join(__dirname, "../components/StopBoardRow.tsx"), "utf8");

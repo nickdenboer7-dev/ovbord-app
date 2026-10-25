@@ -274,6 +274,39 @@ test('FlowBoard shows a day divider and groups only adjacent planned trips after
   assert.equal(find(list.props.renderItem({item:list.props.data[2],index:2}),'StopBoardRow').props.laterTimes,undefined);
  }finally{h.destroy();}
 });
+test('Bilderdijkstraat API-to-board: daarna clocks never reappear as rows, with or without a pinned N83',async t=>{
+ defaults();storageData.clear();freshCache();app.colors=require('../constants/colors.ts').themes.light;
+ const fixture=require('./fixtures/bilderdijkstraat-clock-change.json'),referenceNow=Date.parse(fixture.generated_at);
+ t.mock.method(Date,'now',()=>referenceNow);
+ const before=global.fetch;
+ try{
+  global.fetch=async()=>({ok:true,json:async()=>fixture});
+  const {getHalte}=require('../lib/api.ts'),b=await getHalte('3979746');
+  const {FlowBoard}=require('../components/FlowBoard.tsx'),{StopBoardRow}=require('../components/StopBoardRow.tsx');
+  for(const favoriteLines of [[],['N83|GVB']]){
+   app.favoriteLines=favoriteLines;const h=new Harness();
+   try{
+    const tree=h.render(()=>FlowBoard({stop:b.stop,initialBoard:b,onBack(){}})),list=find(tree,'FlatList');
+    const views=list.props.data.map((item,index)=>list.props.renderItem({item,index}));
+    const rows=[...findAll(list.props.ListHeaderComponent,'StopBoardRow'),...views.flatMap(view=>findAll(view,'StopBoardRow'))];
+    assert.deepEqual(rows.map(row=>row.props.item.plannedTime),['02:25','02:54','03:23','07:06']);
+    assert.deepEqual(rows.map(row=>row.props.item.isLive),[true,true,false,false]);
+    assert.deepEqual(rows[2].props.laterTimes,['03:52','04:23','04:51']);
+    assert.equal(rows[0].props.laterTimes,undefined);assert.equal(rows[1].props.laterTimes,undefined);
+    assert.deepEqual(list.props.data.filter(row=>row.gapStartClock).map(row=>row.gapStartClock),['03:23','07:06']);
+    const rendered=rows.map(row=>StopBoardRow(row.props));
+    const following=rendered.flatMap(row=>findAll(row,'Text')).filter(node=>text(node).startsWith('daarna '));
+    assert.deepEqual(following.map(text),['daarna 03:52 · 04:23 · 04:51']);
+    assert.equal((rendered.map(text).join(' ').match(/03:52|04:23|04:51/g)||[]).length,3);
+    assert.doesNotMatch(rendered.map(text).join(' '),/05:18/);
+    assert.equal((rendered[2].props.accessibilityLabel.match(/03:52|04:23|04:51/g)||[]).length,3);
+    assert.deepEqual(views.flatMap(view=>findAll(view,'View')).map(view=>view.props.accessibilityLabel).filter(Boolean),
+      ['Volgende vertrekken vanaf 03:23','Volgende vertrekken vanaf 07:06']);
+   }finally{h.destroy();}
+  }
+ }finally{global.fetch=before;}
+});
+
 test('stop-board mode buttons and Lijnen actually filter the mixed stop, and Alle clears the filters',()=>{
  defaults();const h=new Harness(),s=stop('mix',{name:'Amsterdam, Test',city:'Amsterdam',modes:['bus','tram']}),b=board(s,[dep('bus',8,{mode:'bus',effectiveAt:new Date(Date.now()+480000).toISOString()}),dep('tram',9,{mode:'tram',line:'1',effectiveAt:new Date(Date.now()+540000).toISOString()})]);
  const {FlowBoard}=require('../components/FlowBoard.tsx'),props={stop:s,initialBoard:b,onBack(){}};const render=()=>h.render(()=>FlowBoard(props));
