@@ -70,8 +70,9 @@ export function describeLocationAge(fixAt: number, nowMs: number): string {
   return days + (days === 1 ? " dag geleden" : " dagen geleden");
 }
 
-/** A "laatst-bekend" fix, or a "gps" fix old enough to no longer count as live (V5.8.1). */
-export function isLocationStale(bron: LocatieResultaat["bron"] | null, fixAt: number | null, nowMs: number, staleAfterMs = 120000): boolean {
+/** A "laatst-bekend" fix, or a "gps" fix old enough to no longer count as live (V5.9).
+ *  Balk verschijnt pas na 5 minuten (was 2 minuten in V5.8.1). */
+export function isLocationStale(bron: LocatieResultaat["bron"] | null, fixAt: number | null, nowMs: number, staleAfterMs = 300000): boolean {
   if (!bron || fixAt === null) return false;
   if (bron === "laatst-bekend") return true;
   if (bron === "gps") return nowMs - fixAt > staleAfterMs;
