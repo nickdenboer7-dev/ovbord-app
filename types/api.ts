@@ -42,6 +42,8 @@ export interface StopSummary {
 export interface DepartureItem {
   id: string;
   ritId?: string;
+  /** Static GTFS trip_id from the board feed; links a live row to /api/dienstregeling. */
+  gtfsTripId?: string;
   /** Service day supplied by the API, to distinguish repeated vehicle workings. */
   serviceDate?: string;
   line: string;

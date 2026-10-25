@@ -459,6 +459,7 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
           departures={sortBoardDepartures(visibleDepartures.filter(row=>!selectedMode||(row.mode||stop.mode)===selectedMode), nowMs).map(row => withBoardFreshness(row, timingCurrent))}
           onSelectLine={(line) => { setTab("departures"); setSelectedDirection(null); selectLine(line); }}
           onOpenDeparture={openTrip}
+          stopId={stop.id}
           favoriteKeys={favoriteKeySet}
           onToggleFavorite={(line, carrier) => {const key=favoriteLineKey(line,carrier);rememberLineOrigin(key,board?.stop||stop);toggleFavoriteLine(key);}}
         />

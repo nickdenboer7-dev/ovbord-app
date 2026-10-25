@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import React, { useMemo } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { useApp } from "../context/AppProvider";
 import type { DepartureItem } from "../types/api";
@@ -8,9 +8,11 @@ import { departureClockDelay } from "../lib/departureLine";
 import { stopBoardTiming } from "../lib/stopBoardDesign";
 import { StopBoardBadge } from "./StopBoardRow";
 import { favoriteLineKey } from "../lib/favoriteLines";
+import { localIsoDate, recallLinesTab, rememberLinesTab } from "../lib/lineSchedule";
+import { LineSchedulePanel } from "./LineSchedulePanel";
 
 type Direction = { destination: string; key: string; departures: DepartureItem[] };
-type Group = { line: string; carrier: string; directions: Direction[]; total: number };
+type Group = { line: string; carrier: string; directions: Direction[]; total: number; routeIds: string[]; departures: DepartureItem[] };
 type Props = {
   /** Favourite line keys (favoriteLineKey): their cards get a filled star. */
   favoriteKeys?: ReadonlySet<string>;
@@ -18,20 +20,29 @@ type Props = {
   departures: DepartureItem[];
   onOpenDeparture: (item: DepartureItem) => void;
   onSelectLine: (line: string) => void;
+  /** Halte-ID voor /api/dienstregeling; zonder ID blijft de Lijnen-tab zoals vóór de dienstregeling. */
+  stopId?: string;
 };
 
 /** One card per line, direction rows and real times only. No invented occupancy/GPS. */
-export function FlowLineGroups({ departures, onOpenDeparture, onSelectLine, favoriteKeys, onToggleFavorite }: Props) {
+export function FlowLineGroups({ departures, onOpenDeparture, onSelectLine, favoriteKeys, onToggleFavorite, stopId }: Props) {
   const { colors, resolvedScheme } = useApp();
+  const remembered = stopId ? recallLinesTab(stopId) : null;
+  const todayIso = localIsoDate(new Date());
+  const [expanded, setExpanded] = useState<string | null>(remembered?.expanded ?? null);
+  const [date, setDate] = useState<string>(remembered?.date && remembered.date >= todayIso ? remembered.date : todayIso);
+  const listRef = useRef<FlatList<Group>>(null);
+  const restoredScroll = useRef(false);
+
   const groups = useMemo<Group[]>(() => {
-    const byLine = new Map<string, { line: string; carrier: string; byDirection: Map<string, Direction>; total: number }>();
+    const byLine = new Map<string, { line: string; carrier: string; byDirection: Map<string, Direction>; total: number; routeIds: Set<string>; departures: DepartureItem[] }>();
     for (const dep of departures) {
       const line = String(dep.line || "?").trim();
       const carrier = String(dep.carrier || "").trim();
       const lineKey = [line.toLowerCase(), carrier.toLowerCase()].join(":");
       let grp = byLine.get(lineKey);
       if (!grp) {
-        grp = { line, carrier, byDirection: new Map(), total: 0 };
+        grp = { line, carrier, byDirection: new Map(), total: 0, routeIds: new Set(), departures: [] };
         byLine.set(lineKey, grp);
       }
       const destination = String(dep.destination || "Bestemming onbekend").trim();
@@ -42,16 +53,29 @@ export function FlowLineGroups({ departures, onOpenDeparture, onSelectLine, favo
         grp.byDirection.set(directionKey, direction);
       }
       direction.departures.push(dep);
+      grp.departures.push(dep);
+      if (dep.routeId) grp.routeIds.add(dep.routeId);
       grp.total++;
     }
     return [...byLine.values()]
       .sort((a, b) => a.line.localeCompare(b.line, "nl", { numeric: true }))
       .map((grp) => ({
-        line: grp.line, carrier: grp.carrier, total: grp.total,
+        line: grp.line, carrier: grp.carrier, total: grp.total, routeIds: [...grp.routeIds].sort(), departures: grp.departures,
         directions: [...grp.byDirection.values()].sort((a,b)=>a.destination.localeCompare(b.destination,"nl"))
       }));
   }, [departures]);
   const directionsCount = groups.reduce((n, g) => n + g.directions.length, 0);
+
+  function toggle(key: string) {
+    const next = expanded === key ? null : key;
+    setExpanded(next);
+    if (stopId) rememberLinesTab(stopId, { expanded: next });
+  }
+
+  function changeDate(iso: string) {
+    setDate(iso);
+    if (stopId) rememberLinesTab(stopId, { date: iso });
+  }
 
   function directionSummary(rows: DepartureItem[], nowMs: number) {
     const times: number[]=[];
@@ -80,17 +104,78 @@ export function FlowLineGroups({ departures, onOpenDeparture, onSelectLine, favo
 
   const nowMs = Date.now();
 
+  function timeChips(group: Group, direction: Direction) {
+    return (
+      <View style={styles.departureTimes}>
+        {direction.departures.slice(0, 4).map((dep, i) => {
+          const timing = stopBoardTiming(dep, nowMs, false);
+          const delay = departureClockDelay(dep);
+          const departed = dep.departed === true && !dep.cancelled;
+          const cancelled = dep.cancelled === true;
+          return (
+            <Pressable
+              key={dep.id + ":" + i}
+              disabled={!dep.ritId || departed}
+              accessibilityRole={dep.ritId && !departed ? "button" : undefined}
+              accessibilityLabel={departed ? "Lijn " + group.line + " richting " + direction.destination + ", vertrokken" : cancelled ? "Lijn " + group.line + " richting " + direction.destination + ", " + timing.primary + ", rijdt niet" : "Lijn " + group.line + " richting " + direction.destination + ", " + timing.primary + ", rit openen"}
+              onPress={() => onOpenDeparture(dep)}
+              style={[styles.timeChip, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            >
+              <View style={styles.timeStack}>
+                <Text maxFontSizeMultiplier={1.3} style={[styles.timeText, { color: cancelled ? colors.danger : departed ? colors.textMuted : colors.text }, (cancelled || departed) && { textDecorationLine: "line-through" }]}>{timing.primary}</Text>
+                {timing.secondary
+                  ? <Text maxFontSizeMultiplier={1.3} style={[styles.timeSecondary, { color: colors.textSoft }]}>
+                      {timing.secondary}{delay ? <Text style={{ color: delay.tone === "red" ? colors.danger : colors.delayWarning, fontWeight: "700" }}>{" "}{delay.text}</Text> : null}
+                    </Text>
+                  : delay
+                    ? <Text maxFontSizeMultiplier={1.3} style={[styles.timeSecondary, { color: delay.tone === "red" ? colors.danger : colors.delayWarning, fontWeight: "700" }]}>{delay.text}</Text>
+                    : null}
+              </View>
+              {cancelled
+                ? <Text maxFontSizeMultiplier={1.3} style={{ color: colors.danger, fontSize: 9, fontWeight: "900" }}>Rijdt niet</Text>
+                : departed
+                  ? <Text maxFontSizeMultiplier={1.3} style={{ color: colors.textMuted, fontSize: 9, fontWeight: "800" }}>Vertrokken</Text>
+                  : dep.liveDataStale === true
+                    ? <Text maxFontSizeMultiplier={1.3} style={{ color: colors.warning, fontSize: 9, fontWeight: "800" }}>Live-info oud</Text>
+                    : dep.isLive === true
+                      ? <View style={[styles.dot, { backgroundColor: colors.success }]} />
+                      : null}
+            </Pressable>
+          );
+        })}
+        {direction.departures.length > 4 ? (
+          <Pressable
+            onPress={() => onSelectLine(group.line)}
+            accessibilityRole="button"
+            style={styles.more}
+          >
+            <Text maxFontSizeMultiplier={1.3} style={[styles.moreText, { color: colors.accentText }]}>+{direction.departures.length - 4}</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    );
+  }
+
   return (
     <FlatList
+      ref={listRef}
       data={groups}
+      extraData={[expanded, date, nowMs]}
       keyExtractor={(group) => group.line + "/" + group.carrier}
       contentContainerStyle={styles.list}
       showsVerticalScrollIndicator={false}
+      scrollEventThrottle={200}
+      onScroll={stopId ? (e) => rememberLinesTab(stopId, { scrollY: e.nativeEvent.contentOffset.y }) : undefined}
+      onContentSizeChange={() => {
+        if (restoredScroll.current || !remembered?.scrollY) return;
+        restoredScroll.current = true;
+        listRef.current?.scrollToOffset({ offset: remembered.scrollY, animated: false });
+      }}
       ListHeaderComponent={
         <View style={styles.intro}>
           <Text maxFontSizeMultiplier={1.3} style={[styles.title, { color: colors.text }]}>Lijnen op deze halte</Text>
           <Text maxFontSizeMultiplier={1.3} style={[styles.subtitle, { color: colors.textSoft }]}>
-            {groups.length} lijnen · {directionsCount} richtingen · kies een vertrektijd
+            {groups.length} lijnen · {directionsCount} richtingen · {stopId ? "tik op een richting voor de hele dag" : "kies een vertrektijd"}
           </Text>
         </View>
       }
@@ -122,63 +207,45 @@ export function FlowLineGroups({ departures, onOpenDeparture, onSelectLine, favo
               );
             })() : null}
           </View>
-          {group.directions.map((direction, index) => {
+          {group.directions.map((direction) => {
             const summary = directionSummary(direction.departures, nowMs);
+            const open = Boolean(stopId) && expanded === direction.key;
+            const summaryText = (summary.last || summary.frequency)
+              ? [summary.last ? "Laatste vertrek " + summary.last : "", summary.frequency ? "ca. elke " + summary.frequency + " min" : ""].filter(Boolean).join(" · ")
+              : "";
             return (
-              <View key={direction.key} style={[styles.direction, { borderTopColor: colors.border }]}>
-                <Text maxFontSizeMultiplier={1.3} style={[styles.directionName, { color: colors.text }]} numberOfLines={2}>Richting {direction.destination}</Text>
-                {(summary.last || summary.frequency) ? (
-                  <Text maxFontSizeMultiplier={1.3} style={[styles.frequency, {color: colors.textSoft}]}>
-                    {[summary.last ? "Laatste vertrek " + summary.last : "", summary.frequency ? "ca. elke " + summary.frequency + " min" : ""].filter(Boolean).join(" · ")}
-                  </Text>
-                ) : null}
-                <View style={styles.departureTimes}>
-                  {direction.departures.slice(0, 4).map((dep, i) => {
-                    const timing = stopBoardTiming(dep, nowMs, false);
-                    const delay = departureClockDelay(dep);
-                    const departed = dep.departed === true && !dep.cancelled;
-                    const cancelled = dep.cancelled === true;
-                    return (
-                      <Pressable
-                        key={dep.id + ":" + i}
-                        disabled={!dep.ritId || departed}
-                        accessibilityRole={dep.ritId && !departed ? "button" : undefined}
-                        accessibilityLabel={departed ? "Lijn " + group.line + " richting " + direction.destination + ", vertrokken" : cancelled ? "Lijn " + group.line + " richting " + direction.destination + ", " + timing.primary + ", rijdt niet" : "Lijn " + group.line + " richting " + direction.destination + ", " + timing.primary + ", rit openen"}
-                        onPress={() => onOpenDeparture(dep)}
-                        style={[styles.timeChip, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                      >
-                        <View style={styles.timeStack}>
-                          <Text maxFontSizeMultiplier={1.3} style={[styles.timeText, { color: cancelled ? colors.danger : departed ? colors.textMuted : colors.text }, (cancelled || departed) && { textDecorationLine: "line-through" }]}>{timing.primary}</Text>
-                          {timing.secondary
-                            ? <Text maxFontSizeMultiplier={1.3} style={[styles.timeSecondary, { color: colors.textSoft }]}>
-                                {timing.secondary}{delay ? <Text style={{ color: delay.tone === "red" ? colors.danger : colors.delayWarning, fontWeight: "700" }}>{" "}{delay.text}</Text> : null}
-                              </Text>
-                            : delay
-                              ? <Text maxFontSizeMultiplier={1.3} style={[styles.timeSecondary, { color: delay.tone === "red" ? colors.danger : colors.delayWarning, fontWeight: "700" }]}>{delay.text}</Text>
-                              : null}
-                        </View>
-                        {cancelled
-                          ? <Text maxFontSizeMultiplier={1.3} style={{ color: colors.danger, fontSize: 9, fontWeight: "900" }}>Rijdt niet</Text>
-                          : departed
-                            ? <Text maxFontSizeMultiplier={1.3} style={{ color: colors.textMuted, fontSize: 9, fontWeight: "800" }}>Vertrokken</Text>
-                            : dep.liveDataStale === true
-                              ? <Text maxFontSizeMultiplier={1.3} style={{ color: colors.warning, fontSize: 9, fontWeight: "800" }}>Live-info oud</Text>
-                              : dep.isLive === true
-                                ? <View style={[styles.dot, { backgroundColor: colors.success }]} />
-                                : null}
-                      </Pressable>
-                    );
-                  })}
-                  {direction.departures.length > 4 ? (
-                    <Pressable
-                      onPress={() => onSelectLine(group.line)}
-                      accessibilityRole="button"
-                      style={styles.more}
-                    >
-                      <Text maxFontSizeMultiplier={1.3} style={[styles.moreText, { color: colors.accentText }]}>+{direction.departures.length - 4}</Text>
-                    </Pressable>
-                  ) : null}
-                </View>
+              <View key={direction.key} style={[styles.direction, { borderTopColor: colors.border }, open && { paddingBottom: 0 }]}>
+                <Pressable
+                  disabled={!stopId}
+                  onPress={() => toggle(direction.key)}
+                  accessibilityRole={stopId ? "button" : undefined}
+                  accessibilityState={stopId ? { expanded: open } : undefined}
+                  accessibilityLabel={"Lijn " + group.line + " richting " + direction.destination + (stopId ? (open ? ", dienstregeling inklappen" : ", hele dag tonen") : "")}
+                  style={styles.directionHead}
+                >
+                  <View style={styles.directionText}>
+                    <Text maxFontSizeMultiplier={1.3} style={[styles.directionName, { color: open ? colors.heading : colors.text }]} numberOfLines={2}>Richting {direction.destination}</Text>
+                    {summaryText ? <Text maxFontSizeMultiplier={1.3} style={[styles.frequency, {color: colors.textSoft}]}>{summaryText}</Text> : null}
+                  </View>
+                  {stopId ? <Ionicons name={open ? "chevron-up" : "chevron-down"} size={18} color={open ? colors.heading : colors.textMuted} /> : null}
+                </Pressable>
+                {open && stopId ? (
+                  <View style={styles.panelWrap}>
+                    <LineSchedulePanel
+                      key={direction.key}
+                      stopId={stopId}
+                      line={group.line}
+                      routeIds={group.routeIds}
+                      destination={direction.destination}
+                      gtfsTripIds={direction.departures.map((d) => d.gtfsTripId || "").filter(Boolean)}
+                      liveDepartures={group.departures}
+                      date={date}
+                      onChangeDate={changeDate}
+                      onOpenDeparture={onOpenDeparture}
+                      fallback={timeChips(group, direction)}
+                    />
+                  </View>
+                ) : timeChips(group, direction)}
               </View>
             );
           })}
@@ -202,7 +269,10 @@ const styles = StyleSheet.create({
   lineCaption: { fontSize: 13, fontWeight: "800" },
   carrier: { fontSize: 10.5 },
   direction: { borderTopWidth: 1, paddingHorizontal: 12, paddingVertical: 10, gap: 8 },
+  directionHead: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 36 },
+  directionText: { flex: 1, minWidth: 0, gap: 3 },
   directionName: { fontSize: 12, fontWeight: "700" },
+  panelWrap: { marginHorizontal: -12 },
   departureTimes: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
   frequency: { fontSize: 11, fontWeight: "600" },
   timeChip: { minHeight: 37, paddingHorizontal: 9, borderRadius: 0, borderWidth: 0, flexDirection: "row", alignItems: "center", gap: 4 },

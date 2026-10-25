@@ -6,6 +6,7 @@ import { delayedClock } from "./ritConsistency";
 import { isUnconfirmedExtremeEarlyDeparture } from "./earlyDepartureGuard";
 import { parseDisruptions, parseStopDisruptions } from "./haltebordV4";
 import { rememberBoard } from "./boardCache";
+import { LineSchedule, normalizeSchedule } from "./lineSchedule";
 
 const API_BASE = "https://ovbord.nl";
 
@@ -189,6 +190,7 @@ export function normalizeDeparture(item: any): DepartureItem {
     effectiveAt: absoluteRaw,
     relativeText: relativeMinutesText(absoluteRaw || predictedRaw || effectiveRaw),
     ...(item?.route_id!==undefined?{routeId:String(item.route_id)}:{}),
+    ...(item?.gtfs_trip_id?{gtfsTripId:String(item.gtfs_trip_id)}:{}),
     ...(item?.route_color?{routeColor:String(item.route_color)}:{}),
     ...(item?.route_text_color?{routeTextColor:String(item.route_text_color)}:{}),
     delayMinutes,
@@ -392,6 +394,21 @@ export async function searchStops(query: string): Promise<StopSummary[]> {
 export async function getNearby(lat: number, lon: number): Promise<StopSummary[]> {
   const raw = await requestJson("/api/nearby", { lat, lon });
   return arrayOf<any>(first(raw?.stops, raw?.items, raw?.results, raw)).map(normalizeNearbyRow);
+}
+
+/**
+ * Volledige geplande dienstregeling voor een lijn bij deze halte op één kalenderdag (Lijnen-tab).
+ * route_id heeft voorrang op lijnnummer, zodat lijn 1 van twee vervoerders gescheiden blijft.
+ */
+export async function getDienstregeling(stopId: string, query: { routeIds?: readonly string[]; line?: string; date: string }): Promise<LineSchedule> {
+  const routeIds = (query.routeIds || []).filter(Boolean).slice(0, 8);
+  const raw = await requestJson(`/api/dienstregeling/${encodeURIComponent(stopId)}`, {
+    route_id: routeIds.length ? routeIds.join(",") : undefined,
+    line: routeIds.length ? undefined : query.line,
+    date: query.date
+  });
+  if (raw?.ok === false) throw new Error(str(raw?.error, "Dienstregeling niet beschikbaar"));
+  return normalizeSchedule(raw);
 }
 
 export async function getHalte(id: string, _skipSiblings = false): Promise<HalteBoardData> {
