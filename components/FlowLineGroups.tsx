@@ -3,8 +3,9 @@ import React, { useMemo } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { useApp } from "../context/AppProvider";
 import type { DepartureItem } from "../types/api";
-import {effectiveDepartureClock} from "../lib/format";
-import { departurePresentation } from "../lib/departurePresentation";
+import { effectiveDepartureClock } from "../lib/format";
+import { departureClockDelay } from "../lib/departureLine";
+import { stopBoardTiming } from "../lib/stopBoardDesign";
 import { StopBoardBadge } from "./StopBoardRow";
 import { favoriteLineKey } from "../lib/favoriteLines";
 
@@ -71,6 +72,8 @@ export function FlowLineGroups({ departures, onOpenDeparture, onSelectLine, favo
       frequency:median===null?null:Math.max(5,Math.round(median/5)*5)};
   }
 
+  const nowMs = Date.now();
+
   return (
     <FlatList
       data={groups}
@@ -124,24 +127,38 @@ export function FlowLineGroups({ departures, onOpenDeparture, onSelectLine, favo
               </Text>
               <View style={styles.departureTimes}>
                 {direction.departures.slice(0, 4).map((dep, i) => {
-                  const { cancelled, clock: expected } = departurePresentation(dep);
-                  const departed = !cancelled && dep.departed === true;
-                  const delayed = !cancelled && !departed && typeof dep.delayMinutes === "number" && dep.delayMinutes > 0;
-                  const early = !cancelled && !departed && typeof dep.delayMinutes === "number" && dep.delayMinutes < 0;
+                  const timing = stopBoardTiming(dep, nowMs, false);
+                  const delay = departureClockDelay(dep);
+                  const departed = dep.departed === true && !dep.cancelled;
+                  const cancelled = dep.cancelled === true;
                   return (
                     <Pressable
                       key={dep.id + ":" + i}
                       disabled={!dep.ritId || departed}
                       accessibilityRole={dep.ritId && !departed ? "button" : undefined}
-                      accessibilityLabel={departed ? "Lijn " + group.line + " richting " + direction.destination + ", vertrokken" : cancelled ? "Lijn " + group.line + " richting " + direction.destination + ", " + expected + ", rijdt niet" + (dep.ritId ? ", rit openen" : "") : "Lijn " + group.line + " richting " + direction.destination + ", " + expected + ", rit openen"}
+                      accessibilityLabel={departed ? "Lijn " + group.line + " richting " + direction.destination + ", vertrokken" : cancelled ? "Lijn " + group.line + " richting " + direction.destination + ", " + timing.primary + ", rijdt niet" : "Lijn " + group.line + " richting " + direction.destination + ", " + timing.primary + ", rit openen"}
                       onPress={() => onOpenDeparture(dep)}
                       style={[styles.timeChip, { backgroundColor: colors.surface, borderColor: colors.border }]}
                     >
-                      <Text maxFontSizeMultiplier={1.3} style={[styles.timeText, { color: cancelled ? colors.danger : departed ? colors.textMuted : colors.text }, (cancelled || departed) && {textDecorationLine:"line-through"}]}>{expected}</Text>
-                      {delayed || early ? <Text maxFontSizeMultiplier={1.3} style={[styles.delta, { color: delayed ? colors.danger : colors.accentText }]}>
-                        {delayed ? "+" : "−"}{Math.abs(dep.delayMinutes || 0)}m
-                      </Text> : null}
-                      {cancelled ? <Text maxFontSizeMultiplier={1.3} style={{color:colors.danger,fontSize:9,fontWeight:"900"}}>Rijdt niet</Text> : departed ? <Text maxFontSizeMultiplier={1.3} style={{color:colors.textMuted,fontSize:9,fontWeight:"800"}}>Vertrokken</Text> : dep.liveDataStale === true ? <Text maxFontSizeMultiplier={1.3} style={{color:colors.warning,fontSize:9,fontWeight:"800"}}>Live-info oud</Text> : dep.isLive === true ? <View style={[styles.dot, { backgroundColor: colors.success }]} /> : null}
+                      <View style={styles.timeStack}>
+                        <Text maxFontSizeMultiplier={1.3} style={[styles.timeText, { color: cancelled ? colors.danger : departed ? colors.textMuted : colors.text }, (cancelled || departed) && { textDecorationLine: "line-through" }]}>{timing.primary}</Text>
+                        {timing.secondary
+                          ? <Text maxFontSizeMultiplier={1.3} style={[styles.timeSecondary, { color: colors.textSoft }]}>
+                              {timing.secondary}{delay ? <Text style={{ color: delay.tone === "red" ? colors.danger : colors.delayWarning, fontWeight: "700" }}>{" "}{delay.text}</Text> : null}
+                            </Text>
+                          : delay
+                            ? <Text maxFontSizeMultiplier={1.3} style={[styles.timeSecondary, { color: delay.tone === "red" ? colors.danger : colors.delayWarning, fontWeight: "700" }]}>{delay.text}</Text>
+                            : null}
+                      </View>
+                      {cancelled
+                        ? <Text maxFontSizeMultiplier={1.3} style={{ color: colors.danger, fontSize: 9, fontWeight: "900" }}>Rijdt niet</Text>
+                        : departed
+                          ? <Text maxFontSizeMultiplier={1.3} style={{ color: colors.textMuted, fontSize: 9, fontWeight: "800" }}>Vertrokken</Text>
+                          : dep.liveDataStale === true
+                            ? <Text maxFontSizeMultiplier={1.3} style={{ color: colors.warning, fontSize: 9, fontWeight: "800" }}>Live-info oud</Text>
+                            : dep.isLive === true
+                              ? <View style={[styles.dot, { backgroundColor: colors.success }]} />
+                              : null}
                     </Pressable>
                   );
                 })}
@@ -179,10 +196,11 @@ const styles = StyleSheet.create({
   direction: { borderTopWidth: 1, paddingHorizontal: 12, paddingVertical: 10, gap: 8 },
   directionName: { fontSize: 12, fontWeight: "700" },
   departureTimes: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
-  frequency:{fontSize:11,fontWeight:"600"},
+  frequency: { fontSize: 11, fontWeight: "600" },
   timeChip: { minHeight: 37, paddingHorizontal: 9, borderRadius: 0, borderWidth: 0, flexDirection: "row", alignItems: "center", gap: 4 },
+  timeStack: { alignItems: "flex-end", gap: 1 },
   timeText: { fontSize: 12.5, fontWeight: "800", fontVariant: ["tabular-nums"] },
-  delta: { fontSize: 9.5, fontWeight: "900" },
+  timeSecondary: { fontSize: 9.5, fontVariant: ["tabular-nums"] },
   dot: { width: 6, height: 6, borderRadius: 3 },
   more: { justifyContent: "center", paddingHorizontal: 7, minHeight: 37 },
   moreText: { fontSize: 11, fontWeight: "900" }
