@@ -404,7 +404,8 @@ export async function getDienstregeling(stopId: string, query: { routeIds?: read
   const routeIds = (query.routeIds || []).filter(Boolean).slice(0, 8);
   const raw = await requestJson(`/api/dienstregeling/${encodeURIComponent(stopId)}`, {
     route_id: routeIds.length ? routeIds.join(",") : undefined,
-    line: routeIds.length ? undefined : query.line,
+    // Lijnnummer altijd mee: de server valt erop terug als de route_id onbekend is in de GTFS.
+    line: query.line,
     date: query.date
   });
   if (raw?.ok === false) throw new Error(str(raw?.error, "Dienstregeling niet beschikbaar"));
