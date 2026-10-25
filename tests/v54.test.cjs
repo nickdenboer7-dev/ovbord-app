@@ -193,7 +193,8 @@ test("stop board and trip page: options under ⋮, one row style everywhere", ()
   assert.match(board, /if\(hasArrivals\)menuItems/);
   assert.doesNotMatch(board, /setCompact/);
   assert.match(board, /<DepartureHeading title="Jouw lijnen" star \/>/);
-  assert.match(board, /return entries\.filter\(\(item\) => !shown\.has\(boardDepartureIdentity\(item\)\)\);/);
+  assert.match(board, /const remaining = pinned\.length \? entries\.filter\(\(item\) => !shown\.has\(boardDepartureIdentity\(item\)\)\) : entries;/);
+  assert.match(board, /return tab === "departures" \? groupBoardDepartures\(remaining, nowMs\) : remaining;/);
   const rit = read("app/rit/[id].tsx");
   assert.match(rit, /<MenuButton onPress=\{\(\) => setMenuOpen\(true\)\}/);
   assert.match(rit, /styles\.tripBar/);

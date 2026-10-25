@@ -247,6 +247,33 @@ test('the new row is 52px at default size, caps fonts, keeps delay colours and m
  row=StopBoardRow({item:dep('r',8,{departed:true}),nowMs:now,onPress(){}});assert.equal(row.props.disabled,true);const departed=findAll(row,'Text').find(n=>text(n)==='Vertrokken');assert.equal(departed.props.style.backgroundColor,STOP_BOARD_BLUE);assert.doesNotMatch(text(row),/8 min/);
  row=StopBoardRow({item:dep('r',8),nowMs:now,stale:true});assert.match(text(row),/Laatst bekende tijd/);assert.doesNotMatch(text(row),/8 min/);
 });
+test('grouped planned stop-board row shows the first full clock, later times and blue background',()=>{
+ defaults();app.colors=require('../constants/colors.ts').themes.light;
+ const {StopBoardRow}=require('../components/StopBoardRow.tsx');
+ const row=StopBoardRow({item:dep('planned',8,{isLive:false,expectedTime:'17:08'}),nowMs:now,
+   laterTimes:['17:24','17:40','17:56'],onPress(){}});
+ assert.equal(row.props.style({pressed:false})[1].backgroundColor,'#EEF4FF');
+ assert.ok(findAll(row,'Text').some(n=>text(n)==='17:08'&&n.props.style[1].fontSize===21));
+ assert.ok(findAll(row,'Text').some(n=>text(n)==='daarna 17:24 · 17:40 · 17:56'));
+ assert.match(row.props.accessibilityLabel,/daarna 17:24 · 17:40 · 17:56/);
+ assert.doesNotMatch(text(row),/8 min/);
+});
+test('FlowBoard shows a day divider and groups only adjacent planned trips after filtering',()=>{
+ defaults();const h=new Harness(),s=stop('night');
+ const timed=(id,min,flags={})=>dep(id,min,{isLive:false,effectiveAt:new Date(Date.now()+min*60000).toISOString(),...flags});
+ const b=board(s,[timed('live-before',5,{isLive:true}),timed('first',320),timed('second',340),
+   timed('third',360),timed('fourth',380),timed('live-after',390,{isLive:true})]);
+ const {FlowBoard}=require('../components/FlowBoard.tsx');
+ try{
+  const tree=h.render(()=>FlowBoard({stop:s,initialBoard:b,onBack(){}}));const list=find(tree,'FlatList');
+  assert.deepEqual(list.props.data.map(r=>r.id),['live-before','first','live-after']);
+  assert.equal(list.props.data[1].groupedTimes.length,3);assert.ok(list.props.data[1].gapStartClock);
+  const groupView=list.props.renderItem({item:list.props.data[1],index:1});
+  assert.match(text(groupView),/Volgende vertrekken vanaf/);
+  assert.equal(find(groupView,'StopBoardRow').props.laterTimes.length,3);
+  assert.equal(find(list.props.renderItem({item:list.props.data[2],index:2}),'StopBoardRow').props.laterTimes,undefined);
+ }finally{h.destroy();}
+});
 test('stop-board mode buttons and Lijnen actually filter the mixed stop, and Alle clears the filters',()=>{
  defaults();const h=new Harness(),s=stop('mix',{name:'Amsterdam, Test',city:'Amsterdam',modes:['bus','tram']}),b=board(s,[dep('bus',8,{mode:'bus',effectiveAt:new Date(Date.now()+480000).toISOString()}),dep('tram',9,{mode:'tram',line:'1',effectiveAt:new Date(Date.now()+540000).toISOString()})]);
  const {FlowBoard}=require('../components/FlowBoard.tsx'),props={stop:s,initialBoard:b,onBack(){}};const render=()=>h.render(()=>FlowBoard(props));

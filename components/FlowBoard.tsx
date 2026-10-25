@@ -18,7 +18,8 @@ import { useSmartRefresh } from "../lib/useSmartRefresh";
 import { useBoardFocusRefresh } from "../lib/useBoardFocusRefresh";
 import { departureKey } from "../lib/flowRitQuality";
 import { hasAvailableArrivals } from "../lib/arrivalAvailability";
-import { isNextServiceDay } from "../lib/format";
+import { groupBoardDepartures } from "../lib/boardDepartureGrouping";
+import type { BoardDisplayDeparture } from "../lib/boardDepartureGrouping";
 import { boardDepartureIdentity, departureTimeChangeLabel, refreshDepartureTimeChanges, sortBoardDepartures } from "../lib/boardSmartness";
 import { departureNoticeIdentity, confirmDepartedNotices, recentDepartureCandidates, visibleBoardDepartures, journeyConfirmsDeparture, DEPARTURE_CHECK_COOLDOWN_MS, MAX_DEPARTURE_CHECKS } from "../lib/departedNotice";
 import type { DepartedNotices } from "../lib/departedNotice";
@@ -92,7 +93,7 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
   const [menuOpen, setMenuOpen] = useState(false);
   const [noticesExpanded, setNoticesExpanded] = useState(false);
   const boardRequest = useRef(0);
-  const listRef = useRef<FlatList<DepartureItem>>(null);
+  const listRef = useRef<FlatList<BoardDisplayDeparture>>(null);
   const reloadBoardRef = useRef<() => Promise<void>>(async () => {});
   const hasArrivals = hasAvailableArrivals(board);
   const freshness = feedFreshness(board || {}, fetchedAt, nowMs);
@@ -274,11 +275,12 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
   // "Jouw lijnen": up to three rows above "Alle vertrekken"; those rows are not repeated below.
   const pinned = useMemo(() => tab === "departures" && !selectedLine && selectedDirection === null
     ? pinnedDepartures(source.filter(item=>!selectedMode||(item.mode||stop.mode)===selectedMode), favoriteLines, nowMs, MAX_PINNED_ROWS) : [], [tab, selectedLine, selectedDirection, selectedMode, source, favoriteLines, nowMs]);
-  const listRows = useMemo(() => {
-    if (!pinned.length) return entries;
+  const pinnedRows = useMemo(() => groupBoardDepartures(pinned, nowMs), [pinned, nowMs]);
+  const listRows: BoardDisplayDeparture[] = useMemo(() => {
     const shown = new Set(pinned.map((item) => boardDepartureIdentity(item)));
-    return entries.filter((item) => !shown.has(boardDepartureIdentity(item)));
-  }, [entries, pinned]);
+    const remaining = pinned.length ? entries.filter((item) => !shown.has(boardDepartureIdentity(item))) : entries;
+    return tab === "departures" ? groupBoardDepartures(remaining, nowMs) : remaining;
+  }, [entries, pinned, tab, nowMs]);
   const selectedDirectionLabel = selectedDirection === null ? ""
     : directions.find((choice) => choice.key === selectedDirection)?.label ||
       source.find((item) => matchesBoardDirection(item, selectedDirection))?.destination || "";
@@ -325,13 +327,21 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
     router.push({ pathname: "/feedback", params: { stop_id: current.id, stop_name: current.name, reported_at: new Date().toISOString() } });
   } });
   menuItems.push({ key: "refresh", label: "Vertrektijden verversen", icon: "refresh", group: 2, onPress: () => { void pullToRefresh(); } });
-  const pinnedHeader = pinned.length ? (
+  const gapDivider = (clock: string) => <View style={styles.gapDivider} accessibilityLabel={"Volgende vertrekken vanaf " + clock}>
+    <View style={[styles.gapRule, { backgroundColor: colors.border }]}/>
+    <Text maxFontSizeMultiplier={1.3} style={[styles.gapCaption, { color: colors.textSoft }]} numberOfLines={1}>Volgende vertrekken vanaf {clock}</Text>
+    <View style={[styles.gapRule, { backgroundColor: colors.border }]}/>
+  </View>;
+  const pinnedHeader = pinnedRows.length ? (
     <View>
       <DepartureHeading title="Jouw lijnen" star />
-      {pinned.map((item, index) => (
-        <StopBoardRow key={"pin:" + departureKey(item, index)} item={item} nowMs={nowMs} stale={staleDisplay}
-          detail={!staleDisplay ? walkingDepartureAdvice(item,position,board?.stop||stop,nowMs) || undefined : undefined}
-          onPress={() => openTrip(item)} last={index === pinned.length - 1} />
+      {pinnedRows.map((item, index) => (
+        <View key={"pin:" + departureKey(item, index)}>
+          {item.gapStartClock ? gapDivider(item.gapStartClock) : null}
+          <StopBoardRow item={item} nowMs={nowMs} stale={staleDisplay} laterTimes={item.groupedTimes}
+            detail={!staleDisplay ? walkingDepartureAdvice(item,position,board?.stop||stop,nowMs) || undefined : undefined}
+            onPress={() => openTrip(item)} last={index === pinnedRows.length - 1} />
+        </View>
       ))}
       <DepartureHeading title="Alle vertrekken" />
     </View>
@@ -529,12 +539,11 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
               const changedFrom = tab === "departures" && item.cancelled !== true && item.departed !== true ? departureTimeChangeLabel(item, timeChanges, nowMs) : "";
               const platformChange = platformChangeFor(item, platformChanges, nowMs);
               const platformName = item.mode === "train" ? "Spoor" : "Perron";
-              const afterMidnight = tab==="departures" && index>0 && isNextServiceDay(listRows[index-1],item);
               return (
                 <View>
-                  {afterMidnight ? <View style={[styles.midnightRow,{borderBottomColor:colors.border,backgroundColor:colors.surfaceAlt}]}><Text maxFontSizeMultiplier={1.3} style={[styles.midnightText,{color:colors.text}]}>Na middernacht</Text></View> : null}
+                  {tab === "departures" && item.gapStartClock ? gapDivider(item.gapStartClock) : null}
                   {/* Failed refreshes show last-known times rather than a live countdown. */}
-                  <StopBoardRow item={item} nowMs={nowMs} stale={staleDisplay} note={changedFrom}
+                  <StopBoardRow item={item} nowMs={nowMs} stale={staleDisplay} note={changedFrom} laterTimes={tab==="departures"?item.groupedTimes:undefined}
                     detail={!staleDisplay && tab==="departures" ? walkingDepartureAdvice(item,position,board?.stop||stop,nowMs) || undefined : undefined}
                     onPress={item.ritId ? () => openTrip(item) : undefined} />
                   {platformChange ? (
@@ -600,8 +609,9 @@ const styles = StyleSheet.create({
   directionHead: { paddingHorizontal: 15, paddingTop: 4, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   directionHeadText: { fontSize: 12, fontWeight: "800" },
   list: { paddingBottom: 16, flexGrow: 1 },
-  midnightRow:{paddingHorizontal:15,paddingVertical:8,borderBottomWidth:1},
-  midnightText:{fontSize:12,fontWeight:"800"},
+  gapDivider:{flexDirection:"row",alignItems:"center",gap:9,paddingHorizontal:15,paddingVertical:11},
+  gapRule:{flex:1,height:StyleSheet.hairlineWidth},
+  gapCaption:{fontSize:10.5,fontWeight:"600",textAlign:"center"},
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 13 },
   retry: { flexDirection: "row", gap: 6, alignItems: "center", padding: 8 },
   refreshWarning: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 9, paddingHorizontal: 13, borderBottomWidth: 1 },
