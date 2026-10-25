@@ -52,12 +52,18 @@ export function FlowLineGroups({ departures, onOpenDeparture, onSelectLine, favo
       }));
   }, [departures]);
   const directionsCount = groups.reduce((n, g) => n + g.directions.length, 0);
-  function directionSummary(rows: DepartureItem[]) {
+
+  function directionSummary(rows: DepartureItem[], nowMs: number) {
     const times: number[]=[];
     let previous=-1;
     let day=0;
-    for(const dep of rows){
-      if (dep.cancelled === true || dep.departed === true) continue;
+    // Alleen ritten die nog in de toekomst liggen
+    const futureRows = rows.filter(dep => {
+      if (dep.cancelled === true || dep.departed === true) return false;
+      const ts = dep.effectiveAt ? Date.parse(dep.effectiveAt) : dep.plannedTime ? Date.parse(dep.plannedTime) : 0;
+      return ts > nowMs;
+    });
+    for(const dep of futureRows){
       const match=/^(\d{1,2}):(\d{2})$/.exec(effectiveDepartureClock(dep));
       if(!match)continue;
       const clock=Number(match[1])*60+Number(match[2]);
@@ -67,9 +73,9 @@ export function FlowLineGroups({ departures, onOpenDeparture, onSelectLine, favo
     }
     const gaps=times.slice(1).map((v,i)=>v-times[i]).filter(n=>n>0&&n<=180).sort((a,b)=>a-b);
     const median=gaps.length>=2?(gaps.length%2===1?gaps[(gaps.length-1)/2]:(gaps[gaps.length/2-1]+gaps[gaps.length/2])/2):null;
-    const activeRows = rows.filter(dep => dep.cancelled !== true && dep.departed !== true);
-    return {last:activeRows.length?effectiveDepartureClock(activeRows[activeRows.length-1]):null,
-      frequency:median===null?null:Math.max(5,Math.round(median/5)*5)};
+    // Laatste toekomstige rit
+    const last = futureRows.length ? effectiveDepartureClock(futureRows[futureRows.length-1]) : null;
+    return {last, frequency:median===null?null:Math.max(5,Math.round(median/5)*5)};
   }
 
   const nowMs = Date.now();
@@ -116,64 +122,66 @@ export function FlowLineGroups({ departures, onOpenDeparture, onSelectLine, favo
               );
             })() : null}
           </View>
-          {group.directions.map((direction, index) => (
-            <View key={direction.key} style={[styles.direction, { borderTopColor: colors.border }]}>
-              <Text maxFontSizeMultiplier={1.3} style={[styles.directionName, { color: colors.text }]} numberOfLines={2}>Richting {direction.destination}</Text>
-              <Text maxFontSizeMultiplier={1.3} style={[styles.frequency,{color:colors.textSoft}]}>
-                {(()=>{const summary=directionSummary(direction.departures);return [
-                  summary.last ? "Laatste vertrek "+summary.last : "",
-                  summary.frequency ? "ca. elke "+summary.frequency+" min" : ""
-                ].filter(Boolean).join(" · ");})()}
-              </Text>
-              <View style={styles.departureTimes}>
-                {direction.departures.slice(0, 4).map((dep, i) => {
-                  const timing = stopBoardTiming(dep, nowMs, false);
-                  const delay = departureClockDelay(dep);
-                  const departed = dep.departed === true && !dep.cancelled;
-                  const cancelled = dep.cancelled === true;
-                  return (
-                    <Pressable
-                      key={dep.id + ":" + i}
-                      disabled={!dep.ritId || departed}
-                      accessibilityRole={dep.ritId && !departed ? "button" : undefined}
-                      accessibilityLabel={departed ? "Lijn " + group.line + " richting " + direction.destination + ", vertrokken" : cancelled ? "Lijn " + group.line + " richting " + direction.destination + ", " + timing.primary + ", rijdt niet" : "Lijn " + group.line + " richting " + direction.destination + ", " + timing.primary + ", rit openen"}
-                      onPress={() => onOpenDeparture(dep)}
-                      style={[styles.timeChip, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                    >
-                      <View style={styles.timeStack}>
-                        <Text maxFontSizeMultiplier={1.3} style={[styles.timeText, { color: cancelled ? colors.danger : departed ? colors.textMuted : colors.text }, (cancelled || departed) && { textDecorationLine: "line-through" }]}>{timing.primary}</Text>
-                        {timing.secondary
-                          ? <Text maxFontSizeMultiplier={1.3} style={[styles.timeSecondary, { color: colors.textSoft }]}>
-                              {timing.secondary}{delay ? <Text style={{ color: delay.tone === "red" ? colors.danger : colors.delayWarning, fontWeight: "700" }}>{" "}{delay.text}</Text> : null}
-                            </Text>
-                          : delay
-                            ? <Text maxFontSizeMultiplier={1.3} style={[styles.timeSecondary, { color: delay.tone === "red" ? colors.danger : colors.delayWarning, fontWeight: "700" }]}>{delay.text}</Text>
-                            : null}
-                      </View>
-                      {cancelled
-                        ? <Text maxFontSizeMultiplier={1.3} style={{ color: colors.danger, fontSize: 9, fontWeight: "900" }}>Rijdt niet</Text>
-                        : departed
-                          ? <Text maxFontSizeMultiplier={1.3} style={{ color: colors.textMuted, fontSize: 9, fontWeight: "800" }}>Vertrokken</Text>
-                          : dep.liveDataStale === true
-                            ? <Text maxFontSizeMultiplier={1.3} style={{ color: colors.warning, fontSize: 9, fontWeight: "800" }}>Live-info oud</Text>
-                            : dep.isLive === true
-                              ? <View style={[styles.dot, { backgroundColor: colors.success }]} />
-                              : null}
-                    </Pressable>
-                  );
-                })}
-                {direction.departures.length > 4 ? (
-                  <Pressable
-                    onPress={() => onSelectLine(group.line)}
-                    accessibilityRole="button"
-                    style={styles.more}
-                  >
-                    <Text maxFontSizeMultiplier={1.3} style={[styles.moreText, { color: colors.accentText }]}>+{direction.departures.length - 4}</Text>
-                  </Pressable>
+          {group.directions.map((direction, index) => {
+            const summary = directionSummary(direction.departures, nowMs);
+            return (
+              <View key={direction.key} style={[styles.direction, { borderTopColor: colors.border }]}>
+                <Text maxFontSizeMultiplier={1.3} style={[styles.directionName, { color: colors.text }]} numberOfLines={2}>Richting {direction.destination}</Text>
+                {(summary.last || summary.frequency) ? (
+                  <Text maxFontSizeMultiplier={1.3} style={[styles.frequency, {color: colors.textSoft}]}>
+                    {[summary.last ? "Laatste vertrek " + summary.last : "", summary.frequency ? "ca. elke " + summary.frequency + " min" : ""].filter(Boolean).join(" · ")}
+                  </Text>
                 ) : null}
+                <View style={styles.departureTimes}>
+                  {direction.departures.slice(0, 4).map((dep, i) => {
+                    const timing = stopBoardTiming(dep, nowMs, false);
+                    const delay = departureClockDelay(dep);
+                    const departed = dep.departed === true && !dep.cancelled;
+                    const cancelled = dep.cancelled === true;
+                    return (
+                      <Pressable
+                        key={dep.id + ":" + i}
+                        disabled={!dep.ritId || departed}
+                        accessibilityRole={dep.ritId && !departed ? "button" : undefined}
+                        accessibilityLabel={departed ? "Lijn " + group.line + " richting " + direction.destination + ", vertrokken" : cancelled ? "Lijn " + group.line + " richting " + direction.destination + ", " + timing.primary + ", rijdt niet" : "Lijn " + group.line + " richting " + direction.destination + ", " + timing.primary + ", rit openen"}
+                        onPress={() => onOpenDeparture(dep)}
+                        style={[styles.timeChip, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                      >
+                        <View style={styles.timeStack}>
+                          <Text maxFontSizeMultiplier={1.3} style={[styles.timeText, { color: cancelled ? colors.danger : departed ? colors.textMuted : colors.text }, (cancelled || departed) && { textDecorationLine: "line-through" }]}>{timing.primary}</Text>
+                          {timing.secondary
+                            ? <Text maxFontSizeMultiplier={1.3} style={[styles.timeSecondary, { color: colors.textSoft }]}>
+                                {timing.secondary}{delay ? <Text style={{ color: delay.tone === "red" ? colors.danger : colors.delayWarning, fontWeight: "700" }}>{" "}{delay.text}</Text> : null}
+                              </Text>
+                            : delay
+                              ? <Text maxFontSizeMultiplier={1.3} style={[styles.timeSecondary, { color: delay.tone === "red" ? colors.danger : colors.delayWarning, fontWeight: "700" }]}>{delay.text}</Text>
+                              : null}
+                        </View>
+                        {cancelled
+                          ? <Text maxFontSizeMultiplier={1.3} style={{ color: colors.danger, fontSize: 9, fontWeight: "900" }}>Rijdt niet</Text>
+                          : departed
+                            ? <Text maxFontSizeMultiplier={1.3} style={{ color: colors.textMuted, fontSize: 9, fontWeight: "800" }}>Vertrokken</Text>
+                            : dep.liveDataStale === true
+                              ? <Text maxFontSizeMultiplier={1.3} style={{ color: colors.warning, fontSize: 9, fontWeight: "800" }}>Live-info oud</Text>
+                              : dep.isLive === true
+                                ? <View style={[styles.dot, { backgroundColor: colors.success }]} />
+                                : null}
+                      </Pressable>
+                    );
+                  })}
+                  {direction.departures.length > 4 ? (
+                    <Pressable
+                      onPress={() => onSelectLine(group.line)}
+                      accessibilityRole="button"
+                      style={styles.more}
+                    >
+                      <Text maxFontSizeMultiplier={1.3} style={[styles.moreText, { color: colors.accentText }]}>+{direction.departures.length - 4}</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
               </View>
-            </View>
-          ))}
+            );
+          })}
         </View>
       )}
     />
