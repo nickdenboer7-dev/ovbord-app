@@ -8,6 +8,7 @@ import { AppProvider, useApp } from "../context/AppProvider";
 import { FavoritesLiveProvider } from "../context/FavoritesLive";
 import { FeedbackPrompt } from "../components/FeedbackPrompt";
 import { AppUpdateNotice } from "../components/AppUpdateNotice";
+import { AppBinaryUpdateNotice } from "../components/AppBinaryUpdateNotice";
 import { FlowNavigationProvider } from "../context/FlowNavigation";
 import { createAnonymousSessionPing } from "../lib/anonymousStats";
 
@@ -41,6 +42,7 @@ function RootNavigation() {
       </Stack>
       </View>
       <AppUpdateNotice />
+      <AppBinaryUpdateNotice />
       </View>
       <FeedbackPrompt />
     </ThemeProvider>
