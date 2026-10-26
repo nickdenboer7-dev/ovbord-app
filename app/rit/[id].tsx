@@ -843,7 +843,7 @@ export default function RitScreen() {
       <Pressable disabled={!journey} onPress={headerHasLive ? focusVehicle : toggleMap} accessibilityRole="button"
         accessibilityLabel={headerStatusText + (journey ? ". Op kaart" : "")} style={styles.headerStatus}>
         <View style={[styles.headerStatusDot, { backgroundColor: headerHasLive ? "#66e69c" : lastKnown ? "#b8c5d2" : "#ffd175" }]}/>
-        <Text maxFontSizeMultiplier={1.3} style={styles.headerStatusText} numberOfLines={1}>{headerStatusText}</Text>
+        <Text maxFontSizeMultiplier={1.3} style={styles.headerStatusText}>{headerStatusText}</Text>
       </Pressable>
     </View>
     {/* This small card stays visible with the route, while the timeline itself may scroll to the bus. */}
@@ -992,9 +992,9 @@ function makeStyles(c: RitColors) {
   headerTitle: { color: "#FFFFFF", fontSize: 19, lineHeight: 25, fontWeight: "700" },
   headerTitleLong: { fontSize: 17, lineHeight: 23 },
   headerNaar: { fontWeight: "500", color: "#FFFFFF" },
-  headerStatus: { flexDirection: "row", alignItems: "center", gap: 6, paddingLeft: 42, paddingRight: 6, marginTop: 1 },
-  headerStatusDot: { width: 6, height: 6, borderRadius: 3, flexShrink: 0 },
-  headerStatusText: { flexShrink: 1, color: "#e1edfa", fontSize: 11, lineHeight: 16 },
+  headerStatus: { flexDirection: "row", alignItems: "flex-start", gap: 6, paddingLeft: 42, paddingRight: 6, marginTop: 1 },
+  headerStatusDot: { width: 6, height: 6, borderRadius: 3, flexShrink: 0, marginTop: 5 },
+  headerStatusText: { flex: 1, minWidth: 0, color: "#e1edfa", fontSize: 11, lineHeight: 16 },
   nextStopQuickCard: { flexShrink: 0, minHeight: 63, paddingHorizontal: 12, paddingVertical: 8,
     flexDirection: "row", alignItems: "center", gap: 9, backgroundColor: c.nextTagBg,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.border },

@@ -207,7 +207,7 @@ test('the trip page displays unconfirmed position once inside its blue header',a
  assert.equal(text(tree).split('Positie niet bevestigd').length-1,1);const scroll=find(tree,'ScrollView');assert.ok(scroll);assert.doesNotMatch(text(scroll),/Positie niet bevestigd/);
  const children=tree.props.children.flat(Infinity).filter(x=>x&&typeof x==='object'),headerIndex=children.findIndex(x=>x.type==='View'&&findAll(x,'Text').some(t=>text(t).includes('Nijlân'))),scrollIndex=children.indexOf(scroll);
  assert.ok(headerIndex>=0&&headerIndex<scrollIndex);const status=findAll(children[headerIndex],'Text').find(t=>text(t)==='Positie niet bevestigd');
- assert.ok(status);assert.equal(status.props.numberOfLines,1);
+ assert.ok(status);assert.equal(status.props.numberOfLines,undefined); // De volledige status mag afbreken over regels.
  }finally{h.destroy();}
 });
 

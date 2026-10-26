@@ -58,6 +58,15 @@ test("Volgende halte kaart beweert alleen live te zijn bij bevestigde GPS", () =
   assert.match(ui, /onPress=\{\(\) => openStopBoard\(nextStop\)\}/);
 });
 
+test("ritkop breekt lange teksten tussen haltes af naar volgende regel, zonder weglating", () => {
+  const ui = screen("app/rit/[id].tsx");
+  const statusText = ui.match(/<Text maxFontSizeMultiplier=\{1\.3\} style=\{styles\.headerStatusText\}([^>]*)>\{headerStatusText\}<\/Text>/);
+  assert.ok(statusText, "status in de kopbalk ontbreekt");
+  assert.doesNotMatch(statusText[1], /numberOfLines/);
+  assert.match(ui, /headerStatusText: \{ flex: 1, minWidth: 0,/);
+  assert.match(ui, /headerStatus: \{ flexDirection: "row", alignItems: "flex-start"/);
+});
+
 test("vertraging naast volgende halte heeft dezelfde grenzen als het haltebord", () => {
   assert.deepEqual(timelineTimeDelta(3), { text: "+3", tone: "orange" });
   assert.deepEqual(timelineTimeDelta(5), { text: "+5", tone: "red" });
