@@ -111,6 +111,17 @@ export function compareNearbyDepartures(
   return [better, ...ranked.filter((option) => option !== better)];
 }
 
+/** A recommendation is comfortable only if the user's chosen walking buffer still fits. */
+export function nearbyAdviceStatus(option: NearbyDepartureOption, bufferMinutes = NEARBY_WALK_BUFFER_MINUTES): {
+  label: "Haalbaar" | "Weinig marge" | "Krap" | "Later";
+  tone: "success" | "warning" | "neutral";
+} {
+  if (!option.withinHour) return { label: "Later", tone: "neutral" };
+  if (option.tight || option.spareMinutes < 3) return { label: "Krap", tone: "warning" };
+  if (option.spareMinutes < bufferMinutes) return { label: "Weinig marge", tone: "warning" };
+  return { label: "Haalbaar", tone: "success" };
+}
+
 /** When to begin walking, with five minutes extra margin when the connection allows it. */
 export function nearbyLeaveAdvice(option: NearbyDepartureOption, nowMs: number, bufferMinutes = NEARBY_WALK_BUFFER_MINUTES) {
   const leaveInMinutes = Math.max(0, option.spareMinutes - bufferMinutes);

@@ -116,5 +116,5 @@ test("unknown walking time is not silently guessed; caller must have current GPS
   const ui = fs.readFileSync(require("node:path").join(__dirname, "../app/(tabs)/buurtbord.tsx"), "utf8");
   assert.match(ui, /hasCurrentGps = !manualCity/);
   assert.match(ui, /liveBron === "gps"/);
-  assert.match(ui, /Vergelijk /);
+  assert.match(ui, /Bekijk alle /);
 });

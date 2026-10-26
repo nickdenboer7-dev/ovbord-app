@@ -18,7 +18,7 @@ import { DEFAULT_USER_SETTINGS } from "../../lib/userSettings";
 import { STOP_BOARD_BLUE } from "../../lib/stopBoardDesign";
 import { useFlowNavigation } from "../../context/FlowNavigation";
 import { getHalte, getNearby } from "../../lib/api";
-import { bestNearbyStopId, buurtbordPreviewRows, compareNearbyDepartures, nearbyLeaveAdvice, reachableOnFoot } from "../../lib/buurtbord";
+import { bestNearbyStopId, buurtbordPreviewRows, compareNearbyDepartures, nearbyAdviceStatus, nearbyLeaveAdvice, reachableOnFoot } from "../../lib/buurtbord";
 import { effectiveDepartureClock } from "../../lib/format";
 import { boardRefreshNotice, failureKind } from "../../lib/offline";
 import type { FailureKind } from "../../lib/offline";
@@ -179,6 +179,7 @@ export default function BuurtbordScreen() {
   const previewsAreFresh = !updating && !refreshFailure && updatedAt !== null && nowMs - updatedAt <= 120_000;
   const bestOption = hasCurrentGps && previewsAreFresh ? options[0] : undefined;
   const advice = bestOption ? nearbyLeaveAdvice(bestOption, nowMs, settings.walkBufferMinutes) : null;
+  const adviceStatus = bestOption ? nearbyAdviceStatus(bestOption, settings.walkBufferMinutes) : null;
 
   // Effective (delayed) time; never recommend a cancelled or departed trip.
   const bestStopId = useMemo(() => bestNearbyStopId(visibleItems,
@@ -264,38 +265,49 @@ export default function BuurtbordScreen() {
         <View style={[styles.adviceCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={styles.adviceTop}>
             <View style={{ flex: 1 }}>
-              <Text maxFontSizeMultiplier={1.3} style={[styles.adviceTitle, { color: colors.heading }]}>{advice?.later ? "Geen haalbare rit binnen 60 min" : "Beste vertrek vanaf hier"}</Text>
-              <Text maxFontSizeMultiplier={1.3} style={[styles.adviceHint, { color: colors.textSoft }]}>{advice?.later ? "Eerstvolgende bereikbare vertrek · GPS en looptijd" : "Indicatie op basis van je GPS en looptijd"}</Text>
+              <Text maxFontSizeMultiplier={1.3} style={[styles.adviceTitle, { color: colors.heading }]}>Vertrekadvies</Text>
+              <Text maxFontSizeMultiplier={1.3} style={[styles.adviceHint, { color: colors.textSoft }]}>{advice?.later ? "Eerstvolgende bereikbare vertrek" : "Op basis van actuele vertrektijden en je GPS"}</Text>
             </View>
-            <View style={[styles.advicePill, { backgroundColor: bestOption.tight ? colors.warningSoft : advice?.later ? colors.accentSoft : colors.successSoft }]}>
-              <Text maxFontSizeMultiplier={1.3} style={[styles.advicePillText, { color: bestOption.tight ? colors.delayWarning : colors.accentText }]}>
-                {bestOption.tight ? "Krap" : advice?.later ? "Later" : "Haalbaar"}
-              </Text>
+            <View style={[styles.advicePill, { backgroundColor: adviceStatus?.tone === "warning" ? colors.warningSoft : adviceStatus?.tone === "neutral" ? colors.accentSoft : colors.successSoft }]}>
+              <Text maxFontSizeMultiplier={1.3} style={[styles.advicePillText, { color: adviceStatus?.tone === "warning" ? colors.delayWarning : colors.accentText }]}>{adviceStatus?.label}</Text>
+            </View>
+          </View>
+          <View style={styles.adviceTiming}>
+            <Text maxFontSizeMultiplier={1.3} style={[styles.adviceLeave, { color: colors.text }]}>{advice?.leaveText}</Text>
+            <View style={styles.adviceWalkRow}>
+              <Ionicons name="walk-outline" size={16} color={colors.textSoft}/>
+              <Text maxFontSizeMultiplier={1.3} style={[styles.adviceHint, { color: colors.textSoft }]}>{bestOption.walkMinutes} min lopen · {advice?.marginText}</Text>
             </View>
           </View>
           <Pressable accessibilityRole="button" accessibilityLabel={"Open halte " + bestOption.stop.name + " voor lijn " + bestOption.departure.line}
-            onPress={() => openStop(bestOption.stop)} style={styles.adviceTrip}>
+            onPress={() => openStop(bestOption.stop)} style={[styles.adviceTrip, { backgroundColor: colors.background === "#FFFFFF" ? "#EEF4FF" : colors.surfaceAlt }]}>
             <LijnBadge line={bestOption.departure.line} carrier={bestOption.departure.carrier} compact tone="flow" />
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text maxFontSizeMultiplier={1.3} style={[styles.adviceDestination, { color: colors.text }]} numberOfLines={1}>{bestOption.departure.destination}</Text>
+              <Text maxFontSizeMultiplier={1.3} style={[styles.adviceDestination, { color: colors.text }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{bestOption.departure.destination}</Text>
               <Text maxFontSizeMultiplier={1.3} style={[styles.adviceHint, { color: colors.textSoft }]} numberOfLines={2}>
-                {bestOption.stop.name} · {bestOption.walkMinutes} min lopen
+                {bestOption.stop.name} · {effectiveDepartureClock(bestOption.departure)}
               </Text>
             </View>
             <Text maxFontSizeMultiplier={1.3} style={[styles.adviceMinutes, { color: colors.heading }]}>{advice?.later ? effectiveDepartureClock(bestOption.departure) : bestOption.departureInMinutes + " min"}</Text>
           </Pressable>
-          <View style={[styles.adviceFoot, { backgroundColor: bestOption.tight ? colors.warningSoft : advice?.later ? colors.accentSoft : colors.successSoft }]}>
-            <Ionicons name={bestOption.tight || advice?.later ? "time-outline" : "checkmark-circle-outline"} size={17}
-              color={bestOption.tight ? colors.delayWarning : colors.accentText} />
-            <Text maxFontSizeMultiplier={1.3} style={{ color: colors.text, flex: 1, fontSize: 12, fontWeight: "700" }}>
-              {advice?.leaveText} · {advice?.marginText}
-            </Text>
-          </View>
+          {options[1] ? <View style={styles.adviceAlternative}>
+            <Text maxFontSizeMultiplier={1.3} style={[styles.adviceAlternativeTitle, { color: colors.textSoft }]}>Andere mogelijkheid · bestemmingen kunnen verschillen</Text>
+            <Pressable onPress={() => openStop(options[1].stop)} accessibilityRole="button"
+              accessibilityLabel={"Andere mogelijkheid: lijn " + options[1].departure.line + " naar " + options[1].departure.destination + " vanaf " + options[1].stop.name}
+              style={styles.adviceAlternativeRow}>
+              <LijnBadge line={options[1].departure.line} carrier={options[1].departure.carrier} compact tone="flow"/>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text maxFontSizeMultiplier={1.3} style={[styles.adviceAlternativeDestination, { color: colors.text }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{options[1].departure.destination}</Text>
+                <Text maxFontSizeMultiplier={1.3} style={[styles.adviceHint, { color: colors.textSoft }]} numberOfLines={1}>{options[1].stop.name} · {options[1].walkMinutes} min lopen</Text>
+              </View>
+              <Text maxFontSizeMultiplier={1.3} style={[styles.adviceAlternativeTime, { color: colors.heading }]}>{options[1].withinHour ? options[1].departureInMinutes + " min" : effectiveDepartureClock(options[1].departure)}</Text>
+            </Pressable>
+          </View> : null}
           {options.length > 1 ? (
             <Pressable onPress={() => setCompareOpen((value) => !value)} accessibilityRole="button"
               accessibilityState={{ expanded: compareOpen }} style={styles.compareToggle}>
               <Text maxFontSizeMultiplier={1.3} style={{ color: colors.accentText, fontSize: 12, fontWeight: "800" }}>
-                {compareOpen ? "Vergelijking sluiten" : "Vergelijk " + options.length + " haltes"}
+                {compareOpen ? "Overzicht sluiten" : "Bekijk alle " + options.length + " vertrekopties"}
               </Text>
               <Ionicons name={compareOpen ? "chevron-up" : "chevron-down"} size={16} color={colors.accentText} />
             </Pressable>
@@ -427,10 +439,18 @@ const styles = StyleSheet.create({
   adviceCard: { marginHorizontal: 13, marginTop: 8, padding: 12, borderRadius: 12, borderWidth: 1, gap: 10 },
   adviceTop: { flexDirection: "row", alignItems: "center", gap: 8 },
   adviceTitle: { fontSize: 16, fontWeight: "900" },
+  adviceTiming: { gap: 3, paddingTop: 3 },
+  adviceLeave: { fontSize: 21, lineHeight: 27, fontWeight: "900", fontVariant: ["tabular-nums"] },
+  adviceWalkRow: { flexDirection: "row", alignItems: "center", gap: 5 },
+  adviceAlternative: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "#CEDBEC", paddingTop: 9, gap: 4 },
+  adviceAlternativeTitle: { fontSize: 11, fontWeight: "700" },
+  adviceAlternativeRow: { minHeight: 43, flexDirection: "row", alignItems: "center", gap: 9 },
+  adviceAlternativeDestination: { fontSize: 12.5, fontWeight: "800" },
+  adviceAlternativeTime: { fontSize: 13, fontWeight: "900", fontVariant: ["tabular-nums"] },
   adviceHint: { fontSize: 11, lineHeight: 16 },
   advicePill: { paddingHorizontal: 9, paddingVertical: 6, borderRadius: 15 },
   advicePillText: { fontSize: 11, fontWeight: "900" },
-  adviceTrip: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: 10 },
+  adviceTrip: { minHeight: 59, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10 },
   adviceDestination: { fontSize: 14, fontWeight: "800" },
   adviceMinutes: { fontSize: 16, fontWeight: "900", fontVariant: ["tabular-nums"] },
   adviceFoot: { minHeight: 36, paddingHorizontal: 10, flexDirection: "row", alignItems: "center", gap: 7, borderRadius: 8 },

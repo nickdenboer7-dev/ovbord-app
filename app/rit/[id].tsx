@@ -430,7 +430,7 @@ export default function RitScreen() {
   // position and planned time identify the boarding stop when ID and name differ.
   const boarding = useMemo(() => boardingHintFromParams({ boardingId, boardingName, boardingLat, boardingLon, boardingTime }),
     [boardingId, boardingName, boardingLat, boardingLon, boardingTime]);
-  const {toggleFavoriteJourney,isFavoriteJourney,getCachedRit,setCachedRit}=useApp();
+  const {toggleFavoriteJourney,isFavoriteJourney,getCachedRit,setCachedRit,colors}=useApp();
   const { followJourneyStop } = useFlowNavigation();
   const { c, styles } = useRitTheme();
   const [refreshing, setRefreshing] = useState(false);
@@ -710,6 +710,8 @@ export default function RitScreen() {
   const headerStatusText = cancelled ? "Deze rit rijdt niet" : ended ? "Rit beëindigd"
     : headerHasLive ? [headline, typeof shownGpsAge === "number" ? "live " + Math.round(shownGpsAge) + " sec" : "live"].filter(Boolean).join(" · ")
     : lastKnown ? "Laatst bekende positie" : journey ? headline : "Rit laden…";
+  const nextStopDelta = nextStop && nextStopIsLive && !lastKnown && journey?.live
+    ? timelineTimeDelta(nextStop.delayMinutes) : null;
   const positionSub = cancelled ? (cancellation.source === "haltebord"
       ? "Het vertrekbord meldt deze rit als uitgevallen. Kijk daar voor een alternatief."
       : "De vervoerder meldt deze rit als uitgevallen. Kijk op het vertrekbord voor een alternatief.")
@@ -840,6 +842,25 @@ export default function RitScreen() {
         <Text maxFontSizeMultiplier={1.3} style={styles.headerStatusText} numberOfLines={1}>{headerStatusText}</Text>
       </Pressable>
     </View>
+    {/* This small card stays visible with the route, while the timeline itself may scroll to the bus. */}
+    {journey && nextStop && !mapOpen && !choosingAlight && !ended && !cancelled ? <Pressable
+      onPress={() => openStopBoard(nextStop)} accessibilityRole="button"
+      accessibilityLabel={(nextStopIsLive && !lastKnown ? "Volgende halte volgens GPS" : "Volgende halte volgens dienstregeling") + ": " + nextStop.name + ", " + timeOf(nextStop) + ". Haltebord openen"}
+      style={styles.nextStopQuickCard}>
+      <View style={[styles.nextStopQuickIcon, { backgroundColor: nextStopIsLive && !lastKnown ? c.nextTagBg : c.positionBg }]}>
+        <Ionicons name={vehicleIcon(journey.mode)} size={18} color={nextStopIsLive && !lastKnown ? c.navy : c.muted}/>
+      </View>
+      <View style={styles.nextStopQuickBody}>
+        <Text maxFontSizeMultiplier={1.3} style={styles.nextStopQuickLabel}>{nextStopIsLive && !lastKnown ? "Volgende halte · GPS" : lastKnown ? "Laatst bekende volgende halte" : "Volgende volgens dienstregeling"}</Text>
+        <Text maxFontSizeMultiplier={1.3} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={styles.nextStopQuickName}>{stopShort(nextStop.name)}</Text>
+      </View>
+      <View style={styles.nextStopQuickTiming}>
+        <Text maxFontSizeMultiplier={1.3} style={styles.nextStopQuickClock}>{timeOf(nextStop)}</Text>
+        {nextStopDelta ? <Text maxFontSizeMultiplier={1.3} style={[styles.nextStopQuickDelta,
+          { color: nextStopDelta.tone === "red" ? colors.danger : nextStopDelta.tone === "orange" ? colors.delayWarning : colors.success }]}>{nextStopDelta.text} min</Text> : null}
+      </View>
+      <Ionicons name="chevron-forward" size={17} color={c.muted}/>
+    </Pressable> : null}
     {/* Choosing where to get off is a temporary mode: this bar stays in view while the list scrolls. */}
     {choosingAlight && journey && !mapOpen ? <View style={styles.chooseBanner} accessibilityRole="alert">
       <Ionicons name="flag-outline" color={c.alightTagText} size={17}/>
@@ -970,6 +991,16 @@ function makeStyles(c: RitColors) {
   headerStatus: { flexDirection: "row", alignItems: "center", gap: 6, paddingLeft: 42, paddingRight: 6, marginTop: 1 },
   headerStatusDot: { width: 6, height: 6, borderRadius: 3, flexShrink: 0 },
   headerStatusText: { flexShrink: 1, color: "#e1edfa", fontSize: 11, lineHeight: 16 },
+  nextStopQuickCard: { flexShrink: 0, minHeight: 63, paddingHorizontal: 12, paddingVertical: 8,
+    flexDirection: "row", alignItems: "center", gap: 9, backgroundColor: c.nextTagBg,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.border },
+  nextStopQuickIcon: { width: 35, height: 35, borderRadius: 18, justifyContent: "center", alignItems: "center" },
+  nextStopQuickBody: { flex: 1, minWidth: 0, gap: 2 },
+  nextStopQuickLabel: { color: c.navy, fontSize: 10.5, fontWeight: "800" },
+  nextStopQuickName: { color: c.text, fontSize: 14, fontWeight: "900" },
+  nextStopQuickTiming: { alignItems: "flex-end", gap: 2 },
+  nextStopQuickClock: { color: c.text, fontSize: 14, fontWeight: "900", fontVariant: ["tabular-nums"] },
+  nextStopQuickDelta: { fontSize: 10.5, fontWeight: "900", fontVariant: ["tabular-nums"] },
   center: { flex: 1, justifyContent: "center", alignItems: "center", padding: 25, gap: 16 },
   message: { fontSize: 14, color: c.muted, textAlign: "center" },
   retry: { backgroundColor: c.buttonBg, borderRadius: 7, paddingHorizontal: 18, paddingVertical: 10, flexDirection: "row", alignItems: "center", gap: 8 },
