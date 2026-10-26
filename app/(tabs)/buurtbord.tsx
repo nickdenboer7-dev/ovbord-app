@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import { StatusBar as ExpoStatusBar } from "expo-status-bar";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { largeText } from "../../lib/textScale";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -14,6 +15,7 @@ import { SettingsButton } from "../../components/SettingsButton";
 import { modaliteitColors } from "../../constants/vervoerders";
 import { useApp } from "../../context/AppProvider";
 import { DEFAULT_USER_SETTINGS } from "../../lib/userSettings";
+import { STOP_BOARD_BLUE } from "../../lib/stopBoardDesign";
 import { useFlowNavigation } from "../../context/FlowNavigation";
 import { getHalte, getNearby } from "../../lib/api";
 import { bestNearbyStopId, buurtbordPreviewRows, compareNearbyDepartures, nearbyLeaveAdvice, reachableOnFoot } from "../../lib/buurtbord";
@@ -59,6 +61,9 @@ export default function BuurtbordScreen() {
   const [locatieRetry, setLocatieRetry] = useState(0);
   const [showCities, setShowCities] = useState(false);
   const [compareOpen, setCompareOpen] = useState(false);
+  const [mapExpanded, setMapExpanded] = useState(true);
+  const [focused, setFocused] = useState(false);
+  useFocusEffect(useCallback(() => { setFocused(true); return () => setFocused(false); }, []));
   const [refreshTick, setRefreshTick] = useState(0);
   const previousLocationKey = useRef<string | null>(initialCache ? scope : null);
   const itemsRef = useRef(items); itemsRef.current = items;
@@ -193,19 +198,20 @@ export default function BuurtbordScreen() {
   };
 
   return (
-    <ScrollView style={[styles.screen, { backgroundColor: colors.background }]}
-      contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) + 40 }}
+    <View style={[styles.screen, { backgroundColor: colors.background }]}>
+      {focused ? <ExpoStatusBar style="light" /> : null}
+      <View style={[styles.headerRow, { paddingTop: Math.max(insets.top, 24) + 10 }]}>
+        <View style={styles.headerCopy}>
+          <Text maxFontSizeMultiplier={1.3} style={[styles.title, { color: "#fff" }]}>Buurtbord</Text>
+          {!large ? <Text maxFontSizeMultiplier={1.3} style={[styles.subtitle, { color: "#DCEAF7" }]}>Haltes en snelste vertrekopties in de buurt</Text> : null}
+        </View>
+        <SettingsButton inverted />
+      </View>
+    <ScrollView style={{ flex: 1 }}
+      contentContainerStyle={{ paddingTop: 11, paddingBottom: Math.max(insets.bottom, 16) + 78 }}
       refreshControl={<RefreshControl refreshing={refreshing}
         onRefresh={() => { setRefreshing(true); setRefreshTick((value) => value + 1); if (!manualCity) live.requestFresh(); }}
         colors={[colors.accentText]} tintColor={colors.accentText} progressBackgroundColor={colors.surface} />}>
-      <View style={[styles.headerRow, { paddingTop: Math.max(insets.top, 24) + 24 }]}>
-        <View style={styles.headerCopy}>
-          <Text style={[styles.title, { color: colors.text }]}>Buurtbord</Text>
-          {large ? null : <Text style={[styles.subtitle, { color: colors.textSoft }]}>Haltes en snelste vertrekopties in de buurt</Text>}
-        </View>
-        <SettingsButton />
-      </View>
-
       {(updating || !cacheReady) ? <Text style={{ color: colors.textMuted, fontSize: 11, paddingHorizontal: 14, paddingVertical: 4 }}>Bijwerken…</Text> : null}
       <View style={{ paddingHorizontal: 14, paddingBottom: 9, flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 7 }}>
         <Pressable accessibilityRole="button" accessibilityLabel="Kies een stad voor het Buurtbord"
@@ -383,24 +389,40 @@ export default function BuurtbordScreen() {
           ) : <Text style={[styles.empty, { color: colors.textSoft }]}>{!center ? "Geen GPS-positie beschikbaar. Kies een stad of probeer GPS opnieuw." : "Geen haltes in de buurt gevonden."}</Text>) : null}
         </View>
       )}
-      {settings.buurtbordMap ? <>
-      <Text maxFontSizeMultiplier={1.3} style={[styles.mapHeading, { color: colors.textSoft }]}>Haltes op de kaart</Text>
-      <View style={[styles.mapWrap, large && styles.mapWrapLarge, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-        {center ? <LeafletMap markers={mapMarkers} center={center} /> : <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}><Text style={{ color: colors.textMuted }}>Locatie bepalen…</Text></View>}
-      </View>
-      </> : null}
+      {settings.buurtbordMap ? <View style={styles.mapSection}>
+        <Pressable onPress={() => setMapExpanded(value => !value)} accessibilityRole="button"
+          accessibilityLabel={mapExpanded ? "Kaart inklappen" : "Kaart uitklappen"}
+          accessibilityState={{ expanded: mapExpanded }}
+          style={[styles.mapToggle, { backgroundColor: colors.background === "#FFFFFF" ? "#EEF4FF" : colors.surfaceAlt, borderColor: colors.border }]}>
+          <Ionicons name="map-outline" size={18} color={STOP_BOARD_BLUE} />
+          <Text maxFontSizeMultiplier={1.3} style={styles.mapToggleText}>Haltes op de kaart</Text>
+          <Ionicons name={mapExpanded ? "chevron-up" : "chevron-down"} size={18} color={STOP_BOARD_BLUE} />
+        </Pressable>
+        {mapExpanded ? <View style={[styles.mapWrap, large && styles.mapWrapLarge, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+          {center ? <LeafletMap markers={mapMarkers} center={center} /> : <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}><Text style={{ color: colors.textMuted }}>Locatie bepalen…</Text></View>}
+        </View> : null}
+        {mapExpanded ? <Pressable onPress={() => setMapExpanded(false)} accessibilityRole="button" accessibilityLabel="Kaart inklappen"
+          style={[styles.mapClose, { backgroundColor: colors.surface }]}>
+          <Ionicons name="chevron-up" size={15} color={colors.accentText} />
+          <Text maxFontSizeMultiplier={1.3} style={{ fontSize: 12, fontWeight: "800", color: colors.accentText }}>Kaart inklappen</Text>
+        </Pressable> : null}
+      </View> : null}
     </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  headerRow: { paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 12 },
+  headerRow: { paddingHorizontal: 14, paddingBottom: 13, backgroundColor: STOP_BOARD_BLUE, flexDirection: "row", alignItems: "center", gap: 12 },
   headerCopy: { flex: 1 },
   title: { fontSize: 21, fontWeight: "800", letterSpacing: -0.6 },
   subtitle: { fontSize: 12, marginTop: 3 },
-  mapHeading: { marginHorizontal: 14, marginTop: 16, fontSize: 12, fontWeight: "700" },
-  mapWrap: { marginHorizontal: 13, marginTop: 8, height: 170, borderRadius: 14, overflow: "hidden", borderWidth: 1 },
+  mapSection: { marginHorizontal: 13, marginTop: 16, gap: 7 },
+  mapToggle: { minHeight: 46, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, flexDirection: "row", alignItems: "center", gap: 9 },
+  mapToggleText: { color: STOP_BOARD_BLUE, flex: 1, fontSize: 13, fontWeight: "800" },
+  mapClose: { alignSelf: "center", minHeight: 34, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, borderRadius: 9 },
+  mapWrap: { height: 185, borderRadius: 14, overflow: "hidden", borderWidth: 1 },
   mapWrapLarge: { height: 110, marginVertical: 8 },
   adviceCard: { marginHorizontal: 13, marginTop: 8, padding: 12, borderRadius: 12, borderWidth: 1, gap: 10 },
   adviceTop: { flexDirection: "row", alignItems: "center", gap: 8 },
@@ -418,8 +440,8 @@ const styles = StyleSheet.create({
   compareRow: { minHeight: 66, flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 8 },
   compareStop: { fontSize: 13, fontWeight: "800" },
   compareTime: { fontSize: 14, fontWeight: "900", fontVariant: ["tabular-nums"] },
-  listContent: { paddingHorizontal: 13, paddingBottom: 30, gap: 7 },
-  card: { borderRadius: 12, borderWidth: 1, padding: 11, gap: 7 },
+  listContent: { paddingHorizontal: 13, paddingBottom: 5, gap: 7 },
+  card: { borderRadius: 12, borderWidth: 1, padding: 10, gap: 5 },
   topRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
   nameArea: { flexDirection: "row", gap: 9, alignItems: "center", flex: 1 },
   modeDot: { width: 14, height: 14, borderRadius: 999 },

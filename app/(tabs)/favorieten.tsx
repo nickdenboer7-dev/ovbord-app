@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { StatusBar as ExpoStatusBar } from "expo-status-bar";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import { Alert, FlatList, Pressable, RefreshControl, StyleSheet, Text, View, useWindowDimensions } from "react-native";
@@ -32,6 +33,7 @@ export default function FavorietenScreen() {
   const { boards, refreshFailure, refreshing: favoritesRefreshing, updatedAt, refresh, stopsKey } = useFavoritesLive();
   const [refreshing, setRefreshing] = useState(false);
   const [ordering, setOrdering] = useState(false);
+  const [focused, setFocused] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
@@ -39,7 +41,7 @@ export default function FavorietenScreen() {
     return () => clearInterval(timer);
   }, []);
   // Opening the tab refreshes times older than 15 s; while open, every minute (sooner after a failure).
-  useFocusEffect(useCallback(() => { void refresh(); }, [refresh]));
+  useFocusEffect(useCallback(() => { setFocused(true); void refresh(); return () => setFocused(false); }, [refresh]));
   useSmartRefresh(() => refresh(), refreshFailure ? 20000 : 60000, "favorieten:" + stopsKey, stopsKey !== "");
 
   const openStop = (stop: StopSummary, options?: ShowStopOptions) => { addRecentStop(stop); showFlowStop(stop, options); router.navigate("/"); };
@@ -79,25 +81,26 @@ export default function FavorietenScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <View style={[styles.headerRow, { paddingTop: Math.max(insets.top, 24) + 24 }]}>
+      {focused ? <ExpoStatusBar style="light" /> : null}
+      <View style={[styles.headerRow, { paddingTop: Math.max(insets.top, 24) + 10 }]}>
         <View style={styles.headerCopy}>
-          <Text style={[styles.title, { color: colors.heading }]}>Favorieten</Text>
-          <Text style={[styles.subtitle, { color: colors.textSoft }]}>{favoritesRefreshing && Object.values(boards).some((entry) => Boolean(entry.board)) ? "Bijwerken…" : ordering ? "Zet je vaste ritten en haltes bovenaan" : "Jouw vaste haltes en ritten"}</Text>
+          <Text maxFontSizeMultiplier={1.3} style={[styles.title, { color: "#FFFFFF" }]}>Favorieten</Text>
+          <Text maxFontSizeMultiplier={1.3} style={[styles.subtitle, { color: "#DCEAF7" }]}>{favoritesRefreshing && Object.values(boards).some((entry) => Boolean(entry.board)) ? "Bijwerken…" : ordering ? "Zet je favoriete haltes bovenaan" : "Jouw vaste haltes en ritten"}</Text>
         </View>
         {canOrder ? (
           <Pressable onPress={() => setOrdering((value) => !value)} accessibilityRole="button"
             accessibilityLabel={ordering ? "Klaar met ordenen" : "Favorieten ordenen"} accessibilityState={{ selected: ordering }}
-            style={[styles.orderToggle, { borderColor: colors.border, backgroundColor: ordering ? colors.accentSoft : colors.surface }]}>
-            <Ionicons name={ordering ? "checkmark" : "swap-vertical"} size={16} color={colors.accentText} />
-            <Text style={{ color: colors.accentText, fontSize: 12, fontWeight: "800" }}>{ordering ? "Klaar" : "Ordenen"}</Text>
+            style={[styles.orderToggle, { borderColor: "rgba(255,255,255,0.45)", backgroundColor: ordering ? "#FFFFFF" : "rgba(255,255,255,0.12)" }]}>
+            <Ionicons name={ordering ? "checkmark" : "swap-vertical"} size={16} color={ordering ? STOP_BOARD_BLUE : "#FFFFFF"} />
+            <Text maxFontSizeMultiplier={1.3} style={{ color: ordering ? STOP_BOARD_BLUE : "#FFFFFF", fontSize: 12, fontWeight: "800" }}>{ordering ? "Klaar" : "Ordenen"}</Text>
           </Pressable>
         ) : null}
-        <SettingsButton />
+        <SettingsButton inverted />
       </View>
       <FlatList
         data={favoriteStops}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 16) + 72 }]}
         extraData={{ boards, nowMs, ordering }}
         refreshControl={stopsKey ? <RefreshControl refreshing={refreshing} onRefresh={() => void pullToRefresh()}
           colors={[colors.accentText]} tintColor={colors.accentText} progressBackgroundColor={colors.surface} /> : undefined}
@@ -109,8 +112,8 @@ export default function FavorietenScreen() {
             </View>
           ) : null}
           {favoriteJourneys.length ? (
-          <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.cardTitle, { color: colors.text }]}>Favoriete ritten per halte</Text>
+          <View style={[styles.card, { backgroundColor: colors.background === "#FFFFFF" ? "#F4F8FF" : colors.surface, borderColor: colors.border }]}>
+            <Text maxFontSizeMultiplier={1.3} style={[styles.cardTitle, { color: colors.text }]}>Favoriete ritten per halte</Text>
             {favoriteJourneys.map((item, index) => {
               const entry = boards[item.stop.id];
               const rows = entry?.board ? favoriteJourneyDepartures(entry.board.departures, item, nowMs) : [];
@@ -152,14 +155,14 @@ export default function FavorietenScreen() {
           const rows = entry?.board ? buurtbordPreviewRows(entry.board.departures, nowMs, 3) : [];
           const boardStop = entry?.board?.stop || item;
           return (
-          <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={[styles.card, { backgroundColor: colors.background === "#FFFFFF" ? "#F4F8FF" : colors.surface, borderColor: colors.border }]}>
             <View style={styles.stopRow}>
               <Pressable onPress={() => openStop(item)} accessibilityRole="button" accessibilityLabel={"Open halte " + item.name}
                 style={styles.stopMain}>
                 <View style={[styles.modeDot, { backgroundColor: modaliteitColors[item.mode] }]} />
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.stopTitle, { color: colors.text }]}>{item.name}</Text>
-                  {item.city ? <Text style={[styles.stopMeta, { color: colors.textSoft }]}>{item.city}</Text> : null}
+                  <Text maxFontSizeMultiplier={1.3} numberOfLines={large ? 3 : 2} style={[styles.stopTitle, { color: colors.text }]}>{item.name}</Text>
+                  {item.city ? <Text maxFontSizeMultiplier={1.3} style={[styles.stopMeta, { color: colors.textSoft }]}>{item.city}</Text> : null}
                   {!rows.length ? <View style={styles.lineWrap}>{item.lines.slice(0, 5).map((line, lineIndex) => <LijnBadge key={`${line.line}-${lineIndex}`} line={line.line} carrier={line.carrier} compact />)}</View> : null}
                 </View>
               </Pressable>
@@ -176,6 +179,13 @@ export default function FavorietenScreen() {
                   size="list" last={rowIndex === rows.length - 1} onPress={() => openDeparture(boardStop, dep)} />
               ))}
             </View> : <Text style={[styles.status, { color: colors.textSoft }]}>{favoriteStatusText(entry, false)}</Text>}
+            <Pressable onPress={() => openStop(item)} accessibilityRole="button"
+              accessibilityLabel={"Open haltebord van " + item.name}
+              style={[styles.openBoard, { backgroundColor: colors.background === "#FFFFFF" ? "#E2EEFF" : colors.surfaceAlt }]}>
+              <Ionicons name="bus-outline" size={17} color={colors.background === "#FFFFFF" ? STOP_BOARD_BLUE : colors.accentText} />
+              <Text maxFontSizeMultiplier={1.3} style={[styles.openBoardText, { color: colors.background === "#FFFFFF" ? STOP_BOARD_BLUE : colors.accentText }]}>Open haltebord</Text>
+              <Ionicons name="chevron-forward" size={17} color={colors.background === "#FFFFFF" ? STOP_BOARD_BLUE : colors.accentText} />
+            </Pressable>
           </View>
           );
         }}
@@ -207,8 +217,10 @@ export default function FavorietenScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 }, headerRow: { paddingHorizontal: 14, marginBottom: 7, flexDirection: "row", alignItems: "center", gap: 12 }, headerCopy: { flex: 1 }, title: { fontSize: 21, fontWeight: "800" }, subtitle: { marginTop: 3, fontSize: 12 }, content: { padding: 13, gap: 8, paddingBottom: 28 }, card: { borderWidth: 0, borderRadius: 0, padding: 12 }, cardTitle: { fontSize: 15, fontWeight: "800", marginBottom: 10 }, stopRow: { flexDirection: "row", gap: 12, alignItems: "flex-start" }, modeDot: { width: 16, height: 16, borderRadius: 999, marginTop: 4 }, stopTitle: { fontSize: 16, fontWeight: "800" }, stopMeta: { marginTop: 4, fontSize: 13 }, lineWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 }, removeButton: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  screen: { flex: 1 }, headerRow: { backgroundColor: STOP_BOARD_BLUE, paddingHorizontal: 14, paddingBottom: 13, flexDirection: "row", alignItems: "center", gap: 9 }, headerCopy: { flex: 1 }, title: { fontSize: 21, fontWeight: "800" }, subtitle: { marginTop: 3, fontSize: 12 }, content: { padding: 13, gap: 9 }, card: { borderWidth: 1, borderRadius: 14, padding: 12, gap: 7 }, cardTitle: { fontSize: 15, fontWeight: "800", marginBottom: 10 }, stopRow: { flexDirection: "row", gap: 12, alignItems: "flex-start" }, modeDot: { width: 16, height: 16, borderRadius: 999, marginTop: 4 }, stopTitle: { fontSize: 16, fontWeight: "800" }, stopMeta: { marginTop: 4, fontSize: 13 }, lineWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 }, removeButton: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
   headerList: { gap: 8 },
+  openBoard: { minHeight: 40, borderRadius: 9, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, marginTop: 6 },
+  openBoardText: { flex: 1, fontSize: 12, fontWeight: "800" },
   notice: { flexDirection: "row", alignItems: "center", gap: 8, padding: 10, borderRadius: 10 },
   emptyState: { marginTop: 30, padding: 22, alignItems: "center", gap: 13, borderRadius: 15 },
   emptyIcon: { width: 66, height: 66, borderRadius: 33, alignItems: "center", justifyContent: "center", marginBottom: 6 },

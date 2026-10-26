@@ -6,9 +6,10 @@ import { useApp } from "../context/AppProvider";
 
 type Props = {
   disabled?: boolean;
+  inverted?: boolean;
 };
 
-export function SettingsButton({ disabled = false }: Props) {
+export function SettingsButton({ disabled = false, inverted = false }: Props) {
   const { colors } = useApp();
   const router = useRouter();
 
@@ -21,13 +22,13 @@ export function SettingsButton({ disabled = false }: Props) {
       style={({ pressed }) => [
         styles.button,
         {
-          backgroundColor: colors.surface,
-          borderColor: colors.border,
+          backgroundColor: inverted ? "rgba(255,255,255,0.12)" : colors.surface,
+          borderColor: inverted ? "rgba(255,255,255,0.4)" : colors.border,
           opacity: pressed ? 0.72 : 1
         }
       ]}
     >
-      <Ionicons name="settings-outline" size={21} color={colors.text} />
+      <Ionicons name="settings-outline" size={21} color={inverted ? "#FFFFFF" : colors.text} />
     </Pressable>
   );
 }
