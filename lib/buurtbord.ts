@@ -78,11 +78,35 @@ export function compareNearbyDepartures(
       spareMinutes, tight: spareMinutes < 3, withinHour: first.ms <= NEARBY_ADVICE_HORIZON_MS });
   }
   // A departure within the next hour outranks a comfortable but hours-later journey.
-  return options.sort((a, b) => Number(b.withinHour) - Number(a.withinHour)
+  const ranked = options.sort((a, b) => Number(b.withinHour) - Number(a.withinHour)
     || Number(a.tight) - Number(b.tight)
     || a.departureInMinutes - b.departureInMinutes
     || a.walkMinutes - b.walkMinutes
     || a.stop.name.localeCompare(b.stop.name, "nl"));
+
+  // For the same line and destination, a nearby stop is worth a few minutes'
+  // later departure when the saved walk exceeds that delay. For example:
+  // Rokin: N85 in 12 min, 5 min walking; Dam: N85 in 14 min, 1 min walking.
+  // Prefer Dam; do not trade a quick connection for a much later/different bus.
+  const first = ranked[0];
+  if (!first?.withinHour || first.tight) return ranked;
+  const serviceKey = (option: NearbyDepartureOption) =>
+    option.departure.line.trim().toLocaleLowerCase("nl") + "|" +
+    option.departure.destination.trim().toLocaleLowerCase("nl");
+  const matching = ranked.slice(1)
+    .filter((option) => option.withinHour && !option.tight
+      && serviceKey(option) === serviceKey(first)
+      && option.departureInMinutes >= first.departureInMinutes
+      && option.departureInMinutes - first.departureInMinutes <= 5
+      && option.walkMinutes < first.walkMinutes
+      && option.departureInMinutes + option.walkMinutes <
+        first.departureInMinutes + first.walkMinutes)
+    .sort((a, b) => a.departureInMinutes + a.walkMinutes -
+      (b.departureInMinutes + b.walkMinutes)
+      || b.spareMinutes - a.spareMinutes);
+  if (!matching.length) return ranked;
+  const better = matching[0];
+  return [better, ...ranked.filter((option) => option !== better)];
 }
 
 /** When to begin walking, with five minutes extra margin when the connection allows it. */

@@ -79,6 +79,37 @@ test("same stop prefers a comfortable departure within the hour to an earlier ti
   assert.equal(nearbyLeaveAdvice(option, now).leaveText, "Vertrek over 8 min");
 });
 
+test("same N85 journey prefers Dam one minute away over Rokin five minutes away", () => {
+  const options = compareNearbyDepartures(
+    [stop("Rokin", 5), stop("Dam", 1)],
+    {
+      Rokin: [dep("rokin", 12, { line: "N85", destination: "Centraal Station" })],
+      Dam: [dep("dam", 14, { line: "N85", destination: "Centraal Station" })]
+    }, now);
+  assert.deepEqual(options.map((option) => option.stop.id), ["Dam", "Rokin"]);
+  assert.equal(options[0].spareMinutes, 13);
+  assert.equal(nearbyLeaveAdvice(options[0], now).leaveText, "Vertrek over 8 min");
+});
+
+test("a different line, destination or much later trip never steals the best-stop advice", () => {
+  const rokin = stop("Rokin", 5);
+  for (const alternative of [
+    dep("another-line", 14, { line: "N87", destination: "Centraal Station" }),
+    dep("another-destination", 14, { line: "N85", destination: "Bijlmer ArenA" }),
+    dep("too-late", 20, { line: "N85", destination: "Centraal Station" })
+  ]) {
+    const options = compareNearbyDepartures([rokin, stop("Dam", 1)],
+      { Rokin: [dep("rokin", 12, { line: "N85", destination: "Centraal Station" })], Dam: [alternative] }, now);
+    assert.equal(options[0].stop.id, "Rokin");
+  }
+});
+
+test("same service does not favor a later stop when the walk is no shorter", () => {
+  const options = compareNearbyDepartures([stop("Rokin", 5), stop("Dam", 5)],
+    { Rokin: [dep("rokin", 12)], Dam: [dep("dam", 14)] }, now);
+  assert.equal(options[0].stop.id, "Rokin");
+});
+
 test("unknown walking time is not silently guessed; caller must have current GPS", () => {
   const items = [stop("Unknown", undefined), stop("Negative", -1)];
   assert.deepEqual(compareNearbyDepartures(items, { Unknown: [dep("a", 10)], Negative: [dep("b", 10)] }, now), []);

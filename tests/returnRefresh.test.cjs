@@ -16,7 +16,7 @@ const React={
 Module._load=function(request,parent,isMain){
   if(request==='react')return React;
   if(request==='expo-router')return {useFocusEffect:callback=>{activeHarness.focus=callback;},useRouter:()=>({navigate(){}})};
-  if(request==='react-native')return {AppState:appState,StyleSheet:{create:value=>value,hairlineWidth:1},View:'View',Text:'Text',FlatList:'FlatList',Pressable:'Pressable',RefreshControl:'RefreshControl',useWindowDimensions:()=>({fontScale:1})};
+  if(request==='react-native')return {AppState:appState,StyleSheet:{create:value=>value,hairlineWidth:1},View:'View',Text:'Text',ScrollView:'ScrollView',FlatList:'FlatList',Pressable:'Pressable',RefreshControl:'RefreshControl',useWindowDimensions:()=>({fontScale:1})};
   if(request==='react-native-webview')return {WebView:'WebView'};
   if(request==='@react-native-async-storage/async-storage')return {default:storage,__esModule:true};
   if(buurtMode){
@@ -60,6 +60,19 @@ const find=(tree,type)=>{
   return null;
 };
 const textOf=tree=>!tree?'':typeof tree==='string'?tree:(tree.props?.children||[]).flat(Infinity).map(textOf).join(' ');
+const renderedStopNames=tree=>{
+  const names=[];
+  const visit=node=>{
+    if(!node||typeof node!=='object')return;
+    if(node.type==='Pressable'&&typeof node.props?.accessibilityLabel==='string'
+      &&node.props.accessibilityLabel.startsWith('Open halte ')){
+      names.push(node.props.accessibilityLabel.slice('Open halte '.length).split(', beste halte')[0]);
+    }
+    for(const child of (node.props?.children||[]).flat(Infinity))visit(child);
+  };
+  visit(tree);
+  return names;
+};
 
 test('GPS recovery stays hidden for 9999 ms, appears after ten seconds, and resets on retry',()=>{
   const originalSet=global.setTimeout,originalClear=global.clearTimeout;let now=0,id=0;const timers=new Map();
@@ -165,12 +178,12 @@ test('Buurtbord renders cached rows immediately and keeps them during a slow or 
   const componentPath=require.resolve('../app/(tabs)/buurtbord.tsx');delete require.cache[componentPath];
   const Buurtbord=require(componentPath).default,h=new Harness();
   try{
-    let tree=h.render(Buurtbord);assert.equal(find(tree,'FlatList').props.data[0].id,'L');
+    let tree=h.render(Buurtbord);assert.deepEqual(renderedStopNames(tree),[stop.name]);
     assert.deepEqual(find(tree,'LeafletMap').props.center,{lat:53.2012,lon:5.7999});
     h.flush();tree=h.render(Buurtbord);assert.match(textOf(tree),/Bijwerken…/);
-    assert.equal(find(tree,'FlatList').props.data.length,1);assert.equal(find(tree,'NearbySkeleton'),null);
+    assert.deepEqual(renderedStopNames(tree),[stop.name]);assert.equal(find(tree,'NearbySkeleton'),null);
     reject(Error('network request failed'));await new Promise(setImmediate);
-    tree=h.render(Buurtbord);assert.equal(find(tree,'FlatList').props.data[0].id,'L');
+    tree=h.render(Buurtbord);assert.deepEqual(renderedStopNames(tree),[stop.name]);
   }finally{h.destroy();buurtMode=false;}
 });
 test('Buurtbord restores persisted results before GPS completes, with no unrelated map',async()=>{
@@ -182,7 +195,7 @@ test('Buurtbord restores persisted results before GPS completes, with no unrelat
   try{
     let tree=h.render(Buurtbord);assert.equal(find(tree,'LeafletMap'),null);
     h.flush();await new Promise(setImmediate);tree=h.render(Buurtbord);h.flush();tree=h.render(Buurtbord);
-    assert.equal(find(tree,'FlatList').props.data[0].id,'L');
+    assert.deepEqual(renderedStopNames(tree),[stop.name]);
     assert.deepEqual(find(tree,'LeafletMap').props.center,{lat:53.2012,lon:5.7999});
     assert.equal(find(tree,'NearbySkeleton'),null);
   }finally{h.destroy();buurtMode=false;}
@@ -196,11 +209,11 @@ test('a late nearby response from the previous city cannot overwrite the current
   try{
     h.render(Buurtbord);h.flush();await new Promise(setImmediate);h.render(Buurtbord);h.flush();
     buurtLive={...buurtLive,...amsterdam,fixAt:6000,refreshToken:2};
-    let tree=h.render(Buurtbord);assert.equal(find(tree,'FlatList').props.data.length,0);h.flush();
+    let tree=h.render(Buurtbord);assert.deepEqual(renderedStopNames(tree),[]);h.flush();
     const newer=pending.at(-1);const a={...stop,id:'A',name:'Amsterdam',lat:52.3676,lon:4.9041};
     newer([a]);await new Promise(setImmediate);
     for(const resolve of pending.slice(0,-1))resolve([stop]);await new Promise(setImmediate);
-    tree=h.render(Buurtbord);assert.deepEqual(find(tree,'FlatList').props.data.map(x=>x.id),['A']);
+    tree=h.render(Buurtbord);assert.deepEqual(renderedStopNames(tree),['Amsterdam']);
     assert.deepEqual(find(tree,'LeafletMap').props.center,{lat:52.3676,lon:4.9041});
   }finally{h.destroy();buurtMode=false;}
 });

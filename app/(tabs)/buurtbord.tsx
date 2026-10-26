@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { largeText } from "../../lib/textScale";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { NearbySkeleton } from "../../components/NearbySkeleton";
@@ -191,7 +191,11 @@ export default function BuurtbordScreen() {
   };
 
   return (
-    <View style={[styles.screen, { backgroundColor: colors.background }]}> 
+    <ScrollView style={[styles.screen, { backgroundColor: colors.background }]}
+      contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) + 40 }}
+      refreshControl={<RefreshControl refreshing={refreshing}
+        onRefresh={() => { setRefreshing(true); setRefreshTick((value) => value + 1); if (!manualCity) live.requestFresh(); }}
+        colors={[colors.accentText]} tintColor={colors.accentText} progressBackgroundColor={colors.surface} />}>
       <View style={[styles.headerRow, { paddingTop: Math.max(insets.top, 24) + 24 }]}>
         <View style={styles.headerCopy}>
           <Text style={[styles.title, { color: colors.text }]}>Buurtbord</Text>
@@ -310,23 +314,13 @@ export default function BuurtbordScreen() {
           ))}
         </View>
       ) : null}
-      <View style={[styles.mapWrap, large && styles.mapWrapLarge, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-        {center ? <LeafletMap markers={mapMarkers} center={center} /> : <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}><Text style={{ color: colors.textMuted }}>Locatie bepalen…</Text></View>}
-      </View>
-
       {loading && !visibleItems.length ? <NearbySkeleton label={center ? "Haltes laden…" : "Locatie bepalen…"} /> : (
-        <FlatList
-          data={visibleItems}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
-          refreshControl={<RefreshControl refreshing={refreshing}
-            onRefresh={() => { setRefreshing(true); setRefreshTick((value) => value + 1); if (!manualCity) live.requestFresh(); }}
-            colors={[colors.accentText]} tintColor={colors.accentText} progressBackgroundColor={colors.surface} />}
-          renderItem={({ item }) => {
+        <View style={styles.listContent}>
+          {visibleItems.map((item) => {
             const preview = previews[item.id] || { loading: true, departures: [] };
             const rows = buurtbordPreviewRows(preview.departures, nowMs);
             return (
-              <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View key={item.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <View style={styles.topRow}>
                   <Pressable onPress={() => openStop(item)} accessibilityRole="button"
                     accessibilityLabel={"Open halte " + item.name + (item.id === highlightedStopId ? ", beste halte" : "")}
@@ -369,8 +363,8 @@ export default function BuurtbordScreen() {
                 </Pressable>
               </View>
             );
-          }}
-          ListEmptyComponent={loadError ? (
+          })}
+          {!visibleItems.length ? (loadError ? (
             <View style={{ alignItems: "center" }}>
               <Text style={[styles.empty, { color: colors.textSoft }]}>Haltes in de buurt konden niet worden geladen. Controleer je verbinding.</Text>
               <Pressable accessibilityRole="button" accessibilityLabel="Buurtbord opnieuw laden"
@@ -379,10 +373,14 @@ export default function BuurtbordScreen() {
                 <Text style={{ color: colors.accentText, fontWeight: "800" }}>Opnieuw proberen</Text>
               </Pressable>
             </View>
-          ) : <Text style={[styles.empty, { color: colors.textSoft }]}>{!center ? "Geen GPS-positie beschikbaar. Kies een stad of probeer GPS opnieuw." : "Geen haltes in de buurt gevonden."}</Text>}
-        />
+          ) : <Text style={[styles.empty, { color: colors.textSoft }]}>{!center ? "Geen GPS-positie beschikbaar. Kies een stad of probeer GPS opnieuw." : "Geen haltes in de buurt gevonden."}</Text>) : null}
+        </View>
       )}
-    </View>
+      <Text maxFontSizeMultiplier={1.3} style={[styles.mapHeading, { color: colors.textSoft }]}>Haltes op de kaart</Text>
+      <View style={[styles.mapWrap, large && styles.mapWrapLarge, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+        {center ? <LeafletMap markers={mapMarkers} center={center} /> : <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}><Text style={{ color: colors.textMuted }}>Locatie bepalen…</Text></View>}
+      </View>
+    </ScrollView>
   );
 }
 
@@ -392,7 +390,8 @@ const styles = StyleSheet.create({
   headerCopy: { flex: 1 },
   title: { fontSize: 21, fontWeight: "800", letterSpacing: -0.6 },
   subtitle: { fontSize: 12, marginTop: 3 },
-  mapWrap: { margin: 13, height: 170, borderRadius: 14, overflow: "hidden", borderWidth: 1 },
+  mapHeading: { marginHorizontal: 14, marginTop: 16, fontSize: 12, fontWeight: "700" },
+  mapWrap: { marginHorizontal: 13, marginTop: 8, height: 170, borderRadius: 14, overflow: "hidden", borderWidth: 1 },
   mapWrapLarge: { height: 110, marginVertical: 8 },
   adviceCard: { marginHorizontal: 13, marginTop: 8, padding: 12, borderRadius: 12, borderWidth: 1, gap: 10 },
   adviceTop: { flexDirection: "row", alignItems: "center", gap: 8 },
