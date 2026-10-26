@@ -630,13 +630,17 @@ export default function RitScreen() {
   const gpsFresh = Boolean(live && shownGpsAge !== undefined && shownGpsAge < 45);
   // Backend state "current" is a route-progress marker, not evidence of dwell.
   const verifiedLive = gpsFresh ? verifiedTimelineLocation(live, confirmedStop.current) : null;
-  const nextStopIndex = verifiedNextStopIndex(verifiedLive, journey?.stops.length || 0);
-  const nextStopIsLive = nextStopIndex !== null;
-  const nextStop = journey ? (nextStopIndex !== null
-    ? journey.stops[nextStopIndex]
-    : journey.stops.find((s) => s.state === "current" || s.state === "upcoming") || null) : null;
   // When the last refresh failed, what is shown is the last known state, not live.
   const lastKnown = Boolean(failure && journey);
+  const nextStopIndex = verifiedNextStopIndex(verifiedLive, journey?.stops.length || 0);
+  const nextStopIsLive = nextStopIndex !== null && !lastKnown;
+  // A backend "current" state is not a reliable next stop: use the same clock-based
+  // position as TimeLine when GPS is unverified, so the banner and timeline agree.
+  const scheduledPosition = journey ? expectedTimelineLocation(journey.stops, nowMs) : null;
+  const scheduledNextIndex = journey?.stops.length
+    ? scheduledPosition ? verifiedNextStopIndex(scheduledPosition, journey.stops.length) : 0 : null;
+  const displayNextIndex = verifiedLive && !lastKnown ? nextStopIndex : scheduledNextIndex;
+  const nextStop = journey && displayNextIndex !== null ? journey.stops[displayNextIndex] : null;
   // Short: this sits next to the map button on narrow screens.
   // "Tussen Prinsengracht en Frederiksplein": only from GPS-verified progress.
   const placeText = journey && !ended && !lastKnown ? vehiclePlaceText(journey.stops.map((stop) => stopShort(stop.name)), verifiedLive, lastKnown) : "";

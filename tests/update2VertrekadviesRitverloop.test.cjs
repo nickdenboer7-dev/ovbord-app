@@ -47,6 +47,9 @@ test("Vertrekadvies toont vertrekmoment, looptijd, halte en een alternatief", ()
 test("Volgende halte kaart beweert alleen live te zijn bij bevestigde GPS", () => {
   const ui = screen("app/rit/[id].tsx");
   assert.match(ui, /const nextStopIndex = verifiedNextStopIndex\(verifiedLive/);
+  assert.match(ui, /const scheduledPosition = journey \? expectedTimelineLocation\(journey\.stops, nowMs\)/);
+  assert.match(ui, /const displayNextIndex = verifiedLive && !lastKnown \? nextStopIndex : scheduledNextIndex/);
+  assert.doesNotMatch(ui, /journey\.stops\.find\(\(s\) => s\.state === "current"/);
   assert.match(ui, /const nextStopDelta = nextStop && nextStopIsLive && !lastKnown && journey\?\.live/);
   assert.match(ui, /journey && nextStop && !mapOpen && !choosingAlight && !ended && !cancelled/);
   assert.match(ui, /Volgende halte · GPS/);
