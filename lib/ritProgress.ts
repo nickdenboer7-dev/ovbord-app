@@ -144,3 +144,25 @@ export function noticeStopsText(stopIds: readonly string[] | undefined, stops: r
   const shown = names.slice(0, max).join(", ");
   return "Geldt voor: " + shown + (names.length > max ? " en " + (names.length - max) + " meer" : "");
 }
+
+/** Only stop-relocation notices can offer a map link; a general delay is not a boarding change. */
+export function isStopRelocationNotice(notice: { badge?: string; title?: string; description?: string }): boolean {
+  return /andere\s+(kant|zijde)|halte\s*(?:wijziging|verplaatst)|verplaatste\s+halte|tijdelijke\s+halte|andere\s+halte/i.test(
+    [notice.badge, notice.title, notice.description].filter(Boolean).join(" "));
+}
+
+/** Locate affected route stops by their actual stop IDs, never by matching names or guessing a quay. */
+export function noticeStopTargets<T extends { id: string }>(
+  notice: { badge?: string; title?: string; description?: string; stopIds?: readonly string[] },
+  stops: readonly T[]
+): T[] {
+  if (!isStopRelocationNotice(notice) || !notice.stopIds?.length) return [];
+  const affected = new Set(notice.stopIds.map(String));
+  const seen = new Set<string>();
+  return stops.filter(stop => {
+    const id = String(stop.id);
+    if (!affected.has(id) || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+}

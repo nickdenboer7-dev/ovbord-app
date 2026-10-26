@@ -61,7 +61,8 @@ export default function BuurtbordScreen() {
   const [locatieRetry, setLocatieRetry] = useState(0);
   const [showCities, setShowCities] = useState(false);
   const [compareOpen, setCompareOpen] = useState(false);
-  const [mapExpanded, setMapExpanded] = useState(true);
+  // Departures and the walking advice stay readable first; the map opens on request.
+  const [mapExpanded, setMapExpanded] = useState(false);
   const [focused, setFocused] = useState(false);
   useFocusEffect(useCallback(() => { setFocused(true); return () => setFocused(false); }, []));
   const [refreshTick, setRefreshTick] = useState(0);

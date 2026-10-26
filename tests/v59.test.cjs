@@ -142,9 +142,9 @@ test('a stationary live fix is not labelled "laatst bekend": the note follows th
   assert.match(read('components/FlowHome.tsx'), /const liveFixAt = live\.fixAt \?\? locationFixAt;/);
   assert.match(read('app/(tabs)/buurtbord.tsx'), /isLocationStale\(liveBron, liveFixAt, nowMs\)/);
   assert.match(read('app/(tabs)/buurtbord.tsx'), /const liveFixAt = live\.fixAt \?\? locatieFixAt;/);
-  // A stale foreground fix is retried within 30s, with high accuracy after two minutes.
-  assert.match(read('lib/useLiveLocation.ts'), /export const LIVE_HEARTBEAT_MS = 30000;/);
-  assert.match(read('lib/useLiveLocation.ts'), /export const LIVE_PRECISE_AFTER_MS = 2 \* 60000;/);
+  // An aging foreground fix is retried within 20s, with high accuracy after one minute.
+  assert.match(read('lib/useLiveLocation.ts'), /export const LIVE_HEARTBEAT_MS = 20000;/);
+  assert.match(read('lib/useLiveLocation.ts'), /export const LIVE_PRECISE_AFTER_MS = 60000;/);
   assert.match(read('lib/useLiveLocation.ts'), /Date\.now\(\) - stateRef\.current\.fixAt > LIVE_PRECISE_AFTER_MS/);
   assert.match(read('components/FlowHome.tsx'), /Ververs GPS/);
   assert.match(read('app/(tabs)/buurtbord.tsx'), /Ververs GPS/);

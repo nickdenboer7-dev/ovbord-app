@@ -21,9 +21,9 @@ const initialSnapshot: LiveLocationSnapshot = {
   coords: null, bron: null, fixAt: null, loading: true, errorCode: null, refreshToken: 0
 };
 
-/** A focused screen retries its current GPS position after 30s without a new fix. */
-export const LIVE_HEARTBEAT_MS = 30000;
-export const LIVE_PRECISE_AFTER_MS = 2 * 60000;
+/** Foreground-only recovery: retry an aging fix every 20s, use precise GPS after one minute. */
+export const LIVE_HEARTBEAT_MS = 20000;
+export const LIVE_PRECISE_AFTER_MS = 60000;
 
 /**
  * V5.9: the location permission dialog is shown at most once per app session by automatic
@@ -160,8 +160,8 @@ export function useLiveLocation(enabled: boolean): LiveLocationSnapshot & { requ
       void startWatch();
     };
     void activate();
-    // If Android suppresses distance callbacks, ask for a new fix after 30s. When the
-    // last fix is more than two minutes old, the one-shot read switches to High accuracy.
+    // If Android suppresses distance callbacks, retry within 20s. When the
+    // last fix is more than a minute old, the one-shot read switches to High accuracy.
     // This is foreground-only; no background tracking or additional permission prompts.
     const heartbeat = setInterval(() => {
       if (cancelled || AppState.currentState !== "active") return;

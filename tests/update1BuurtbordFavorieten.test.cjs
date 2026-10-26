@@ -10,10 +10,13 @@ test("Buurtbord kaart is alleen zichtbaar als de instelling aanstaat en de kaart
   const screen = read("app/(tabs)/buurtbord.tsx");
   assert.match(screen, /settings\.buurtbordMap\s*\?/);
   assert.match(screen, /mapExpanded\s*,\s*setMapExpanded/);
+  assert.match(screen, /\[mapExpanded, setMapExpanded\] = useState\(false\)/);
   assert.match(screen, /accessibilityState=\{\{ expanded: mapExpanded \}\}/);
   assert.match(screen, /mapExpanded\s*\?\s*<View[^>]+styles\.mapWrap/);
   assert.match(screen, /<LeafletMap markers=\{mapMarkers\} center=\{center\}/);
   assert.match(screen, /paddingBottom: Math\.max\(insets\.bottom, 16\) \+ 78/);
+  assert.ok(screen.indexOf("settings.buurtbordMap ? <View") > screen.indexOf("<View style={styles.listContent}>"),
+    "de kaart moet onder de vertrekkaarten blijven");
 });
 
 test("Favorieten hebben actuele tijden, sorteermogelijkheden en een haltebord-snelkoppeling", () => {

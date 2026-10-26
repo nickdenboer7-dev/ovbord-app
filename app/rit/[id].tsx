@@ -29,7 +29,7 @@ import { minutesUntilArrival } from "../../lib/ritRedesign";
 import { alightingState, arrivalShareText, clockRemainingMs, findAlightingIndex, recallAlighting, rememberAlighting, scheduleIndex } from "../../lib/alighting";
 import { clearActiveTrip, loadTripSnapshot, saveActiveTrip, saveTripSnapshot } from "../../lib/activeTripStore";
 import { TRIP_SNAPSHOT_INTERVAL_MS, usableTripSnapshot } from "../../lib/tripSnapshot";
-import { alightAlertKey, alightRow, boardingProgress, markAlightAlert, noticeStopsText, onTheWayText, positionHeadline, skippedStopIds, timelineStopLabel } from "../../lib/ritProgress";
+import { alightAlertKey, alightRow, boardingProgress, markAlightAlert, noticeStopTargets, noticeStopsText, onTheWayText, positionHeadline, skippedStopIds, timelineStopLabel } from "../../lib/ritProgress";
 import { loadAlightVibration, saveAlightVibration, vibrateForAlighting } from "../../lib/alightAlert";
 import { MenuButton, OverflowMenu } from "../../components/OverflowMenu";
 import type { MenuItem } from "../../components/OverflowMenu";
@@ -90,11 +90,13 @@ function coordFromStop(stop: JourneyStop | undefined): LatLon | undefined {
 /** Fixed overlay colour for the part of the route still to ride (to the alighting stop). */
 const RIDE = "#6A42C2";
 
-function TripMap({ journey, live, gpsAgeSeconds, nextStop, boarding, expanded = false, alight, initialFollow = false }: { journey: RitData; live: boolean; gpsAgeSeconds?: number; nextStop?: JourneyStop | null; boarding: BoardingHint; expanded?: boolean;
+function TripMap({ journey, live, gpsAgeSeconds, nextStop, boarding, expanded = false, alight, initialFollow = false, focusStopId = null }: { journey: RitData; live: boolean; gpsAgeSeconds?: number; nextStop?: JourneyStop | null; boarding: BoardingHint; expanded?: boolean;
   /** Where the user gets off: a marker, and the route there is highlighted. */
   alight?: JourneyStop | null;
   /** Opened by tapping the vehicle in the timeline: start by following it. */
-  initialFollow?: boolean }) {
+  initialFollow?: boolean;
+  /** Selected affected stop from a notice, never an assumed replacement quay. */
+  focusStopId?: string | null }) {
   const { styles } = useRitTheme();
   const [width, setWidth] = useState(360);
   const [zoom, setZoom] = useState(EARTH_ZOOM);
@@ -112,6 +114,12 @@ function TripMap({ journey, live, gpsAgeSeconds, nextStop, boarding, expanded = 
   const boardingPoint=coordFromStop(board);
   const busPoint=live&&!journey.estimatedPosition&&validPosition(journey.vehicle)?journey.vehicle:undefined;
   const nextPoint=coordFromStop(nextStop || undefined);
+  const affectedStop = focusStopId ? journey.stops.find(s => String(s.id) === focusStopId) : undefined;
+  const affectedPoint = coordFromStop(affectedStop);
+  useEffect(() => {
+    if (!validPosition(affectedPoint)) return;
+    setSelectedCenter(affectedPoint); setViewMode("stop"); setUserZoomed(true); setZoom(16);
+  }, [focusStopId, affectedPoint?.lat, affectedPoint?.lon]);
   if (busPoint && viewMode === "follow") lastFollowPoint.current = busPoint;
   // On GPS loss preserve the camera but remove the vehicle marker until a fresh fix arrives.
   const center=routeMapCenter(viewMode, busPoint, boardingPoint, coordFromStop(first),
@@ -217,8 +225,9 @@ function TripMap({ journey, live, gpsAgeSeconds, nextStop, boarding, expanded = 
     const finalStopPoint=coordFromStop(journey.stops[journey.stops.length-1]);
     const endMarker=validPosition(finalStopPoint)?convert(finalStopPoint):null;
     const alightMarker=validPosition(alightPoint)?convert(alightPoint):null;
-    return { tiles, roadSegments, nearbyStops, vehiclePoint, boardingMarker, endMarker, alightMarker };
-  }, [center?.lat, center?.lon, width, zoom, height, journey, alight?.lat, alight?.lon]);
+    const affectedMarker=validPosition(affectedPoint)?convert(affectedPoint):null;
+    return { tiles, roadSegments, nearbyStops, vehiclePoint, boardingMarker, endMarker, alightMarker, affectedMarker };
+  }, [center?.lat, center?.lon, width, zoom, height, journey, alight?.lat, alight?.lon, affectedPoint?.lat, affectedPoint?.lon]);
 
   function onLayout(event: LayoutChangeEvent) { const value = event.nativeEvent.layout.width; if (value > 100 && Math.abs(value - width) > 1) setWidth(value); }
   return (
@@ -235,6 +244,8 @@ function TripMap({ journey, live, gpsAgeSeconds, nextStop, boarding, expanded = 
         {geom.alightMarker ? <View pointerEvents="none" accessibilityLabel="Jouw uitstaphalte op kaart" style={[styles.mapAlight, {left:geom.alightMarker.x-12,top:geom.alightMarker.y-12}]}><Ionicons name="flag" color="#FFFFFF" size={14}/></View> : null}
         {geom.boardingMarker ? <View accessibilityLabel="Jouw halte op kaart" style={[styles.mapBoarding,{left:geom.boardingMarker.x-12,top:geom.boardingMarker.y-12}]}><Ionicons name="location" color="#FFFFFF" size={18}/></View> : null}
         {geom.vehiclePoint ? <View style={[styles.mapBus, { left: geom.vehiclePoint.x - 14, top: geom.vehiclePoint.y - 14 }]}><Ionicons name={vehicleIcon(journey.mode)} color="#FFFFFF" size={17}/></View> : null}
+        {geom.affectedMarker ? <View pointerEvents="none" accessibilityLabel="Getroffen halte op kaart, vervangende opstapzijde onbekend"
+          style={[styles.mapAffected, { left: geom.affectedMarker.x - 15, top: geom.affectedMarker.y - 15 }]}><Ionicons name="alert" color="#FFFFFF" size={18}/></View> : null}
         <View style={styles.mapStatus}><View style={[styles.mapStatusDot, {backgroundColor: gpsLabel.tone === "green" ? GREEN : gpsLabel.tone === "amber" ? "#CF8E1C" : gpsLabel.tone === "red" ? "#C22E39" : "#8290A0"}]}/><Text style={styles.mapStatusText}>{gpsLabel.text}</Text></View>
       </> : <Text style={styles.mapUnavailable}>Routekaart niet beschikbaar</Text>}
       <Pressable accessibilityRole="button" accessibilityLabel={viewMode === "follow" && busPoint ? "Voertuig volgen uitschakelen" : "Volg voertuig"}
@@ -453,6 +464,8 @@ export default function RitScreen() {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [fetchedAt, setFetchedAt] = useState(() => Date.now());
   const [mapOpen, setMapOpen] = useState(false);
+  /** Route stop selected from a relocation alert; not necessarily the new boarding quay. */
+  const [alertMapStopId, setAlertMapStopId] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   /** Opening the trip scrolls once to the vehicle (or the boarding stop); never again by itself. */
   const autoScrolled = useRef(false);
@@ -483,6 +496,7 @@ export default function RitScreen() {
     let active = true;
     const seq = ++activeRequest.current;
     setMapOpen(false);
+    setAlertMapStopId(null);
     autoScrolled.current = false;
     timelineTop.current = null;
     rowY.current = {};
@@ -669,6 +683,7 @@ export default function RitScreen() {
     [journey, verifiedLive, nowMs, ended]);
   // "Halte vervalt": stops of this trip the vehicle does not call at.
   const skipped = useMemo(() => skippedStopIds(disruptions, journey?.stops || []), [disruptions, journey]);
+  const alertMapStop = alertMapStopId ? journey?.stops.find(stop => String(stop.id) === alertMapStopId) : null;
   // Alighting stop: progress comes from verified GPS; without it the count starts at boarding or the timetable.
   const alightIndex = journey ? findAlightingIndex(journey.stops, alighting, boardingIndex) : -1;
   const alightStop = journey && alightIndex >= 0 ? journey.stops[alightIndex] : null;
@@ -746,9 +761,14 @@ export default function RitScreen() {
     rowY.current[index] = y;
     if (index === scrollTarget) autoScroll();
   }
-  function toggleMap() { setMapFollowStart(false); setMapOpen((open) => !open); scrollRef.current?.scrollTo({ y: 0, animated: true }); }
+  function toggleMap() { setMapFollowStart(false); setAlertMapStopId(null); setMapOpen((open) => !open); scrollRef.current?.scrollTo({ y: 0, animated: true }); }
   /** Tapping the vehicle in the timeline: open the map following it. */
-  function focusVehicle() { setMapFollowStart(true); setMapOpen(true); scrollRef.current?.scrollTo({ y: 0, animated: true }); }
+  function focusVehicle() { setAlertMapStopId(null); setMapFollowStart(true); setMapOpen(true); scrollRef.current?.scrollTo({ y: 0, animated: true }); }
+  function showAffectedStop(stop: JourneyStop) {
+    if (!validPosition(coordFromStop(stop))) { openStopBoard(stop); return; }
+    setAlertMapStopId(String(stop.id)); setMapFollowStart(false); setMapOpen(true);
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
+  }
   function shareArrival() {
     if (!alightStop) return;
     const message = arrivalShareText({ stopName: stopShort(alightStop.name), clock: alightClock, line, destination,
@@ -931,12 +951,35 @@ export default function RitScreen() {
             <Text style={styles.ritAlertItemTitle}>{notice.title}</Text>
             {notice.description ? <Text style={styles.ritAlertText}>{notice.description}</Text> : null}
             {noticeStopsText(notice.stopIds, journey.stops, stopShort) ? <Text style={styles.ritAlertStops}>{noticeStopsText(notice.stopIds, journey.stops, stopShort)}</Text> : null}
+             {noticeStopTargets(notice, journey.stops).slice(0, 2).map(stop => (
+               <Pressable key={String(stop.id)} accessibilityRole="button"
+                 accessibilityLabel={(validPosition(coordFromStop(stop)) ? "Bekijk getroffen halte " : "Open haltebord van ") + stop.name}
+                 onPress={() => showAffectedStop(stop)} style={styles.ritAlertMapAction}>
+                 <Ionicons name={validPosition(coordFromStop(stop)) ? "map-outline" : "location-outline"} size={16} color={c.navy}/>
+                 <Text style={styles.ritAlertMapActionText}>{validPosition(coordFromStop(stop)) ? "Bekijk getroffen halte op kaart" : "Bekijk haltebord"} · {stopShort(stop.name)}</Text>
+                 <Ionicons name="chevron-forward" size={15} color={c.navy}/>
+               </Pressable>
+             ))}
+             {noticeStopTargets(notice, journey.stops).length ? <Text style={styles.ritAlertMapCaution}>
+               De vervangende opstapzijde is niet bevestigd. Volg de aanwijzingen van de vervoerder ter plaatse.
+             </Text> : null}
           </View>
         )) : null}
       </View> : null}
       {mapOpen ? <>
+        {alertMapStop ? <View style={styles.mapAffectedNote}>
+          <Ionicons name="information-circle-outline" color={c.navy} size={19}/>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.mapAffectedTitle}>Getroffen halte: {stopShort(alertMapStop.name)}</Text>
+            <Text style={styles.mapAffectedSub}>De kaart toont de bekende haltelocatie. De nieuwe opstapzijde is niet bevestigd.</Text>
+          </View>
+          <Pressable accessibilityRole="button" accessibilityLabel={"Haltebord openen voor " + alertMapStop.name}
+            onPress={() => openStopBoard(alertMapStop)} style={styles.mapAffectedBoard}>
+            <Text style={styles.mapAffectedBoardText}>Haltebord</Text>
+          </Pressable>
+        </View> : null}
         <TripMap journey={journey} live={gpsFresh} gpsAgeSeconds={shownGpsAge} nextStop={nextStopIsLive ? nextStop : null} boarding={boarding} expanded
-          alight={alightState.status !== "passed" ? alightStop : null} initialFollow={mapFollowStart}/>
+          alight={alightState.status !== "passed" ? alightStop : null} initialFollow={mapFollowStart} focusStopId={alertMapStopId}/>
         {nextStop ? <View style={styles.mapNextStop}>
           <Ionicons name="location" color={nextStopIsLive && !lastKnown ? c.green : c.muted} size={22}/>
           <View style={{flex:1}}>
@@ -1095,6 +1138,12 @@ function makeStyles(c: RitColors) {
   mapAlight:{position:"absolute",width:24,height:24,borderRadius:6,backgroundColor:RIDE,alignItems:"center",justifyContent:"center",borderColor:"#FFFFFF",borderWidth:2},
   mapEnd:{position:"absolute",width:26,height:26,borderRadius:8,backgroundColor:TEXT,alignItems:"center",justifyContent:"center",borderColor:"#FFFFFF",borderWidth:2},
   mapBus: { position: "absolute", width: 28, height: 28, backgroundColor: GREEN, borderRadius: 7, borderWidth: 2, borderColor: "white", alignItems: "center", justifyContent: "center" },
+  mapAffected: { position: "absolute", width: 30, height: 30, borderRadius: 15, borderWidth: 2, borderColor: "#FFFFFF", backgroundColor: "#C76E17", alignItems: "center", justifyContent: "center" },
+  mapAffectedNote: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: c.positionBg, paddingHorizontal: 11, paddingVertical: 10 },
+  mapAffectedTitle: { color: c.text, fontSize: 12, fontWeight: "800" },
+  mapAffectedSub: { color: c.muted, fontSize: 10.5, lineHeight: 15, marginTop: 2 },
+  mapAffectedBoard: { paddingHorizontal: 9, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: c.navy },
+  mapAffectedBoardText: { color: c.navy, fontSize: 10.5, fontWeight: "800" },
   mapControls: { position: "absolute", right: 12, top: 10, gap: 5 },
   mapCtrl: { width: 31, height: 31, borderRadius: 17, backgroundColor: "#FFFFFF", alignItems: "center", justifyContent: "center", elevation: 2 },
   mapAttribution: { position: "absolute", bottom: 1, right: 4, fontSize: 8, color: "#536071", backgroundColor: "#FFFFFFCC", paddingHorizontal: 3 },
@@ -1200,6 +1249,9 @@ function makeStyles(c: RitColors) {
     borderColor: c.border, backgroundColor: c.surface, overflow: "hidden" },
   ritAlertHead: { flexDirection: "row", alignItems: "center", gap: 9, paddingHorizontal: 12, paddingVertical: 9, minHeight: 44 },
   ritAlertItem: { paddingHorizontal: 11, paddingVertical: 9, gap: 3, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.summaryDivider },
+  ritAlertMapAction: { flexDirection: "row", alignItems: "center", gap: 7, minHeight: 42, paddingHorizontal: 10, marginTop: 5, borderRadius: 8, backgroundColor: c.positionBg },
+  ritAlertMapActionText: { color: c.navy, flex: 1, fontSize: 11.5, fontWeight: "800" },
+  ritAlertMapCaution: { color: c.muted, fontSize: 10.5, lineHeight: 15, marginTop: 4 },
   ritAlertBadge: { alignSelf: "flex-start", backgroundColor: c.stageNeutralBg, color: c.text, fontSize: 10, fontWeight: "800",
     paddingHorizontal: 7, paddingVertical: 2, borderRadius: 7, overflow: "hidden" },
   ritAlertItemTitle: { color: c.text, fontSize: 12.5, fontWeight: "700", lineHeight: 17 },
