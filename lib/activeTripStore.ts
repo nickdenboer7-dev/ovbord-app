@@ -4,10 +4,12 @@ import type { ActiveTrip } from "./activeTrip";
 import { TRIP_SNAPSHOT_STORAGE_KEY, parseTripSnapshot, serializeTripSnapshot } from "./tripSnapshot";
 import type { TripSnapshot } from "./tripSnapshot";
 import type { RitData } from "../types/api";
+import { cancelNativeAlightReminder, syncNativeAlightReminder } from "./journeyReminders";
 
 /** Storage is a convenience: failures are ignored, the trip page never depends on it. */
 export async function saveActiveTrip(trip: ActiveTrip): Promise<void> {
   try { await AsyncStorage.setItem(ACTIVE_TRIP_STORAGE_KEY, JSON.stringify(trip)); } catch { /* ignore */ }
+  void syncNativeAlightReminder(trip).catch(() => { /* Reminder must never break trip tracking. */ });
 }
 
 export async function loadActiveTrip(nowMs: number): Promise<ActiveTrip | null> {
@@ -21,6 +23,7 @@ export async function loadActiveTrip(nowMs: number): Promise<ActiveTrip | null> 
 
 /** Clears the stored trip and its data; with a trip ID only when that trip is the stored one. */
 export async function clearActiveTrip(tripId?: string): Promise<void> {
+  void cancelNativeAlightReminder(tripId).catch(() => {});
   try {
     if (tripId) {
       const stored = parseActiveTrip(await AsyncStorage.getItem(ACTIVE_TRIP_STORAGE_KEY));

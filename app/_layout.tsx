@@ -10,12 +10,14 @@ import { FeedbackPrompt } from "../components/FeedbackPrompt";
 import { AppUpdateNotice } from "../components/AppUpdateNotice";
 import { FlowNavigationProvider } from "../context/FlowNavigation";
 import { createAnonymousSessionPing } from "../lib/anonymousStats";
+import { refreshFavoriteWidget } from "../lib/androidWidget";
 
 const APP_VERSION = appConfig.expo.version;
 const sendSessionPing = createAnonymousSessionPing(AsyncStorage, APP_VERSION, fetch);
 
 function RootNavigation() {
-  const { resolvedScheme, colors } = useApp();
+  const { resolvedScheme, colors, favoriteStops } = useApp();
+  useEffect(() => { void refreshFavoriteWidget().catch(() => {}); }, [favoriteStops]);
   const base = resolvedScheme === "dark" ? DarkTheme : DefaultTheme;
   const navigationTheme = {
     ...base,
@@ -49,7 +51,7 @@ function RootNavigation() {
 
 export default function RootLayout() {
   useEffect(() => {
-    const ping = () => { void sendSessionPing().catch(() => {}); };
+    const ping = () => { void sendSessionPing().catch(() => {}); void refreshFavoriteWidget().catch(() => {}); };
     ping();
     const subscription = AppState.addEventListener("change", (state) => { if (state === "active") ping(); });
     return () => subscription.remove();

@@ -3,7 +3,7 @@ import * as Updates from "expo-updates";
 import { StatusBar as ExpoStatusBar } from "expo-status-bar";
 import React, { useCallback, useState } from "react";
 import { useFocusEffect, useRouter } from "expo-router";
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
+import { Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import appConfig from "../../app.json";
 import type { ThemeMode } from "../../constants/colors";
@@ -12,6 +12,9 @@ import { updateInfoRows } from "../../lib/appVersion";
 import { MANUAL_CITIES } from "../../lib/location";
 import type { DepartureTimeMode, MaxWalkMinutes, WalkBufferMinutes } from "../../lib/userSettings";
 import { STOP_BOARD_BLUE } from "../../lib/stopBoardDesign";
+import { pinFavoriteWidget, refreshFavoriteWidget } from "../../lib/androidWidget";
+import { enableNativeReminders, disableNativeReminders, nativeRemindersEnabled, syncNativeAlightReminder } from "../../lib/journeyReminders";
+import { loadActiveTrip } from "../../lib/activeTripStore";
 
 const UPDATE_ROWS = updateInfoRows({
   isDev: __DEV__,
@@ -95,7 +98,40 @@ export default function MeerScreen() {
     favoriteStops, favoriteJourneys, favoriteLines, recentStops, clearRecentStops } = useApp();
   const [locationOpen, setLocationOpen] = useState(false);
   const [focused, setFocused] = useState(false);
-  useFocusEffect(useCallback(() => { setFocused(true); return () => setFocused(false); }, []));
+  const [alightReminders, setAlightReminders] = useState(false);
+  useFocusEffect(useCallback(() => {
+    setFocused(true);
+    void nativeRemindersEnabled().then(setAlightReminders).catch(() => setAlightReminders(false));
+    return () => setFocused(false);
+  }, []));
+
+  const changeAlightReminders = (on: boolean) => {
+    void (async () => {
+      try {
+        if (!on) {
+          await disableNativeReminders();
+          setAlightReminders(false);
+          return;
+        }
+        if (!await enableNativeReminders()) {
+          Alert.alert("Meldingen niet toegestaan", "Sta meldingen toe in Android-instellingen als je een uitstapherinnering wilt.");
+          setAlightReminders(false);
+          return;
+        }
+        setAlightReminders(true);
+        await syncNativeAlightReminder(await loadActiveTrip(Date.now()));
+      } catch {
+        Alert.alert("Herinnering instellen mislukt", "Probeer het later opnieuw.");
+        setAlightReminders(false);
+      }
+    })();
+  };
+
+  const addAndroidWidget = () => {
+    void pinFavoriteWidget().then((accepted) => {
+      if (!accepted) Alert.alert("Widget handmatig toevoegen", "Houd het Android-startscherm ingedrukt, kies Widgets en selecteer OVbord.");
+    }).catch(() => Alert.alert("Widget toevoegen lukt niet", "Houd het startscherm ingedrukt en kies Widgets > OVbord."));
+  };
 
   const confirmClearRecents = () => Alert.alert("Recente haltes wissen?",
     "De lijst met onlangs bekeken haltes wordt leeggemaakt. Favorieten blijven bewaard.", [
@@ -140,6 +176,26 @@ export default function MeerScreen() {
         <ToggleRow label="Kaart op Buurtbord" value={settings.buurtbordMap}
           onChange={value => setSetting("buurtbordMap", value)} last />
       </Section>
+
+      {Platform.OS === "android" ? <Section title="Android · extra functies" icon="phone-portrait-outline">
+        <Pressable onPress={addAndroidWidget} accessibilityRole="button" accessibilityLabel="OVbord-widget toevoegen" style={styles.linkRow}>
+          <View style={styles.rowText}>
+            <Text maxFontSizeMultiplier={1.3} style={[styles.rowTitle, { color: colors.text }]}>Widget op startscherm</Text>
+            <Text maxFontSizeMultiplier={1.3} style={[styles.hint, { color: colors.textSoft }]}>Toont maximaal drie vertrektijden van je eerste favoriete halte</Text>
+          </View>
+          <Ionicons name="add-circle-outline" size={23} color={STOP_BOARD_BLUE} />
+        </Pressable>
+        <Divider />
+        <Pressable accessibilityRole="button" onPress={() => void refreshFavoriteWidget().catch(() =>
+          Alert.alert("Vernieuwen lukt niet", "Controleer de verbinding en probeer opnieuw."))} style={styles.linkRow}>
+          <Text maxFontSizeMultiplier={1.3} style={[styles.rowTitle, { color: colors.text }]}>Widget nu vernieuwen</Text>
+          <Ionicons name="refresh-outline" size={20} color={STOP_BOARD_BLUE} />
+        </Pressable>
+        <Text maxFontSizeMultiplier={1.3} style={[styles.hint, { color: colors.textSoft, marginBottom: 10 }]}>Automatisch ongeveer elke 30 minuten, afhankelijk van Android. Controleer bij twijfel de app.</Text>
+        <Divider />
+        <ToggleRow label="Uitstapherinnering" hint="Eenmalige melding circa 5 minuten vóór je gekozen uitstaphalte (dienstregeling; kan afwijken). Alleen na jouw toestemming."
+          value={alightReminders} onChange={changeAlightReminders} last />
+      </Section> : null}
 
       <Section title="Locatie & gegevens" icon="map-outline">
         <Pressable accessibilityRole="button" accessibilityState={{ expanded: locationOpen }}
