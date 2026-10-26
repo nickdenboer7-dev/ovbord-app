@@ -129,7 +129,7 @@ test('location permission: one automatic dialog per session, never two in a row,
   // The read right after the dialog, the heartbeat and resume never ask again.
   assert.match(loc, /readFresh\(false\); \/\/ never a second dialog right after the first/);
   assert.match(loc, /> LIVE_HEARTBEAT_MS \/ 2\) readFresh\(false\);/);
-  assert.match(loc, /bepaalLocatie\(\{ fallbackToExample: false, preferFresh: true, askPermission: ask \}\)/);
+  assert.match(loc, /bepaalLocatie\(\{ fallbackToExample: false, preferFresh: true, askPermission: ask, preferPrecise: precise \}\)/);
   // Only an explicit tap may ask once more; afterwards the watch starts at once.
   assert.match(loc, /const requestFresh = useCallback\(\(\) => readFresh\(true\), \[readFresh\]\);/);
   assert.match(loc, /applyFix\(result\);\s*\/\/ Permission may have been granted just now \(a retry tap\): start following at once\.\s*kickWatch\.current\(\);/);
@@ -142,8 +142,12 @@ test('a stationary live fix is not labelled "laatst bekend": the note follows th
   assert.match(read('components/FlowHome.tsx'), /const liveFixAt = live\.fixAt \?\? locationFixAt;/);
   assert.match(read('app/(tabs)/buurtbord.tsx'), /isLocationStale\(liveBron, liveFixAt, nowMs\)/);
   assert.match(read('app/(tabs)/buurtbord.tsx'), /const liveFixAt = live\.fixAt \?\? locatieFixAt;/);
-  // Heartbeat every 60s re-reads a fix older than 30s: a stationary fix stays well under 2 minutes.
-  assert.match(read('lib/useLiveLocation.ts'), /export const LIVE_HEARTBEAT_MS = 60000;/);
+  // A stale foreground fix is retried within 30s, with high accuracy after two minutes.
+  assert.match(read('lib/useLiveLocation.ts'), /export const LIVE_HEARTBEAT_MS = 30000;/);
+  assert.match(read('lib/useLiveLocation.ts'), /export const LIVE_PRECISE_AFTER_MS = 2 \* 60000;/);
+  assert.match(read('lib/useLiveLocation.ts'), /Date\.now\(\) - stateRef\.current\.fixAt > LIVE_PRECISE_AFTER_MS/);
+  assert.match(read('components/FlowHome.tsx'), /Ververs GPS/);
+  assert.match(read('app/(tabs)/buurtbord.tsx'), /Ververs GPS/);
 });
 
 test('Start nearby groups show a line count and each original stop remains tappable', () => {

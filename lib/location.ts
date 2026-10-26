@@ -49,6 +49,8 @@ function isOutside(coords: { latitude: number; longitude: number }): boolean {
  * available current one.
  */
 type Opties = { manualCity?: string | null; fallbackToExample?: boolean; preferFresh?: boolean;
+  /** Use a more accurate foreground GPS reading when the last fix is old or the user retries. */
+  preferPrecise?: boolean;
   /** V5.9: false = never show the permission dialog here (the caller already asked once). */
   askPermission?: boolean };
 
@@ -83,9 +85,9 @@ export async function bepaalLocatie(options: Opties = {}): Promise<LocatieResult
 
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const deadline = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), 8000); });
+      const deadline = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), options.preferPrecise ? 12000 : 8000); });
       const fresh = await Promise.race([
-        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(() => null),
+        Location.getCurrentPositionAsync({ accuracy: options.preferPrecise ? Location.Accuracy.High : Location.Accuracy.Balanced }).catch(() => null),
         deadline
       ]);
       if (fresh && valideCoords(fresh.coords)) return { coords: fresh.coords, bron: "gps", fixAt: fresh.timestamp ?? Date.now() };

@@ -14,12 +14,13 @@ function resetGps() {
     servicesEnabled: true,
     lastKnown: null, // { coords, timestamp }
     current: null, // { coords, timestamp } or null (no fix within the timeout)
-    lastKnownCalls: 0
+    lastKnownCalls: 0,
+    lastAccuracy: null
   });
 }
 resetGps();
 const expoLocationMock = {
-  Accuracy: { Balanced: 3 },
+  Accuracy: { Balanced: 3, High: 4 },
   getForegroundPermissionsAsync: async () => gps.permission,
   requestForegroundPermissionsAsync: async () => { gps.requested += 1; return gps.permission; },
   hasServicesEnabledAsync: async () => gps.servicesEnabled,
@@ -27,7 +28,7 @@ const expoLocationMock = {
     gps.lastKnownCalls += 1;
     return gps.lastKnown && Date.now() - gps.lastKnown.timestamp <= maxAge ? gps.lastKnown : null;
   },
-  getCurrentPositionAsync: async () => gps.current,
+  getCurrentPositionAsync: async ({ accuracy }) => { gps.lastAccuracy = accuracy; return gps.current; },
   watchPositionAsync: async () => ({ remove() {} })
 };
 const MOCK_PATH = path.join(__dirname, "__expo-location-mock__.js");
@@ -164,6 +165,16 @@ test("live location prefers a current fix over a recent last-known one (fresh fi
   assert.equal(quick.bron, "laatst-bekend");
 });
 
+test("GPS recovery uses high accuracy when requested and normal accuracy otherwise", async () => {
+  resetGps();
+  gps.current = { coords: ZAANDAM_BARKSTRAAT, timestamp: Date.now() };
+  await location.bepaalLocatie({ fallbackToExample: false, preferFresh: true, preferPrecise: true, askPermission: false });
+  assert.equal(gps.lastAccuracy, expoLocationMock.Accuracy.High);
+  await location.bepaalLocatie({ fallbackToExample: false, preferFresh: true, askPermission: false });
+  assert.equal(gps.lastAccuracy, expoLocationMock.Accuracy.Balanced);
+  assert.equal(gps.requested, 0);
+});
+
 test("a manually chosen city stays fixed and never touches GPS", async () => {
   resetGps();
   gps.current = { coords: ZAANDAM_BARKSTRAAT, timestamp: Date.now() };
@@ -193,7 +204,7 @@ test("the hook follows GPS only in the foreground, while Start or Buurtbord is f
   // Never background location.
   const all = hook + read("lib/location.ts") + read("app.json");
   assert.doesNotMatch(all, /requestBackgroundPermissionsAsync|startLocationUpdatesAsync|ACCESS_BACKGROUND_LOCATION|isAndroidBackgroundLocationEnabled/);
-  assert.match(hook, /bepaalLocatie\(\{ fallbackToExample: false, preferFresh: true, askPermission: ask \}\)/);
+  assert.match(hook, /bepaalLocatie\(\{ fallbackToExample: false, preferFresh: true, askPermission: ask, preferPrecise: precise \}\)/);
 });
 
 test("V5.9: askPermission false never shows a second permission dialog", async () => {

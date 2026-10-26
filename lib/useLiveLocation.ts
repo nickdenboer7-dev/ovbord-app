@@ -21,8 +21,9 @@ const initialSnapshot: LiveLocationSnapshot = {
   coords: null, bron: null, fixAt: null, loading: true, errorCode: null, refreshToken: 0
 };
 
-/** How often (ms) a foreground screen re-reads GPS while no watch callback has arrived (V5.9). */
-export const LIVE_HEARTBEAT_MS = 60000;
+/** A focused screen retries its current GPS position after 30s without a new fix. */
+export const LIVE_HEARTBEAT_MS = 30000;
+export const LIVE_PRECISE_AFTER_MS = 2 * 60000;
 
 /**
  * V5.9: the location permission dialog is shown at most once per app session by automatic
@@ -92,7 +93,9 @@ export function useLiveLocation(enabled: boolean): LiveLocationSnapshot & { requ
   const readFresh = useCallback((ask: boolean) => {
     const seq = ++requestSeq.current;
     setState((previous) => (previous.coords ? previous : { ...previous, loading: true }));
-    void bepaalLocatie({ fallbackToExample: false, preferFresh: true, askPermission: ask })
+    const precise = ask || stateRef.current.fixAt === null ||
+      Date.now() - stateRef.current.fixAt > LIVE_PRECISE_AFTER_MS;
+    void bepaalLocatie({ fallbackToExample: false, preferFresh: true, askPermission: ask, preferPrecise: precise })
       .then((result) => {
         if (seq !== requestSeq.current) return;
         applyFix(result);
@@ -157,13 +160,12 @@ export function useLiveLocation(enabled: boolean): LiveLocationSnapshot & { requ
       void startWatch();
     };
     void activate();
-    // Fallback if the device suppresses distance callbacks during a journey: a foreground-only
-    // fresh read after 60s of radio/GPS silence. No duplicate watch or background polling. It also
-    // keeps a stationary fix current, so a live position is never labelled "laatst bekend".
+    // If Android suppresses distance callbacks, ask for a new fix after 30s. When the
+    // last fix is more than two minutes old, the one-shot read switches to High accuracy.
+    // This is foreground-only; no background tracking or additional permission prompts.
     const heartbeat = setInterval(() => {
       if (cancelled || AppState.currentState !== "active") return;
-      // Half the interval: a stationary fix is re-read every tick, so it never ages past ~70s
-      // (well below the 2-minute "laatst bekend" threshold) between two ticks.
+      // Half the interval: also retry an aging fix instead of waiting minutes for movement.
       if (stateRef.current.fixAt === null || Date.now() - stateRef.current.fixAt > LIVE_HEARTBEAT_MS / 2) readFresh(false);
       if (!watchSub) void startWatch();
     }, LIVE_HEARTBEAT_MS);

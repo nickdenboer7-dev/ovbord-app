@@ -238,6 +238,11 @@ export default function BuurtbordScreen() {
           <Text style={{ color: colors.text, flex: 1, fontSize: 12 }}>
             Laatst bekende locatie · {describeLocationAge(liveFixAt ?? nowMs, nowMs)}
           </Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="GPS-locatie opnieuw ophalen"
+            onPress={live.requestFresh}
+            style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, backgroundColor: colors.surface }}>
+            <Text style={{ color: colors.accentText, fontSize: 12, fontWeight: "800" }}>Ververs GPS</Text>
+          </Pressable>
         </View>
       ) : null}
 
