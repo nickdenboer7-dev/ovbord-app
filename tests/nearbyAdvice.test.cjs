@@ -9,7 +9,7 @@ Module._extensions[".ts"] = (mod, filename) => mod._compile(
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true }
   }).outputText, filename
 );
-const { compareNearbyDepartures } = require("../lib/buurtbord.ts");
+const { compareNearbyDepartures, nearbyLeaveAdvice } = require("../lib/buurtbord.ts");
 if (old) Module._extensions[".ts"] = old;
 else delete Module._extensions[".ts"];
 
@@ -40,6 +40,43 @@ test("advice skips cancelled, departed, stale and unreachable departures", () =>
   const options = compareNearbyDepartures(items, rows, now, new Set(["Uiterdijksterweg"]));
   assert.deepEqual(options.map((o) => o.stop.id), ["Bordineweg"]);
   assert.equal(options[0].departure.id, "ok");
+});
+
+test("reachable departures within an hour outrank a safe but hours-later journey", () => {
+  const options = compareNearbyDepartures(
+    [stop("SafeTomorrow", 10), stop("TightNow", 7), stop("SafeSoon", 4)],
+    { SafeTomorrow: [dep("far", 321)], TightNow: [dep("tight", 8)], SafeSoon: [dep("soon", 25)] }, now);
+  assert.deepEqual(options.map((o) => o.stop.id), ["SafeSoon", "TightNow", "SafeTomorrow"]);
+  assert.deepEqual(options.map((o) => o.withinHour), [true, true, false]);
+});
+
+test("five-hour-later departure gets a leaving clock, not a leave-now instruction", () => {
+  const [option] = compareNearbyDepartures([stop("SnekerTrekweg", 10)],
+    { SnekerTrekweg: [dep("far", 321)] }, now);
+  const advice = nearbyLeaveAdvice(option, now);
+  assert.equal(advice.later, true);
+  assert.equal(advice.leaveInMinutes, 306);
+  assert.equal(advice.leaveText, "Vertrek rond 04:06");
+  assert.equal(advice.marginText, "circa 5 min extra marge");
+});
+
+test("nearby advice says leave in ten minutes or now only when needed", () => {
+  const options = compareNearbyDepartures([stop("A", 10), stop("B", 10), stop("C", 10)],
+    { A: [dep("normal", 25)], B: [dep("quick", 14)], C: [dep("tight", 11)] }, now);
+  const byStop = Object.fromEntries(options.map((option) => [option.stop.id, nearbyLeaveAdvice(option, now)]));
+  assert.equal(byStop.A.leaveText, "Vertrek over 10 min");
+  assert.equal(byStop.B.leaveText, "Vertrek nu");
+  assert.equal(byStop.B.marginText, "slechts 4 min speling");
+  assert.equal(byStop.C.leaveText, "Vertrek nu");
+  assert.equal(byStop.C.marginText, "slechts 1 min speling");
+});
+
+test("same stop prefers a comfortable departure within the hour to an earlier tight one", () => {
+  const [option] = compareNearbyDepartures([stop("Local", 7)],
+    { Local: [dep("early-tight", 8), dep("later-safe", 20), dep("tomorrow", 321)] }, now);
+  assert.equal(option.departure.id, "later-safe");
+  assert.equal(option.withinHour, true);
+  assert.equal(nearbyLeaveAdvice(option, now).leaveText, "Vertrek over 8 min");
 });
 
 test("unknown walking time is not silently guessed; caller must have current GPS", () => {

@@ -47,4 +47,7 @@ test("nearby advice only recommends with current GPS and recent departures", () 
   const ui = read("app/(tabs)/buurtbord.tsx");
   assert.match(ui, /hasCurrentGps && previewsAreFresh/);
   assert.match(ui, /Haalbare vertrekken vergelijken/);
+  assert.match(ui, /Geen haalbare rit binnen 60 min/);
+  assert.match(ui, /advice\?\.leaveText/);
+  assert.match(ui, /\{manualCity \? \(/);
 });

@@ -15,7 +15,8 @@ import { modaliteitColors } from "../../constants/vervoerders";
 import { useApp } from "../../context/AppProvider";
 import { useFlowNavigation } from "../../context/FlowNavigation";
 import { getHalte, getNearby } from "../../lib/api";
-import { bestNearbyStopId, buurtbordPreviewRows, compareNearbyDepartures, reachableOnFoot } from "../../lib/buurtbord";
+import { bestNearbyStopId, buurtbordPreviewRows, compareNearbyDepartures, nearbyLeaveAdvice, reachableOnFoot } from "../../lib/buurtbord";
+import { effectiveDepartureClock } from "../../lib/format";
 import { boardRefreshNotice, failureKind } from "../../lib/offline";
 import type { FailureKind } from "../../lib/offline";
 import { useSmartRefresh } from "../../lib/useSmartRefresh";
@@ -170,6 +171,7 @@ export default function BuurtbordScreen() {
     [visibleItems, previews, nowMs]);
   const previewsAreFresh = !updating && !refreshFailure && updatedAt !== null && nowMs - updatedAt <= 120_000;
   const bestOption = hasCurrentGps && previewsAreFresh ? options[0] : undefined;
+  const advice = bestOption ? nearbyLeaveAdvice(bestOption, nowMs) : null;
 
   // Effective (delayed) time; never recommend a cancelled or departed trip.
   const bestStopId = useMemo(() => bestNearbyStopId(visibleItems,
@@ -221,11 +223,11 @@ export default function BuurtbordScreen() {
           </Pressable>
         )) : null}
       </View>
-      {locatieBron === "handmatig" ? (
+      {manualCity ? (
         <Text style={{ color: colors.textSoft, marginHorizontal: 14, marginBottom: 7, fontSize: 12 }}>
           Handmatig gekozen plaats · geen GPS-positie
         </Text>
-      ) : locatieBron && isLocationStale(liveBron, liveFixAt, nowMs) ? (
+      ) : liveBron && liveBron !== "handmatig" && isLocationStale(liveBron, liveFixAt, nowMs) ? (
         // V5.8.1: an old or missing GPS fix is never shown as if it were current.
         <View style={{ marginHorizontal: 13, marginBottom: 4, padding: 10, borderRadius: 10, backgroundColor: colors.warningSoft, flexDirection: "row", alignItems: "center", gap: 8 }}>
           <Ionicons name="time-outline" size={16} color={colors.text} />
@@ -245,12 +247,12 @@ export default function BuurtbordScreen() {
         <View style={[styles.adviceCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={styles.adviceTop}>
             <View style={{ flex: 1 }}>
-              <Text maxFontSizeMultiplier={1.3} style={[styles.adviceTitle, { color: colors.heading }]}>Beste vertrek vanaf hier</Text>
-              <Text maxFontSizeMultiplier={1.3} style={[styles.adviceHint, { color: colors.textSoft }]}>Indicatie op basis van je GPS en looptijd</Text>
+              <Text maxFontSizeMultiplier={1.3} style={[styles.adviceTitle, { color: colors.heading }]}>{advice?.later ? "Geen haalbare rit binnen 60 min" : "Beste vertrek vanaf hier"}</Text>
+              <Text maxFontSizeMultiplier={1.3} style={[styles.adviceHint, { color: colors.textSoft }]}>{advice?.later ? "Eerstvolgende bereikbare vertrek · GPS en looptijd" : "Indicatie op basis van je GPS en looptijd"}</Text>
             </View>
-            <View style={[styles.advicePill, { backgroundColor: bestOption.tight ? colors.warningSoft : colors.successSoft }]}>
+            <View style={[styles.advicePill, { backgroundColor: bestOption.tight ? colors.warningSoft : advice?.later ? colors.accentSoft : colors.successSoft }]}>
               <Text maxFontSizeMultiplier={1.3} style={[styles.advicePillText, { color: bestOption.tight ? colors.delayWarning : colors.accentText }]}>
-                {bestOption.tight ? "Krap" : "Haalbaar"}
+                {bestOption.tight ? "Krap" : advice?.later ? "Later" : "Haalbaar"}
               </Text>
             </View>
           </View>
@@ -263,13 +265,13 @@ export default function BuurtbordScreen() {
                 {bestOption.stop.name} · {bestOption.walkMinutes} min lopen
               </Text>
             </View>
-            <Text maxFontSizeMultiplier={1.3} style={[styles.adviceMinutes, { color: colors.heading }]}>{bestOption.departureInMinutes} min</Text>
+            <Text maxFontSizeMultiplier={1.3} style={[styles.adviceMinutes, { color: colors.heading }]}>{advice?.later ? effectiveDepartureClock(bestOption.departure) : bestOption.departureInMinutes + " min"}</Text>
           </Pressable>
-          <View style={[styles.adviceFoot, { backgroundColor: bestOption.tight ? colors.warningSoft : colors.successSoft }]}>
-            <Ionicons name={bestOption.tight ? "time-outline" : "checkmark-circle-outline"} size={17}
+          <View style={[styles.adviceFoot, { backgroundColor: bestOption.tight ? colors.warningSoft : advice?.later ? colors.accentSoft : colors.successSoft }]}>
+            <Ionicons name={bestOption.tight || advice?.later ? "time-outline" : "checkmark-circle-outline"} size={17}
               color={bestOption.tight ? colors.delayWarning : colors.accentText} />
             <Text maxFontSizeMultiplier={1.3} style={{ color: colors.text, flex: 1, fontSize: 12, fontWeight: "700" }}>
-              Vertrek nu · circa {bestOption.spareMinutes} min speling
+              {advice?.leaveText} · {advice?.marginText}
             </Text>
           </View>
           {options.length > 1 ? (
@@ -299,9 +301,9 @@ export default function BuurtbordScreen() {
                 </Text>
               </View>
               <View style={{ alignItems: "flex-end" }}>
-                <Text maxFontSizeMultiplier={1.3} style={[styles.compareTime, { color: colors.heading }]}>{option.departureInMinutes} min</Text>
+                <Text maxFontSizeMultiplier={1.3} style={[styles.compareTime, { color: colors.heading }]}>{option.withinHour ? option.departureInMinutes + " min" : effectiveDepartureClock(option.departure)}</Text>
                 <Text maxFontSizeMultiplier={1.3} style={[styles.adviceHint, { color: option.tight ? colors.delayWarning : colors.accentText }]}>
-                  {option.spareMinutes} min speling
+                  {option.withinHour ? option.spareMinutes + " min speling" : nearbyLeaveAdvice(option, nowMs).leaveText}
                 </Text>
               </View>
             </Pressable>
