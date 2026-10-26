@@ -135,7 +135,8 @@ test("screens are wired to V5.3", () => {
   assert.match(read("components/DepartureLine.tsx"), /right: \{ fontSize: 20,[^}]*width: 62, flexShrink: 0 \}/);
   assert.match(read("components/FlowLineGroups.tsx"), /Bewaar als favoriete lijn /);
   assert.match(read("components/LijnBadge.tsx"), /maxFontSizeMultiplier=\{1\.3\}/);
-  assert.match(read("app/(tabs)/meer.tsx"), /Favoriete lijnen/);
+  assert.match(read("app/(tabs)/meer.tsx"), /Favorieten beheren/);
+  assert.match(read("app/(tabs)/meer.tsx"), /favoriteLines\.length/);
 });
 
 // Hertest 16-10 bij lettergrootte 1,5: lange namen afgekapt, tabbladen ingekort, Buurtbord-kaart te groot

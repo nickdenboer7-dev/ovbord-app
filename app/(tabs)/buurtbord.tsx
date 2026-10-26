@@ -13,6 +13,7 @@ import { LijnBadge } from "../../components/LijnBadge";
 import { SettingsButton } from "../../components/SettingsButton";
 import { modaliteitColors } from "../../constants/vervoerders";
 import { useApp } from "../../context/AppProvider";
+import { DEFAULT_USER_SETTINGS } from "../../lib/userSettings";
 import { useFlowNavigation } from "../../context/FlowNavigation";
 import { getHalte, getNearby } from "../../lib/api";
 import { bestNearbyStopId, buurtbordPreviewRows, compareNearbyDepartures, nearbyLeaveAdvice, reachableOnFoot } from "../../lib/buurtbord";
@@ -29,7 +30,7 @@ import { DepartureItem, StopSummary } from "../../types/api";
 type PreviewState = NearbyPreview;
 
 export default function BuurtbordScreen() {
-  const { colors, addRecentStop, manualCity, setManualCity, toggleFavoriteStop, isFavoriteStop } = useApp();
+  const { colors, addRecentStop, manualCity, setManualCity, toggleFavoriteStop, isFavoriteStop, settings = DEFAULT_USER_SETTINGS } = useApp();
   const insets = useSafeAreaInsets();
   const scope = nearbyScope(manualCity);
   const [initialCache] = useState(() => peekNearby(scope));
@@ -167,11 +168,12 @@ export default function BuurtbordScreen() {
     && !isLocationStale(liveBron, liveFixAt, nowMs);
   const options = useMemo(() => compareNearbyDepartures(visibleItems,
     Object.fromEntries(Object.entries(previews).map(([id, preview]) => [id, preview.departures])), nowMs,
-    new Set(Object.entries(previews).filter(([, preview]) => preview.stale || preview.loading).map(([id]) => id))),
-    [visibleItems, previews, nowMs]);
+    new Set(Object.entries(previews).filter(([, preview]) => preview.stale || preview.loading).map(([id]) => id)),
+    { maxWalkMinutes: settings.maxWalkMinutes, smartStopChoice: settings.smartStopChoice }),
+    [visibleItems, previews, nowMs, settings.maxWalkMinutes, settings.smartStopChoice]);
   const previewsAreFresh = !updating && !refreshFailure && updatedAt !== null && nowMs - updatedAt <= 120_000;
   const bestOption = hasCurrentGps && previewsAreFresh ? options[0] : undefined;
-  const advice = bestOption ? nearbyLeaveAdvice(bestOption, nowMs) : null;
+  const advice = bestOption ? nearbyLeaveAdvice(bestOption, nowMs, settings.walkBufferMinutes) : null;
 
   // Effective (delayed) time; never recommend a cancelled or departed trip.
   const bestStopId = useMemo(() => bestNearbyStopId(visibleItems,
@@ -312,7 +314,7 @@ export default function BuurtbordScreen() {
               <View style={{ alignItems: "flex-end" }}>
                 <Text maxFontSizeMultiplier={1.3} style={[styles.compareTime, { color: colors.heading }]}>{option.withinHour ? option.departureInMinutes + " min" : effectiveDepartureClock(option.departure)}</Text>
                 <Text maxFontSizeMultiplier={1.3} style={[styles.adviceHint, { color: option.tight ? colors.delayWarning : colors.accentText }]}>
-                  {option.withinHour ? option.spareMinutes + " min speling" : nearbyLeaveAdvice(option, nowMs).leaveText}
+                  {option.withinHour ? option.spareMinutes + " min speling" : nearbyLeaveAdvice(option, nowMs, settings.walkBufferMinutes).leaveText}
                 </Text>
               </View>
             </Pressable>
@@ -381,10 +383,12 @@ export default function BuurtbordScreen() {
           ) : <Text style={[styles.empty, { color: colors.textSoft }]}>{!center ? "Geen GPS-positie beschikbaar. Kies een stad of probeer GPS opnieuw." : "Geen haltes in de buurt gevonden."}</Text>) : null}
         </View>
       )}
+      {settings.buurtbordMap ? <>
       <Text maxFontSizeMultiplier={1.3} style={[styles.mapHeading, { color: colors.textSoft }]}>Haltes op de kaart</Text>
       <View style={[styles.mapWrap, large && styles.mapWrapLarge, { borderColor: colors.border, backgroundColor: colors.surface }]}>
         {center ? <LeafletMap markers={mapMarkers} center={center} /> : <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}><Text style={{ color: colors.textMuted }}>Locatie bepalen…</Text></View>}
       </View>
+      </> : null}
     </ScrollView>
   );
 }

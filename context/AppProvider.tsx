@@ -6,6 +6,7 @@ import { RitData, StopSummary } from "../types/api";
 import { isStoredJourney, isStoredStop, isStoredString, mergeLoadedList, parseStoredList } from "../lib/storedJson";
 import { pruneRitReturnCache } from "../lib/ritReturnCache";
 import { moveItem } from "../lib/listOrder";
+import { DEFAULT_USER_SETTINGS, parseUserSettings, type UserSettings } from "../lib/userSettings";
 
 export type RitCacheEntry = { data: RitData; fetchedAt: number };
 
@@ -23,6 +24,8 @@ type AppContextValue = {
   setNotificationsEnabled: (value: boolean) => void;
   manualCity: string | null;
   setManualCity: (value: string | null) => void;
+  settings: UserSettings;
+  setSetting: <K extends keyof UserSettings>(key: K, value: UserSettings[K]) => void;
   favoriteStops: StopSummary[];
   toggleFavoriteStop: (stop: StopSummary) => void;
   isFavoriteStop: (id: string) => boolean;
@@ -44,6 +47,7 @@ type AppContextValue = {
 const STORAGE_THEME = "ovbord.theme";
 const STORAGE_NOTIFICATIONS = "ovbord.notifications";
 const STORAGE_MANUAL_CITY = "ovbord.manualCity";
+const STORAGE_USER_SETTINGS = "ovbord.userSettings.v1";
 const STORAGE_FAVORITE_STOPS = "ovbord.favoriteStops";
 const STORAGE_FAVORITE_LINES = "ovbord.favoriteLines";
 const STORAGE_FAVORITE_JOURNEYS = "ovbord.favoriteJourneys";
@@ -56,6 +60,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [themeMode, setThemeModeState] = useState<ThemeMode>("system");
   const [notificationsEnabled, setNotificationsEnabledState] = useState(true);
   const [manualCity, setManualCityState] = useState<string | null>(null);
+  const [settings, setSettingsState] = useState<UserSettings>(DEFAULT_USER_SETTINGS);
+  const settingsChanged = useRef(false);
   const [favoriteStops, setFavoriteStops] = useState<StopSummary[]>([]);
   const [favoriteLines, setFavoriteLines] = useState<string[]>([]);
   const [favoriteJourneys,setFavoriteJourneys] = useState<SavedJourney[]>([]);
@@ -73,18 +79,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // must not prevent the other settings, favorites and recents from loading.
     const read = (key: string) => AsyncStorage.getItem(key).catch(() => null);
     void (async () => {
-      const [savedTheme, savedNotifications, savedFavoriteStops, savedFavoriteLines, savedRecentStops, savedFavoriteJourneys, savedManualCity] = await Promise.all([
+      const [savedTheme, savedNotifications, savedFavoriteStops, savedFavoriteLines, savedRecentStops, savedFavoriteJourneys, savedManualCity, savedSettings] = await Promise.all([
         read(STORAGE_THEME),
         read(STORAGE_NOTIFICATIONS),
         read(STORAGE_FAVORITE_STOPS),
         read(STORAGE_FAVORITE_LINES),
         read(STORAGE_RECENT_STOPS),
         read(STORAGE_FAVORITE_JOURNEYS),
-        read(STORAGE_MANUAL_CITY)
+        read(STORAGE_MANUAL_CITY),
+        read(STORAGE_USER_SETTINGS)
       ]);
       if (savedTheme === "light" || savedTheme === "dark" || savedTheme === "system") setThemeModeState(savedTheme);
       if (savedNotifications !== null) setNotificationsEnabledState(savedNotifications === "true");
       if (savedManualCity !== null) setManualCityState(savedManualCity || null);
+      if (!settingsChanged.current) setSettingsState(parseUserSettings(savedSettings));
       // Merge instead of replace: anything saved while loading was still busy is kept,
       // and the merged list is written back so storage holds both.
       const hydrate = <T,>(key: string, stored: T[] | undefined, setList: React.Dispatch<React.SetStateAction<T[]>>,
@@ -119,6 +127,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const setManualCity = (value: string | null) => {
     setManualCityState(value);
     void AsyncStorage.setItem(STORAGE_MANUAL_CITY, value || "");
+  };
+
+  const setSetting = <K extends keyof UserSettings>(key: K, setting: UserSettings[K]) => {
+    settingsChanged.current = true;
+    setSettingsState((current) => {
+      const next = { ...current, [key]: setting };
+      void AsyncStorage.setItem(STORAGE_USER_SETTINGS, JSON.stringify(next));
+      return next;
+    });
   };
 
   const toggleFavoriteStop = (stop: StopSummary) => {
@@ -196,6 +213,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setNotificationsEnabled,
     manualCity,
     setManualCity,
+    settings,
+    setSetting,
     favoriteStops,
     toggleFavoriteStop,
     isFavoriteStop,
@@ -211,7 +230,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     clearRecentStops,
     getCachedRit,
     setCachedRit
-  }), [themeMode, resolvedScheme, colors, notificationsEnabled, manualCity, favoriteStops, favoriteLines, favoriteJourneys, recentStops, getCachedRit, setCachedRit]);
+  }), [themeMode, resolvedScheme, colors, notificationsEnabled, manualCity, settings, favoriteStops, favoriteLines, favoriteJourneys, recentStops, getCachedRit, setCachedRit]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

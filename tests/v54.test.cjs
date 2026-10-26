@@ -326,7 +326,7 @@ test("large font and choosing the alighting stop", () => {
   const meer = read("app/(tabs)/meer.tsx").replace(/\r\n/g, "\n");
   assert.match(meer, /<ScrollView style=\{styles\.scroll\}/);
   // The theme setting comes first, so it is in view without scrolling.
-  assert.ok(meer.indexOf(">Thema<") < meer.indexOf(">Favoriete haltes<"));
+  assert.ok(meer.indexOf(">Thema<") < meer.indexOf(">Favorieten beheren<"));
   const rit = read("app/rit/[id].tsx");
   // V5.7: choosing scrolls to the first stop that can be chosen; the earlier stops stay in the list.
   assert.match(rit, /scrollToStop\(Math\.max\(0, minAlightIndex - 1\), true\)/);
@@ -342,7 +342,7 @@ test("no word is broken in the middle at a large font", () => {
   const row = read("components/DepartureLine.tsx");
   assert.doesNotMatch(row, /styles\.titleRow/);
   assert.match(row, /destination: \{ fontSize: 16,/);
-  assert.match(read("app/(tabs)/meer.tsx"), /maxFontSizeMultiplier=\{1\.2\} numberOfLines=\{1\} adjustsFontSizeToFit/);
+  assert.match(read("app/(tabs)/meer.tsx"), /maxFontSizeMultiplier=\{1\.3\} adjustsFontSizeToFit minimumFontScale=\{0\.75\} numberOfLines=\{1\}/);
 });
 
 // LDPlayer 17-10 middag: op Start → Mijn ritten werd "Rembrandtplein" gesplitst in "Re" / "mbrandtplein"

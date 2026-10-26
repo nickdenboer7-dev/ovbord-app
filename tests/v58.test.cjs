@@ -101,7 +101,7 @@ test("long destinations keep one primary row and their full accessible name", ()
 
 test("the stop board sorts its departures and lijnen feed by real expected time", () => {
   const board = read("components/FlowBoard.tsx");
-  assert.match(board, /sortBoardDepartures\(visibleDepartures, nowMs\)/);
+  assert.match(board, /orderBoardDepartures\(visibleDepartures, nowMs, settings\.liveFirst\)/);
   assert.match(board, /departures=\{sortBoardDepartures\(visibleDepartures\.filter\(row=>!selectedMode\|\|\(row\.mode\|\|stop\.mode\)===selectedMode\), nowMs\)\.map\(row => withBoardFreshness\(row, timingCurrent\)\)\}/);
 });
 

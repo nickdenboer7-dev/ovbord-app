@@ -1,6 +1,7 @@
 import React from "react";
 import { Pressable,StyleSheet,Text,View } from "react-native";
 import { useApp } from "../context/AppProvider";
+import { DEFAULT_USER_SETTINGS } from "../lib/userSettings";
 import { departureClockDelay,departureLineLabel } from "../lib/departureLine";
 import { compactTrainLineLabel } from "../lib/trainLineLabel";
 import { BOARD_MODE_LABEL,STOP_BOARD_BLUE,stopBoardBadge,stopBoardTiming } from "../lib/stopBoardDesign";
@@ -14,7 +15,7 @@ export function StopBoardBadge({item}:{item:DepartureItem}) {
 }
 /** Compact row used only by FlowBoard; Start, favourites and trips retain their own rows. */
 export function StopBoardRow({item,nowMs,stale=false,onPress,last=false,note,detail,laterTimes=[]}:Props) {
-  const {colors}=useApp(),timing=stopBoardTiming(item,nowMs,stale),delay=departureClockDelay(item);
+  const {colors,settings=DEFAULT_USER_SETTINGS}=useApp(),timing=stopBoardTiming(item,nowMs,stale,settings.departureTimeMode),delay=departureClockDelay(item);
   const departed=item.departed===true&&!item.cancelled;
   const label=item.cancelled?"Rijdt niet":departed?"Vertrokken":stale?"Laatst bekende tijd":item.liveDataStale?"Live-info oud":item.isLive===true?"Live":"Gepland";
   const mode=BOARD_MODE_LABEL[item.mode||"bus"];

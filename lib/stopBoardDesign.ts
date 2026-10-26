@@ -3,6 +3,7 @@ import { MODE_ORDER, mergeLines } from "./lineSet";
 import { departureTimeRemainingMs } from "./boardSmartness";
 import { departurePresentation } from "./departurePresentation";
 import palette from "../constants/ovspotMapPalette.json";
+import type { DepartureTimeMode } from "./userSettings";
 
 export const STOP_BOARD_BLUE = "#185c98";
 export const BOARD_MODE_LABEL: Record<Mode,string> = {train:"Trein",metro:"Metro",tram:"Tram",bus:"Bus",ferry:"Veerboot"};
@@ -38,9 +39,11 @@ export function stopBoardModes(stop:StopSummary,board?:HalteBoardData|null):Mode
   return MODE_ORDER.filter(m=>available.has(m));
 }
 /** One expected instant drives both the minute display and the service clock. */
-export function stopBoardTiming(item:DepartureItem,now:number,stale=false) {
+export function stopBoardTiming(item:DepartureItem,now:number,stale=false,display:DepartureTimeMode="both") {
   const {clock}=departurePresentation(item,now),remaining=departureTimeRemainingMs(item,now);
   const minutes=remaining===null?null:Math.ceil(remaining/60000);
-  const showMinutes=!stale&&!item.liveDataStale&&!item.cancelled&&!item.departed&&minutes!==null&&minutes>=0&&minutes<=30;
-  return {primary:showMinutes?minutes+" min":clock,secondary:showMinutes?clock:"",clock};
+  const showMinutes=!stale&&!item.liveDataStale&&!item.cancelled&&!item.departed&&minutes!==null&&minutes>=0
+    &&(display==="minutes"||minutes<=30);
+  const showCountdown = showMinutes && display !== "clock";
+  return {primary:showCountdown?minutes+" min":clock,secondary:showCountdown&&display==="both"?clock:"",clock};
 }

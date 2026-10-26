@@ -12,6 +12,7 @@ import { MenuButton, OverflowMenu } from "./OverflowMenu";
 import type { MenuItem } from "./OverflowMenu";
 import { FlowLineGroups } from "./FlowLineGroups";
 import { useApp } from "../context/AppProvider";
+import { DEFAULT_USER_SETTINGS } from "../lib/userSettings";
 import { useFlowNavigation } from "../context/FlowNavigation";
 import { getHalte, getRit, getStopReliability, searchStops } from "../lib/api";
 import { useSmartRefresh } from "../lib/useSmartRefresh";
@@ -20,7 +21,7 @@ import { departureKey } from "../lib/flowRitQuality";
 import { hasAvailableArrivals } from "../lib/arrivalAvailability";
 import { groupBoardDepartures } from "../lib/boardDepartureGrouping";
 import type { BoardDisplayDeparture } from "../lib/boardDepartureGrouping";
-import { boardDepartureIdentity, departureTimeChangeLabel, refreshDepartureTimeChanges, sortBoardDepartures } from "../lib/boardSmartness";
+import { boardDepartureIdentity, departureTimeChangeLabel, refreshDepartureTimeChanges, sortBoardDepartures, orderBoardDepartures } from "../lib/boardSmartness";
 import { departureNoticeIdentity, confirmDepartedNotices, recentDepartureCandidates, visibleBoardDepartures, journeyConfirmsDeparture, DEPARTURE_CHECK_COOLDOWN_MS, MAX_DEPARTURE_CHECKS } from "../lib/departedNotice";
 import type { DepartedNotices } from "../lib/departedNotice";
 import { feedFreshness, platformChangeFor, refreshPlatformChanges, isActiveStopNotice, disruptionSummary } from "../lib/haltebordV4";
@@ -56,7 +57,7 @@ export const MAX_PINNED_ROWS = 3;
 
 /** The board is rendered inside the Start tab: no Stack route, drawer, or bottom sheet. */
 export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=false, initialLine, onBack, visible = true }: Props) {
-  const { colors, resolvedScheme, addRecentStop, toggleFavoriteStop, isFavoriteStop, favoriteLines, toggleFavoriteLine, manualCity } = useApp();
+  const { colors, resolvedScheme, addRecentStop, toggleFavoriteStop, isFavoriteStop, favoriteLines, toggleFavoriteLine, manualCity, settings = DEFAULT_USER_SETTINGS } = useApp();
   const { requestSearch } = useFlowNavigation();
   const router = useRouter(); // OVBORD_FLOW4_DEDICATED_RIT
   const [focused,setFocused]=useState(false);
@@ -255,7 +256,7 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
     // V5.8: departures are shown in ascending order of their real expected departure time
     // (effectiveAt, otherwise the existing clock/delay estimate), never the raw feed order.
     const entries = tab === "arrivals" ? board.arrivals
-      : tab === "departures" ? sortBoardDepartures(visibleDepartures, nowMs) : [];
+      : tab === "departures" ? orderBoardDepartures(visibleDepartures, nowMs, settings.liveFirst) : [];
     return entries.map((rawItem) => {
       const item = withBoardFreshness(rawItem, timingCurrent);
       const quality = dataCurrent ? gpsQuality[item.ritId || ""] : undefined;
@@ -264,7 +265,7 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
           quality.level === "good" || quality.level === "reasonable" ? "medium" as const : "low" as const
       } : item;
     });
-  }, [board, tab, gpsQuality, visibleDepartures, dataCurrent, timingCurrent, nowMs]);
+  }, [board, tab, gpsQuality, visibleDepartures, dataCurrent, timingCurrent, nowMs, settings.liveFirst]);
 
   /** Favourite lines (a star in the Lijnen tab) are shown in "Jouw lijnen". */
   const favoriteKeySet = useMemo(() => new Set(favoriteLines), [favoriteLines]);
@@ -342,7 +343,7 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
       <DepartureHeading title="Jouw lijnen" star />
       {pinnedRows.map((item, index) => (
         <View key={"pin:" + departureKey(item, index)}>
-          {item.gapStartClock ? gapDivider(item.gapStartClock) : null}
+          {settings.daySeparators && item.gapStartClock ? gapDivider(item.gapStartClock) : null}
           <StopBoardRow item={item} nowMs={nowMs} stale={staleDisplay} laterTimes={item.groupedTimes}
             detail={!staleDisplay ? walkingDepartureAdvice(item,position,board?.stop||stop,nowMs) || undefined : undefined}
             onPress={() => openTrip(item)} last={index === pinnedRows.length - 1} />
@@ -558,7 +559,7 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
               const platformName = item.mode === "train" ? "Spoor" : "Perron";
               return (
                 <View>
-                  {tab === "departures" && item.gapStartClock ? gapDivider(item.gapStartClock) : null}
+                  {tab === "departures" && settings.daySeparators && item.gapStartClock ? gapDivider(item.gapStartClock) : null}
                   {/* Failed refreshes show last-known times rather than a live countdown. */}
                   <StopBoardRow item={item} nowMs={nowMs} stale={staleDisplay} note={changedFrom} laterTimes={tab==="departures"?item.groupedTimes:undefined}
                     detail={!staleDisplay && tab==="departures" ? walkingDepartureAdvice(item,position,board?.stop||stop,nowMs) || undefined : undefined}

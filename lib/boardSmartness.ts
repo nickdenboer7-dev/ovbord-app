@@ -61,6 +61,13 @@ export function sortBoardDepartures<T extends DepartureItem>(items: readonly T[]
     .map((row) => row.item);
 }
 
+/** Opt-in live-first ordering; chronological time remains the default. */
+export function orderBoardDepartures<T extends DepartureItem>(items: readonly T[], nowMs: number, liveFirst = false): T[] {
+  const sorted = sortBoardDepartures(items, nowMs);
+  return liveFirst ? [...sorted.filter(item => item.isLive && !item.liveDataStale),
+    ...sorted.filter(item => !item.isLive || item.liveDataStale)] : sorted;
+}
+
 export function keepBoardDeparture(item: DepartureItem, nowMs: number): boolean {
   const remaining = departureTimeRemainingMs(item, nowMs);
   // If the feed supplies neither a usable date nor clock, do not invent a departure.

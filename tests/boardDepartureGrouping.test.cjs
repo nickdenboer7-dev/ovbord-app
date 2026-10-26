@@ -113,6 +113,6 @@ test("spring clock change also keeps every physical trip", () => {
 test("FlowBoard still renders the divider for departures, independently of arrivals", () => {
   const board = fs.readFileSync(path.join(__dirname, "../components/FlowBoard.tsx"), "utf8");
   assert.match(board, /groupBoardDepartures\(remaining, nowMs\)/);
-  assert.match(board, /tab === "departures" && item\.gapStartClock/);
+  assert.match(board, /tab === "departures" && settings\.daySeparators && item\.gapStartClock/);
   assert.match(board, /Volgende vertrekken vanaf \{clock\}/);
 });

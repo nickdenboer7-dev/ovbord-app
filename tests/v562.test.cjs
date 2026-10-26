@@ -54,23 +54,27 @@ test("Start keeps GPS, choosing a city, search, recent stops, favourites and the
   assert.doesNotMatch(home, /<Image|ImageBackground/);
 });
 
-test("Instellingen: compact header, clear theme choice, saved items together", () => {
+test("Instellingen: blue header, actionable controls, and saved items", () => {
   const meer = read("app/(tabs)/meer.tsx");
-  assert.match(meer, /paddingTop: Math\.max\(insets\.top, 24\) \+ 12/);
+  assert.match(meer, /paddingTop: Math\.max\(insets\.top, 24\) \+ 10/);
+  assert.match(meer, /backgroundColor: STOP_BOARD_BLUE/);
+  assert.match(meer, /<ScrollView style=\{styles\.scroll\}/);
   assert.doesNotMatch(meer, /SettingsButton/);
-  // No arrows or buttons that do nothing.
-  assert.doesNotMatch(meer, /chevron-forward/);
-  assert.match(meer, /accessibilityRole="radio" accessibilityState=\{\{ checked: active \}\}/);
-  assert.match(meer, /active && \{ backgroundColor: colors\.accent \}/);
-  assert.match(meer, /name=\{active \? "checkmark-circle" : option\.icon\}/);
-  for (const title of ["Favoriete haltes", "Favoriete ritten", "Favoriete lijnen", "Recente haltes"]) {
-    assert.match(meer, new RegExp(">" + title + "</SavedRow>"), title);
+  assert.match(meer, /accessibilityRole="radio" accessibilityLabel=\{label \+ ": " \+ option\.label\}/);
+  assert.match(meer, /active && \{ backgroundColor: STOP_BOARD_BLUE \}/);
+  for (const title of ["Weergave", "Reisadvies", "Haltebord & Buurtbord", "Locatie & gegevens"]) {
+    assert.ok(meer.includes('title="' + title + '"'), title);
   }
-  // Clearing recent stops still asks first.
+  for (const setting of ["departureTimeMode", "smartStopChoice", "maxWalkMinutes", "walkBufferMinutes",
+    "liveFirst", "daySeparators", "buurtbordMap"]) {
+    assert.ok(meer.includes('setSetting("' + setting + '"'), setting);
+  }
+  assert.match(meer, /onPress=\{\(\) => router\.push\("\/favorieten"\)\}/);
+  assert.match(meer, /favoriteStops\.length\} haltes/);
   assert.match(meer, /Alert\.alert\("Recente haltes wissen\?"/);
   assert.match(meer, /\{ text: "Wissen", style: "destructive", onPress: clearRecentStops \}/);
   assert.match(meer, /onPress=\{confirmClearRecents\} disabled=\{!recentStops\.length\}/);
-  assert.match(meer, /UPDATE_ROWS\.map\(\(row\) =>/);
+  assert.match(meer, /UPDATE_ROWS\.map\(row =>/);
 });
 
 test("version, preview channel and update stay visible in Instellingen", () => {

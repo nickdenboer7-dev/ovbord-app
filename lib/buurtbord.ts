@@ -56,12 +56,14 @@ export function compareNearbyDepartures(
   stops: readonly StopSummary[],
   departuresByStop: Readonly<Record<string, readonly DepartureItem[] | undefined>>,
   nowMs: number,
-  staleStopIds: ReadonlySet<string> = new Set()
+  staleStopIds: ReadonlySet<string> = new Set(),
+  preferences: { maxWalkMinutes?: number; smartStopChoice?: boolean } = {}
 ): NearbyDepartureOption[] {
   const options: NearbyDepartureOption[] = [];
   for (const stop of stops) {
     const walk = stop.walkMinutes;
-    if (staleStopIds.has(stop.id) || typeof walk !== "number" || !Number.isFinite(walk) || walk < 0) continue;
+    if (staleStopIds.has(stop.id) || typeof walk !== "number" || !Number.isFinite(walk) || walk < 0
+      || walk > (preferences.maxWalkMinutes ?? Infinity)) continue;
     const first = (departuresByStop[stop.id] || [])
       .filter((item) => !item.cancelled && !item.departed && !item.liveDataStale)
       .map((item) => ({ item, ms: departureTimeRemainingMs(item, nowMs) }))
@@ -89,7 +91,7 @@ export function compareNearbyDepartures(
   // Rokin: N85 in 12 min, 5 min walking; Dam: N85 in 14 min, 1 min walking.
   // Prefer Dam; do not trade a quick connection for a much later/different bus.
   const first = ranked[0];
-  if (!first?.withinHour || first.tight) return ranked;
+  if (preferences.smartStopChoice === false || !first?.withinHour || first.tight) return ranked;
   const serviceKey = (option: NearbyDepartureOption) =>
     option.departure.line.trim().toLocaleLowerCase("nl") + "|" +
     option.departure.destination.trim().toLocaleLowerCase("nl");
@@ -110,13 +112,13 @@ export function compareNearbyDepartures(
 }
 
 /** When to begin walking, with five minutes extra margin when the connection allows it. */
-export function nearbyLeaveAdvice(option: NearbyDepartureOption, nowMs: number) {
-  const leaveInMinutes = Math.max(0, option.spareMinutes - NEARBY_WALK_BUFFER_MINUTES);
+export function nearbyLeaveAdvice(option: NearbyDepartureOption, nowMs: number, bufferMinutes = NEARBY_WALK_BUFFER_MINUTES) {
+  const leaveInMinutes = Math.max(0, option.spareMinutes - bufferMinutes);
   const leaveText = leaveInMinutes <= 2 ? "Vertrek nu"
     : option.withinHour || leaveInMinutes <= 30 ? `Vertrek over ${leaveInMinutes} min`
     : `Vertrek rond ${formatDutchClock(nowMs + leaveInMinutes * 60000)}`;
-  const marginText = option.spareMinutes < NEARBY_WALK_BUFFER_MINUTES ? `slechts ${option.spareMinutes} min speling`
-    : `circa ${NEARBY_WALK_BUFFER_MINUTES} min extra marge`;
+  const marginText = option.spareMinutes < bufferMinutes ? `slechts ${option.spareMinutes} min speling`
+    : `circa ${bufferMinutes} min extra marge`;
   return { leaveInMinutes, leaveText, marginText, later: !option.withinHour };
 }
 
