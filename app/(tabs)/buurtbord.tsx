@@ -61,8 +61,8 @@ export default function BuurtbordScreen() {
   const [locatieRetry, setLocatieRetry] = useState(0);
   const [showCities, setShowCities] = useState(false);
   const [compareOpen, setCompareOpen] = useState(false);
-  // Departures and the walking advice stay readable first; the map opens on request.
-  const [mapExpanded, setMapExpanded] = useState(false);
+  // A compact map above departures stays inside the scroll flow, never over the bottom rows.
+  const [mapExpanded, setMapExpanded] = useState(true);
   const [focused, setFocused] = useState(false);
   useFocusEffect(useCallback(() => { setFocused(true); return () => setFocused(false); }, []));
   const [refreshTick, setRefreshTick] = useState(0);
@@ -262,6 +262,23 @@ export default function BuurtbordScreen() {
           <Text style={{ color: colors.text, flex: 1, fontSize: 12 }}>{boardRefreshNotice(refreshFailure, updatedAt)}</Text>
         </View>
       ) : null}
+      {settings.buurtbordMap ? <View style={styles.mapSection}>
+        <Pressable onPress={() => setMapExpanded(value => !value)} accessibilityRole="button"
+          accessibilityLabel={mapExpanded ? "Kaart inklappen" : "Kaart uitklappen"}
+          accessibilityState={{ expanded: mapExpanded }}
+          style={[styles.mapToggle, { backgroundColor: colors.background === "#FFFFFF" ? "#EEF4FF" : colors.surfaceAlt, borderColor: colors.border }]}>
+          <Ionicons name="map-outline" size={18} color={STOP_BOARD_BLUE} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text maxFontSizeMultiplier={1.3} style={styles.mapToggleText}>Haltes op de kaart</Text>
+            <Text maxFontSizeMultiplier={1.3} style={{ fontSize: 10, color: colors.textSoft }}>{visibleItems.length} haltes dichtbij · kies hieronder je vertrek</Text>
+          </View>
+          <Ionicons name={mapExpanded ? "chevron-up" : "chevron-down"} size={18} color={STOP_BOARD_BLUE} />
+        </Pressable>
+        {mapExpanded ? <View style={[styles.mapWrap, large && styles.mapWrapLarge, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+          {center ? <LeafletMap markers={mapMarkers} center={center} /> :
+            <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}><Text style={{ color: colors.textMuted }}>Locatie bepalen…</Text></View>}
+        </View> : null}
+      </View> : null}
       {bestOption ? (
         <View style={[styles.adviceCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={styles.adviceTop}>
@@ -402,24 +419,7 @@ export default function BuurtbordScreen() {
           ) : <Text style={[styles.empty, { color: colors.textSoft }]}>{!center ? "Geen GPS-positie beschikbaar. Kies een stad of probeer GPS opnieuw." : "Geen haltes in de buurt gevonden."}</Text>) : null}
         </View>
       )}
-      {settings.buurtbordMap ? <View style={styles.mapSection}>
-        <Pressable onPress={() => setMapExpanded(value => !value)} accessibilityRole="button"
-          accessibilityLabel={mapExpanded ? "Kaart inklappen" : "Kaart uitklappen"}
-          accessibilityState={{ expanded: mapExpanded }}
-          style={[styles.mapToggle, { backgroundColor: colors.background === "#FFFFFF" ? "#EEF4FF" : colors.surfaceAlt, borderColor: colors.border }]}>
-          <Ionicons name="map-outline" size={18} color={STOP_BOARD_BLUE} />
-          <Text maxFontSizeMultiplier={1.3} style={styles.mapToggleText}>Haltes op de kaart</Text>
-          <Ionicons name={mapExpanded ? "chevron-up" : "chevron-down"} size={18} color={STOP_BOARD_BLUE} />
-        </Pressable>
-        {mapExpanded ? <View style={[styles.mapWrap, large && styles.mapWrapLarge, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-          {center ? <LeafletMap markers={mapMarkers} center={center} /> : <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}><Text style={{ color: colors.textMuted }}>Locatie bepalen…</Text></View>}
-        </View> : null}
-        {mapExpanded ? <Pressable onPress={() => setMapExpanded(false)} accessibilityRole="button" accessibilityLabel="Kaart inklappen"
-          style={[styles.mapClose, { backgroundColor: colors.surface }]}>
-          <Ionicons name="chevron-up" size={15} color={colors.accentText} />
-          <Text maxFontSizeMultiplier={1.3} style={{ fontSize: 12, fontWeight: "800", color: colors.accentText }}>Kaart inklappen</Text>
-        </Pressable> : null}
-      </View> : null}
+
     </ScrollView>
     </View>
   );
@@ -431,12 +431,12 @@ const styles = StyleSheet.create({
   headerCopy: { flex: 1 },
   title: { fontSize: 21, fontWeight: "800", letterSpacing: -0.6 },
   subtitle: { fontSize: 12, marginTop: 3 },
-  mapSection: { marginHorizontal: 13, marginTop: 16, gap: 7 },
+  mapSection: { marginHorizontal: 13, marginTop: 7, marginBottom: 3, gap: 6 },
   mapToggle: { minHeight: 46, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, flexDirection: "row", alignItems: "center", gap: 9 },
   mapToggleText: { color: STOP_BOARD_BLUE, flex: 1, fontSize: 13, fontWeight: "800" },
   mapClose: { alignSelf: "center", minHeight: 34, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, borderRadius: 9 },
-  mapWrap: { height: 185, borderRadius: 14, overflow: "hidden", borderWidth: 1 },
-  mapWrapLarge: { height: 110, marginVertical: 8 },
+  mapWrap: { height: 165, borderRadius: 12, overflow: "hidden", borderWidth: 1 },
+  mapWrapLarge: { height: 118, marginVertical: 6 },
   adviceCard: { marginHorizontal: 13, marginTop: 8, padding: 12, borderRadius: 12, borderWidth: 1, gap: 10 },
   adviceTop: { flexDirection: "row", alignItems: "center", gap: 8 },
   adviceTitle: { fontSize: 16, fontWeight: "900" },

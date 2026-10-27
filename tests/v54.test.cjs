@@ -227,7 +227,7 @@ test("the ⋮ menu is a plain overlay: an option runs, then the menu closes", ()
     assert.match(source.slice(at), /^<OverflowMenu open=\{menuOpen\} onClose=\{\(\) => setMenuOpen\(false\)\} items=\{menuItems\} title="[^"]+" \/>\n\s*<\/View>;?\n\s*\)?;?\n?\}/, file);
   }
   const home = read("components/FlowHome.tsx");
-  assert.match(home, /numberOfLines=\{large \? undefined : 2\}/);
+  assert.match(home, /numberOfLines=\{1\} adjustsFontSizeToFit minimumFontScale=\{0\.75\}/);
   assert.match(home, /maxFontSizeMultiplier=\{1\.3\}/);
 });
 

@@ -52,12 +52,12 @@ test("nearby advice only recommends with current GPS and recent departures", () 
   assert.match(ui, /\{manualCity \? \(/);
 });
 
-test("Buurtbord scrolls advice, stop cards and the map together; map follows the departures", () => {
+test("Buurtbord toont een compacte kaart boven de vertrektijden in dezelfde scroll", () => {
   const ui = read("app/(tabs)/buurtbord.tsx");
   assert.match(ui, /<ScrollView/);
   assert.match(ui, /refreshControl=\{<RefreshControl/);
   assert.match(ui, /visibleItems\.map\(\(item\) =>/);
   assert.match(ui, /Haltes op de kaart/);
-  assert.ok(ui.indexOf("visibleItems.map((item) =>") < ui.indexOf("Haltes op de kaart"));
+  assert.ok(ui.indexOf("Haltes op de kaart") < ui.indexOf("visibleItems.map((item) =>"));
   assert.doesNotMatch(ui, /<FlatList/);
 });

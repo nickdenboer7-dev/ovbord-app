@@ -30,9 +30,14 @@ import { useSmartRefresh } from "../lib/useSmartRefresh";
 import { favoriteLineKey } from "../lib/favoriteLines";
 import { DepartureLine } from "./DepartureLine";
 import { nearbyCountText, nearbyDistance } from "../lib/nearbyPresentation";
-import { activeTripLine, activeTripValid } from "../lib/activeTrip";
+import { activeTripValid } from "../lib/activeTrip";
+import { alightRemainingStops, alightTimeLabel } from "../lib/alightCard";
+import { dailyTravelLabel, availableDailyJourney, EMPTY_DAILY_TRAVEL, type DailySlot } from "../lib/dailyTravel";
+import { favoriteJourneyDepartures } from "../lib/favoritesLive";
+import { effectiveDepartureClock } from "../lib/format";
+import type { NativeAlightReminderStatus } from "../lib/journeyReminders";
 import type { ActiveTrip } from "../lib/activeTrip";
-import { clearActiveTrip, loadActiveTrip } from "../lib/activeTripStore";
+import { clearActiveTrip, loadActiveTrip, loadTripSnapshot } from "../lib/activeTripStore";
 import { rememberAlighting } from "../lib/alighting";
 import { walkingDepartureAdvice } from "../lib/leaveTime";
 import { forYouDepartures, type ForYouBoard } from "../lib/forYou";
@@ -42,7 +47,7 @@ import { useWalkingPosition } from "../lib/useWalkingPosition";
 import { boardRefreshNotice } from "../lib/offline";
 import { distanceMeters } from "../lib/boardingMatch";
 import { runLimited } from "../lib/concurrency";
-import type { DepartureItem, LineInfo, StopSummary } from "../types/api";
+import type { DepartureItem, JourneyStop, LineInfo, StopSummary } from "../types/api";
 
 type ListTab = "nabij" | "recent" | "favoriet";
 type SearchFilter = "alles" | "haltes" | "ritten";
@@ -64,12 +69,15 @@ function shortStopName(name: string): string {
 
 /** One persistent screen for search, stop boards, inline journeys and intermediate stops. */
 export function FlowHome() {
-  const { colors, resolvedScheme, recentStops, favoriteStops, favoriteJourneys, favoriteLines, addRecentStop, toggleFavoriteStop, isFavoriteStop, manualCity, setManualCity } = useApp();
+  const { colors, resolvedScheme, recentStops, favoriteStops, favoriteJourneys, favoriteLines, dailyTravel = EMPTY_DAILY_TRAVEL, setDailyTravel, addRecentStop, toggleFavoriteStop, isFavoriteStop, manualCity, setManualCity } = useApp();
   const { screens, showStop, searchRequest, homeRequest } = useFlowNavigation();
   const { boards: favoriteBoards, refreshFailure: favoritesFailure, refreshing: favoritesUpdating, refresh: refreshFavorites, stopsKey: favoritesKey } = useFavoritesLive();
   const [nowMs, setNowMs] = useState(() => Date.now());
   /** The trip last opened on the trip page, offered on Start until shortly after arrival. */
   const [activeTrip, setActiveTrip] = useState<ActiveTrip | null>(null);
+  const [tripStops, setTripStops] = useState<JourneyStop[] | null>(null);
+  const [alightReminder, setAlightReminder] = useState<NativeAlightReminderStatus | null>(null);
+  const [dailyTripChoosing, setDailyTripChoosing] = useState<DailySlot | null>(null);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   // With a large system font, names and destinations get two lines instead of being cut off.
@@ -299,6 +307,21 @@ export function FlowHome() {
     return () => { active = false; };
   }, [favoriteJourneys.length, favoriteStops.length, refreshFavorites]));
   const showTrip = !finding && tab === "nabij" && activeTripValid(activeTrip, nowMs);
+  useEffect(() => {
+    let alive = true;
+    setTripStops(null);
+    setAlightReminder(null);
+    if (focused && activeTrip?.alighting) {
+      void loadTripSnapshot().then(snapshot => {
+        if (alive && snapshot?.tripId === activeTrip.tripId) setTripStops(snapshot.data.stops);
+      });
+      // Load Expo notifications only for an actual followed trip; Start must stay lightweight.
+      void import("../lib/journeyReminders").then(module => module.nativeAlightReminderStatus()).then(status => {
+        if (alive) setAlightReminder(status);
+      }).catch(() => { if (alive) setAlightReminder({ state: "error" }); });
+    }
+    return () => { alive = false; };
+  }, [focused, activeTrip?.tripId, activeTrip?.alighting?.id, activeTrip?.alightClock]);
   const openActiveTrip = (trip: ActiveTrip) => {
     // The alighting stop comes back too, also after the app was closed.
     rememberAlighting(trip.tripId, trip.alighting);
@@ -429,6 +452,99 @@ export function FlowHome() {
                     <Ionicons name="cloud-offline-outline" size={18} color={colors.text}/>
                     <Text style={{color:colors.text,flex:1,fontSize:12}}>{boardRefreshNotice("offline",personalUpdatedAt)}</Text>
                   </View> : null}
+                  {showTrip && activeTrip ? (() => {
+                    const count = tripStops ? alightRemainingStops(tripStops, activeTrip) : null;
+                    const scheduled = alightReminder?.state === "scheduled" && alightReminder.stopName === activeTrip.alightName && alightReminder.at > nowMs;
+                    const reminderLabel = scheduled && alightReminder?.state === "scheduled"
+                      ? "Melding ingesteld voor " + new Date(alightReminder.at).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })
+                      : alightReminder?.state === "blocked" ? "Meldingen geblokkeerd · kijk bij Meer"
+                      : alightReminder?.state === "disabled" ? "Uitstapmelding staat uit · kijk bij Meer"
+                      : alightReminder?.state === "ready" ? "Nog geen Android-melding gepland"
+                      : "Meldingstatus controleren bij Meer";
+                    return <View style={[styles.smartAlightCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                      <View style={styles.smartAlightHeading}>
+                        <Ionicons name="navigate-circle" color="#185C98" size={22}/>
+                        <Text maxFontSizeMultiplier={1.3} style={{ fontWeight: "900", fontSize: 15, color: colors.heading, flex: 1 }}>{activeTrip.alighting ? "Je uitstapkaart" : "Laatst bekeken rit"}</Text>
+                        <Pressable onPress={dismissActiveTrip} accessibilityRole="button" accessibilityLabel="Rit van Start verwijderen" hitSlop={9}>
+                          <Ionicons name="close" size={20} color={colors.textSoft}/>
+                        </Pressable>
+                      </View>
+                      <Pressable accessibilityRole="button" onPress={() => openActiveTrip(activeTrip)}
+                        accessibilityLabel={"Open ritverloop lijn " + activeTrip.line + " naar " + activeTrip.destination}
+                        style={styles.smartAlightBody}>
+                        <LijnBadge line={activeTrip.line} carrier={activeTrip.carrier} compact/>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text maxFontSizeMultiplier={1.3} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={{ color: colors.heading, fontWeight: "800", fontSize: 15 }}>
+                            naar {activeTrip.destination || "bestemming"}
+                          </Text>
+                          <Text maxFontSizeMultiplier={1.3} numberOfLines={2} style={{ color: colors.textSoft, fontSize: 12 }}>
+                            {activeTrip.alighting ? "Uitstappen: " + activeTrip.alightName : "Laatst bekeken rit"}
+                          </Text>
+                        </View>
+                        <View style={{ alignItems: "flex-end" }}>
+                          <Text maxFontSizeMultiplier={1.3} style={{ fontWeight: "900", fontSize: 15, color: colors.heading, fontVariant: ["tabular-nums"] }}>
+                            {activeTrip.alighting ? alightTimeLabel(activeTrip, nowMs) : activeTrip.endClock}
+                          </Text>
+                          {count !== null ? <Text maxFontSizeMultiplier={1.3} style={{ color: colors.textSoft, fontSize: 10 }}>{count === 0 ? "bij je halte" : "± " + count + (count === 1 ? " halte" : " haltes")}</Text> : null}
+                        </View>
+                        <Ionicons name="chevron-forward" size={17} color={colors.accentText}/>
+                      </Pressable>
+                      {activeTrip.alighting ? <View style={[styles.smartAlightStatus, { borderTopColor: colors.border }]}>
+                        <Ionicons name={scheduled ? "notifications" : "notifications-outline"} size={14} color={scheduled ? "#16894B" : colors.textSoft}/>
+                        <Text maxFontSizeMultiplier={1.3} style={{ color: colors.textSoft, fontSize: 11, flex: 1 }}>{reminderLabel} · tijden volgens ritinformatie</Text>
+                      </View> : null}
+                    </View>;
+                  })() : null}
+                  {favoriteJourneys.length || dailyTravel.morning || dailyTravel.evening ? <View>
+                    <View style={styles.headingRow}>
+                      <Text maxFontSizeMultiplier={1.3} style={[styles.listTitle, { color: colors.heading }]}>Mijn dagelijkse reis</Text>
+                    </View>
+                    <View style={[styles.dailyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                      {(["morning", "evening"] as const).map((slot, index) => {
+                        const saved = availableDailyJourney(favoriteJourneys, dailyTravel[slot]);
+                        const entry = saved ? favoriteBoards[saved.stop.id] : undefined;
+                        const next = saved && entry?.board
+                          ? favoriteJourneyDepartures(entry.board.departures, saved, nowMs, 6).find(dep => !dep.cancelled && !dep.departed)
+                          : undefined;
+                        const walking = saved && next && !entry?.stale && !offline ? walkingDepartureAdvice(next, walkingPosition, saved.stop, nowMs) : null;
+                        return <View key={slot} style={[styles.dailyItem, index > 0 && { borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth }]}>
+                          <View style={styles.dailyTitleRow}>
+                            <Text maxFontSizeMultiplier={1.3} style={{ color: colors.textSoft, fontSize: 11, fontWeight: "800", flex: 1 }}>{dailyTravelLabel(slot)}</Text>
+                            <Pressable accessibilityRole="button" accessibilityLabel={"Kies " + dailyTravelLabel(slot)}
+                              onPress={() => setDailyTripChoosing(current => current === slot ? null : slot)} hitSlop={8}>
+                              <Text maxFontSizeMultiplier={1.3} style={{ color: colors.accentText, fontSize: 11, fontWeight: "800" }}>{saved ? "Wijzig" : "Kies rit"}</Text>
+                            </Pressable>
+                          </View>
+                          {saved ? <Pressable onPress={() => next ? openMyDeparture(saved.stop, next) : openStop(saved.stop)}
+                            accessibilityRole="button" accessibilityLabel={"Open dagelijkse rit " + saved.line + " naar " + saved.direction} style={styles.dailyTripRow}>
+                            <LijnBadge line={saved.line} carrier={saved.carrier} compact/>
+                            <View style={{ flex: 1, minWidth: 0 }}>
+                              <Text maxFontSizeMultiplier={1.3} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={{ color: colors.text, fontSize: 13, fontWeight: "800" }}>{saved.direction}</Text>
+                              <Text maxFontSizeMultiplier={1.3} numberOfLines={2} style={{ color: colors.textSoft, fontSize: 11 }}>{saved.stop.name}{walking ? " · " + walking : ""}</Text>
+                            </View>
+                            <View style={{ alignItems: "flex-end" }}>
+                              <Text maxFontSizeMultiplier={1.3} style={{ fontSize: 17, fontWeight: "900", fontVariant: ["tabular-nums"], color: colors.heading }}>{next ? effectiveDepartureClock(next) : "—"}</Text>
+                              <Text maxFontSizeMultiplier={1.3} style={{ color: colors.textSoft, fontSize: 10 }}>{entry?.stale ? "laatst bekend" : next ? "volgend vertrek" : "geen vertrek"}</Text>
+                            </View>
+                            <Ionicons name="chevron-forward" size={16} color={colors.accentText}/>
+                          </Pressable> : <Text maxFontSizeMultiplier={1.3} style={{ color: colors.textSoft, fontSize: 12, paddingTop: 5 }}>Kies een opgeslagen favoriete rit als snelkoppeling.</Text>}
+                          {dailyTripChoosing === slot ? <View style={[styles.dailyPicker, { borderTopColor: colors.border }]}>
+                            {favoriteJourneys.map(journey => <Pressable key={journey.key} accessibilityRole="button"
+                              onPress={() => { setDailyTravel(slot, journey.key); setDailyTripChoosing(null); }}
+                              style={{ paddingVertical: 9, minHeight: 41, flexDirection: "row", alignItems: "center", gap: 8 }}>
+                              <LijnBadge line={journey.line} carrier={journey.carrier} compact/>
+                              <Text maxFontSizeMultiplier={1.3} style={{ color: colors.text, fontSize: 12, flex: 1 }} numberOfLines={2}>{journey.direction} · {journey.stop.name}</Text>
+                              {dailyTravel[slot] === journey.key ? <Ionicons name="checkmark-circle" size={19} color="#16894B"/> : null}
+                            </Pressable>)}
+                            {saved ? <Pressable accessibilityRole="button" onPress={() => { setDailyTravel(slot, null); setDailyTripChoosing(null); }} style={{ paddingVertical: 10 }}>
+                              <Text maxFontSizeMultiplier={1.3} style={{ color: colors.delayWarning, fontSize: 12, fontWeight: "800" }}>Snelkoppeling verwijderen</Text>
+                            </Pressable> : null}
+                            {!favoriteJourneys.length ? <Text style={{ color: colors.textSoft, fontSize: 11 }}>Bewaar eerst een rit via het haltebord als favoriet.</Text> : null}
+                          </View> : null}
+                        </View>;
+                      })}
+                    </View>
+                  </View> : null}
                   {showMine ? <>
                   <View style={styles.headingRow}>
                     <Text style={[styles.listTitle,{color:colors.heading}]} accessibilityRole="header">Voor jou</Text>
@@ -464,25 +580,7 @@ export function FlowHome() {
                   })}
                   </> : null}
                 </View> : null}
-                {showTrip && activeTrip ? (() => {
-                  const tripLine = activeTripLine(activeTrip);
-                  return (
-                    <View style={[styles.tripCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                      <Pressable onPress={() => openActiveTrip(activeTrip)} accessibilityRole="button"
-                        accessibilityLabel={tripLine.lead + "lijn " + tripLine.line + tripLine.text + ". Ritverloop openen"}
-                        style={styles.tripMain}>
-                        <Ionicons name="navigate-circle-outline" size={21} color={colors.accentText} />
-                        <Text style={[styles.tripText, { color: colors.text }]} numberOfLines={large ? undefined : 2}>
-                          {tripLine.lead}<Text style={styles.tripStrong}>{tripLine.line}</Text>{tripLine.text}
-                        </Text>
-                        <Ionicons name="chevron-forward" size={18} color={colors.accentText} />
-                      </Pressable>
-                      <Pressable onPress={dismissActiveTrip} hitSlop={8} accessibilityRole="button" accessibilityLabel="Rit van Start verwijderen" style={styles.tripClose}>
-                        <Ionicons name="close" size={16} color={colors.textSoft} />
-                      </Pressable>
-                    </View>
-                  );
-                })() : null}
+
                 <View style={styles.headingRow}>
                   <Text style={[styles.listTitle, { color: colors.heading }]} accessibilityRole="header">{finding ? "Zoekresultaten" : tab === "nabij" ? "Haltes in de buurt" : tab === "recent" ? "Onlangs bekeken" : "Favoriete haltes"}</Text>
                   {!finding && tab === "nabij" ? (
@@ -781,9 +879,13 @@ const styles = StyleSheet.create({
   exampleBanner: { marginHorizontal: 15, marginBottom: 8, padding: 12, borderRadius: 8 },
   mineMain: { minHeight: 60, paddingHorizontal: 15, paddingVertical: 10, flexDirection: "row", alignItems: "center", gap: 11 },
   mineDirection: { fontSize: 15, fontWeight: "700" },
-  tripCard: { marginHorizontal: 12, marginTop: 12, borderRadius: 0, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center", paddingLeft: 12 },
-  tripMain: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 12 },
-  tripText: { flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: "600" },
-  tripStrong: { fontWeight: "900" },
-  tripClose: { width: 38, height: 44, alignItems: "center", justifyContent: "center" }
+  smartAlightCard: { marginHorizontal: 12, marginTop: 12, borderWidth: 1, borderRadius: 12, overflow: "hidden" },
+  smartAlightHeading: { flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 12, paddingTop: 10 },
+  smartAlightBody: { flexDirection: "row", alignItems: "center", gap: 9, paddingHorizontal: 12, paddingVertical: 11, minHeight: 57 },
+  smartAlightStatus: { flexDirection: "row", gap: 7, alignItems: "center", borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 12, paddingVertical: 9 },
+  dailyCard: { marginHorizontal: 12, borderWidth: 1, borderRadius: 12, overflow: "hidden" },
+  dailyItem: { paddingHorizontal: 12, paddingVertical: 10 },
+  dailyTitleRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  dailyTripRow: { minHeight: 48, flexDirection: "row", alignItems: "center", gap: 10, paddingTop: 7 },
+  dailyPicker: { borderTopWidth: StyleSheet.hairlineWidth, marginTop: 10, paddingTop: 5 }
 });

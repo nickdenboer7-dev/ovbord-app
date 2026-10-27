@@ -7,6 +7,7 @@ import { isStoredJourney, isStoredStop, isStoredString, mergeLoadedList, parseSt
 import { pruneRitReturnCache } from "../lib/ritReturnCache";
 import { moveItem } from "../lib/listOrder";
 import { DEFAULT_USER_SETTINGS, parseUserSettings, type UserSettings } from "../lib/userSettings";
+import { DAILY_TRAVEL_STORAGE_KEY, EMPTY_DAILY_TRAVEL, parseDailyTravel, type DailySlot, type DailyTravelChoices } from "../lib/dailyTravel";
 
 export type RitCacheEntry = { data: RitData; fetchedAt: number };
 
@@ -30,6 +31,8 @@ type AppContextValue = {
   toggleFavoriteStop: (stop: StopSummary) => void;
   isFavoriteStop: (id: string) => boolean;
   favoriteJourneys: SavedJourney[];
+  dailyTravel: DailyTravelChoices;
+  setDailyTravel: (slot: DailySlot, journeyKey: string | null) => void;
   toggleFavoriteJourney: (entry:SavedJourney)=>void;
   isFavoriteJourney: (key:string)=>boolean;
   /** Move a favourite one place up (-1) or down (1). */
@@ -65,6 +68,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [favoriteStops, setFavoriteStops] = useState<StopSummary[]>([]);
   const [favoriteLines, setFavoriteLines] = useState<string[]>([]);
   const [favoriteJourneys,setFavoriteJourneys] = useState<SavedJourney[]>([]);
+  const [dailyTravel, setDailyTravelState] = useState<DailyTravelChoices>(EMPTY_DAILY_TRAVEL);
+  const dailyTravelChanged = useRef(false);
   const [recentStops, setRecentStops] = useState<StopSummary[]>([]);
   const ritCache = useRef<Map<string, RitCacheEntry>>(new Map());
   const [deviceScheme, setDeviceScheme] = useState<ColorSchemeName | null | undefined>(Appearance.getColorScheme());
@@ -79,7 +84,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // must not prevent the other settings, favorites and recents from loading.
     const read = (key: string) => AsyncStorage.getItem(key).catch(() => null);
     void (async () => {
-      const [savedTheme, savedNotifications, savedFavoriteStops, savedFavoriteLines, savedRecentStops, savedFavoriteJourneys, savedManualCity, savedSettings] = await Promise.all([
+      const [savedTheme, savedNotifications, savedFavoriteStops, savedFavoriteLines, savedRecentStops, savedFavoriteJourneys, savedManualCity, savedSettings, savedDailyTravel] = await Promise.all([
         read(STORAGE_THEME),
         read(STORAGE_NOTIFICATIONS),
         read(STORAGE_FAVORITE_STOPS),
@@ -87,12 +92,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         read(STORAGE_RECENT_STOPS),
         read(STORAGE_FAVORITE_JOURNEYS),
         read(STORAGE_MANUAL_CITY),
-        read(STORAGE_USER_SETTINGS)
+        read(STORAGE_USER_SETTINGS),
+        read(DAILY_TRAVEL_STORAGE_KEY)
       ]);
       if (savedTheme === "light" || savedTheme === "dark" || savedTheme === "system") setThemeModeState(savedTheme);
       if (savedNotifications !== null) setNotificationsEnabledState(savedNotifications === "true");
       if (savedManualCity !== null) setManualCityState(savedManualCity || null);
       if (!settingsChanged.current) setSettingsState(parseUserSettings(savedSettings));
+      if (!dailyTravelChanged.current) setDailyTravelState(parseDailyTravel(savedDailyTravel));
       // Merge instead of replace: anything saved while loading was still busy is kept,
       // and the merged list is written back so storage holds both.
       const hydrate = <T,>(key: string, stored: T[] | undefined, setList: React.Dispatch<React.SetStateAction<T[]>>,
@@ -149,6 +156,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   const isFavoriteStop = (id: string) => favoriteStops.some((item) => item.id === id);
+
+  const setDailyTravel = (slot: DailySlot, journeyKey: string | null) => {
+    dailyTravelChanged.current = true;
+    setDailyTravelState(current => {
+      const next = { ...current, [slot]: journeyKey };
+      void AsyncStorage.setItem(DAILY_TRAVEL_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
 
   const toggleFavoriteJourney = (entry:SavedJourney) => {
     setFavoriteJourneys(previous=>{
@@ -219,6 +235,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     toggleFavoriteStop,
     isFavoriteStop,
     favoriteJourneys,
+    dailyTravel,
+    setDailyTravel,
     toggleFavoriteJourney,
     isFavoriteJourney,
     moveFavoriteStop,
@@ -230,7 +248,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     clearRecentStops,
     getCachedRit,
     setCachedRit
-  }), [themeMode, resolvedScheme, colors, notificationsEnabled, manualCity, settings, favoriteStops, favoriteLines, favoriteJourneys, recentStops, getCachedRit, setCachedRit]);
+  }), [themeMode, resolvedScheme, colors, notificationsEnabled, manualCity, settings, favoriteStops, favoriteLines, favoriteJourneys, dailyTravel, recentStops, getCachedRit, setCachedRit]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
