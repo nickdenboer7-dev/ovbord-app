@@ -18,6 +18,8 @@ export function FlowWorkspace() {
     back();
     if (current?.returnTrip?.id) {
       router.push({ pathname: "/rit/[id]", params: current.returnTrip });
+    } else if (screens.length === 1 && current?.returnTo === "/buurtbord") {
+      router.navigate("/buurtbord");
     }
   }, [back, router, screens]);
 

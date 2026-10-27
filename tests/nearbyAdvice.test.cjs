@@ -9,7 +9,7 @@ Module._extensions[".ts"] = (mod, filename) => mod._compile(
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true }
   }).outputText, filename
 );
-const { compareNearbyDepartures, nearbyLeaveAdvice, firstNearbyDeparture, compactNearbyStopName } = require("../lib/buurtbord.ts");
+const { compareNearbyDepartures, nearbyLeaveAdvice, firstNearbyDeparture, compactNearbyStopName, nearbyStopCity } = require("../lib/buurtbord.ts");
 if (old) Module._extensions[".ts"] = old;
 else delete Module._extensions[".ts"];
 
@@ -25,6 +25,10 @@ test("compact Buurtbord omits the redundant city prefix but preserves unusual st
   assert.equal(compactNearbyStopName({ name: "Leeuwarden, Bordineweg", city: "Leeuwarden" }), "Bordineweg");
   assert.equal(compactNearbyStopName({ name: "Bordineweg", city: "Leeuwarden" }), "Bordineweg");
   assert.equal(compactNearbyStopName({ name: "Amsterdam Zuid", city: "Amsterdam" }), "Amsterdam Zuid");
+  assert.equal(compactNearbyStopName({ name: "Leeuwarden, Uiterdijksterweg", city: "" }), "Uiterdijksterweg");
+  assert.equal(nearbyStopCity({ name: "Leeuwarden, Uiterdijksterweg", city: "" }), "Leeuwarden");
+  assert.equal(nearbyStopCity({ name: "Amsterdam Zuid", city: "" }), "");
+  assert.equal(nearbyStopCity({ name: "Utrecht, Centraal", city: "Utrecht" }), "Utrecht");
 });
 
 test("compact Buurtbord selects the chronologically earliest upcoming trip, ignoring old and cancelled rows", () => {

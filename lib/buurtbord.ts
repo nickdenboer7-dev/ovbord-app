@@ -9,9 +9,18 @@ export function buurtbordPreviewRows(departures: readonly DepartureItem[], nowMs
     .slice(0, limit);
 }
 
-/** A nearby list already has a city heading, so avoid repeating its exact city prefix. */
+/** Nearby API rows may omit city even when the stop name starts with "City, ". */
+export function nearbyStopCity(stop: Pick<StopSummary, "name" | "city">): string {
+  const explicit = stop.city?.trim();
+  if (explicit) return explicit;
+  const comma = stop.name.indexOf(", ");
+  return comma > 1 && comma <= 40 ? stop.name.slice(0, comma).trim() : "";
+}
+
+/** Keep the heading informative while showing only the stop name in each row. */
 export function compactNearbyStopName(stop: Pick<StopSummary, "name" | "city">): string {
-  const prefix = stop.city ? stop.city + ", " : "";
+  const city = nearbyStopCity(stop);
+  const prefix = city ? city + ", " : "";
   return prefix && stop.name.toLocaleLowerCase("nl").startsWith(prefix.toLocaleLowerCase("nl"))
     ? stop.name.slice(prefix.length) : stop.name;
 }

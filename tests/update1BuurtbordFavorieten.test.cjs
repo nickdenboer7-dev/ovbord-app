@@ -16,6 +16,26 @@ test("Buurtbord toont dichtbijgelegen haltes op compacte rijen, zonder kaart", (
   assert.match(screen, /showCities/);
 });
 
+test("Terug vanuit een Buurtbord-halte brengt je naar Buurtbord, niet Start", () => {
+  const buurt = read("app/(tabs)/buurtbord.tsx");
+  const navigation = read("context/FlowNavigation.tsx");
+  const workspace = read("components/FlowWorkspace.tsx");
+  assert.match(buurt, /showFlowStop\(stop, \{ returnTo: "\/buurtbord" \}\)/);
+  assert.match(navigation, /returnTo: options\?\.returnTo/);
+  assert.match(workspace, /screens\.length === 1 && current\?\.returnTo === "\/buurtbord"/);
+  assert.match(workspace, /router\.navigate\("\/buurtbord"\)/);
+});
+
+test("Buurtbord zoekt haltes in dezelfde tab met de bestaande zoek-API", () => {
+  const buurt = read("app/(tabs)/buurtbord.tsx");
+  assert.match(buurt, /accessibilityLabel="Zoek halte of station"/);
+  assert.match(buurt, /searchStops\(searchTerm\)/);
+  assert.match(buurt, /searchSavedStops\(favoriteStops, recentStops, searchQuery\)/);
+  assert.match(buurt, /mergeStopResults\(localMatches, rankSearchStops/);
+  assert.match(buurt, /setTimeout\(\(\) => \{/);
+  assert.match(buurt, /compactNearbyStopName\(item\)/);
+});
+
 test("Favorieten hebben actuele tijden, sorteermogelijkheden en een haltebord-snelkoppeling", () => {
   const screen = read("app/(tabs)/favorieten.tsx");
   assert.match(screen, /useFavoritesLive\(\)/);

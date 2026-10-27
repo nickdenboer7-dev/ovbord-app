@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { StatusBar as ExpoStatusBar } from "expo-status-bar";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Keyboard, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
 import { largeText } from "../../lib/textScale";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { NearbySkeleton } from "../../components/NearbySkeleton";
@@ -15,8 +15,9 @@ import { useApp } from "../../context/AppProvider";
 import { DEFAULT_USER_SETTINGS } from "../../lib/userSettings";
 import { STOP_BOARD_BLUE } from "../../lib/stopBoardDesign";
 import { useFlowNavigation } from "../../context/FlowNavigation";
-import { getHalte, getNearby } from "../../lib/api";
-import { compactNearbyStopName, firstNearbyDeparture, compareNearbyDepartures } from "../../lib/buurtbord";
+import { getHalte, getNearby, searchStops } from "../../lib/api";
+import { compactNearbyStopName, nearbyStopCity, firstNearbyDeparture, compareNearbyDepartures } from "../../lib/buurtbord";
+import { mergeStopResults, rankSearchStops, resolveSearchTerm, searchSavedStops } from "../../lib/flowSearch";
 import { departureTimeRemainingMs } from "../../lib/boardSmartness";
 import { showsLive } from "../../lib/departureLine";
 import { departureCountdown, effectiveDepartureClock } from "../../lib/format";
@@ -32,7 +33,8 @@ import { StopSummary } from "../../types/api";
 type PreviewState = NearbyPreview;
 
 export default function BuurtbordScreen() {
-  const { colors, addRecentStop, manualCity, setManualCity, toggleFavoriteStop, isFavoriteStop, settings = DEFAULT_USER_SETTINGS } = useApp();
+  const { colors, addRecentStop, manualCity, setManualCity, toggleFavoriteStop, isFavoriteStop,
+    favoriteStops = [], recentStops = [], settings = DEFAULT_USER_SETTINGS } = useApp();
   const insets = useSafeAreaInsets();
   const scope = nearbyScope(manualCity);
   const [initialCache] = useState(() => peekNearby(scope));
@@ -60,6 +62,12 @@ export default function BuurtbordScreen() {
   const [locatieFixAt, setLocatieFixAt] = useState<number | null>(initialCache?.location.fixAt || null);
   const [locatieRetry, setLocatieRetry] = useState(0);
   const [showCities, setShowCities] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<StopSummary[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState(false);
+  const [searchRetry, setSearchRetry] = useState(0);
   const [focused, setFocused] = useState(false);
   useFocusEffect(useCallback(() => { setFocused(true); return () => setFocused(false); }, []));
   const [refreshTick, setRefreshTick] = useState(0);
@@ -178,12 +186,44 @@ export default function BuurtbordScreen() {
   const bestOption = hasCurrentGps && previewsAreFresh ? options[0] : undefined;
   // Only recommend a best stop when GPS and departures are sufficiently fresh.
   const highlightedStopId = bestOption?.stop.id || "";
-  const cityName = manualLocation?.cityName || visibleItems[0]?.city || "Jouw omgeving";
+  const cityName = manualLocation?.cityName || (visibleItems[0] ? nearbyStopCity(visibleItems[0]) : "") || "Jouw omgeving";
   const refreshedAt = updatedAt !== null && nowMs - updatedAt <= 120_000 && !refreshFailure;
 
+  // The magnifier searches all stops, not only stops in the selected city.
+  // Keep saved matches visible immediately while the shared /api/search request is debounced.
+  const searchTerm = resolveSearchTerm(searchQuery);
+  const searchActive = searchOpen && searchTerm.length > 0;
+  useEffect(() => {
+    if (!searchActive) { setSearchResults([]); setSearchError(false); setSearching(false); return; }
+    let active = true;
+    setSearching(true);
+    setSearchError(false);
+    setSearchResults([]);
+    const timer = setTimeout(() => {
+      void searchStops(searchTerm).then((stops) => {
+        if (active) setSearchResults(stops);
+      }).catch(() => {
+        if (active) setSearchError(true);
+      }).finally(() => {
+        if (active) setSearching(false);
+      });
+    }, 200);
+    return () => { active = false; clearTimeout(timer); };
+  }, [searchTerm, searchActive, searchRetry]);
+  const localMatches = useMemo(() => searchSavedStops(favoriteStops, recentStops, searchQuery),
+    [favoriteStops, recentStops, searchQuery]);
+  const matchedStops = useMemo(() => mergeStopResults(localMatches, rankSearchStops(searchResults, searchTerm)),
+    [localMatches, searchResults, searchTerm]);
+  const closeSearch = () => {
+    Keyboard.dismiss();
+    setSearchOpen(false);
+    setSearchQuery("");
+  };
   const openStop = (stop: StopSummary) => {
+    Keyboard.dismiss();
     addRecentStop(stop);
-    showFlowStop(stop); router.navigate("/");
+    // A board opened here returns here, including an active search, not to Start.
+    showFlowStop(stop, { returnTo: "/buurtbord" }); router.navigate("/");
   };
 
   return (
@@ -194,13 +234,80 @@ export default function BuurtbordScreen() {
           <Text maxFontSizeMultiplier={1.3} style={styles.title}>Buurtbord</Text>
           {!large ? <Text maxFontSizeMultiplier={1.3} style={styles.subtitle}>Jouw haltes in één oogopslag</Text> : null}
         </View>
+        <Pressable accessibilityRole="button" accessibilityLabel={searchOpen ? "Zoeken sluiten" : "Halte zoeken"}
+          onPress={() => { if (searchOpen) closeSearch(); else { setSearchOpen(true); setShowCities(false); } }}
+          hitSlop={8} style={styles.searchHeaderButton}>
+          <Ionicons name={searchOpen ? "close" : "search"} size={24} color="#FFFFFF" />
+        </Pressable>
         <SettingsButton inverted />
       </View>
+      {searchOpen ? <View style={[styles.searchBar, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+        <View style={[styles.searchField, { backgroundColor: colors.inputBg }]}>
+          <Ionicons name="search" size={19} color={colors.textSoft} />
+          <TextInput autoFocus value={searchQuery} onChangeText={setSearchQuery}
+            accessibilityLabel="Zoek halte of station" placeholder="Zoek halte of station"
+            placeholderTextColor={colors.textMuted} returnKeyType="search"
+            maxFontSizeMultiplier={1.3} style={[styles.searchInput, { color: colors.text }]} />
+          {searchQuery ? <Pressable accessibilityRole="button" accessibilityLabel="Zoektekst wissen"
+            onPress={() => setSearchQuery("")} hitSlop={8}>
+            <Ionicons name="close-circle" size={20} color={colors.textMuted} />
+          </Pressable> : null}
+        </View>
+        <Pressable accessibilityRole="button" accessibilityLabel="Zoeken sluiten" onPress={closeSearch}
+          style={styles.searchClose}>
+          <Text maxFontSizeMultiplier={1.3} style={styles.searchCloseText}>Sluiten</Text>
+        </Pressable>
+      </View> : null}
       <ScrollView style={{ flex: 1 }}
         contentContainerStyle={{ paddingTop: 14, paddingBottom: Math.max(insets.bottom, 16) + 78 }}
         refreshControl={<RefreshControl refreshing={refreshing}
           onRefresh={() => { setRefreshing(true); setRefreshTick((value) => value + 1); if (!manualCity) live.requestFresh(); }}
           colors={[colors.accentText]} tintColor={colors.accentText} progressBackgroundColor={colors.surface} />}>
+        {searchActive ? <View style={styles.searchResults}>
+          <Text maxFontSizeMultiplier={1.3} style={[styles.sectionTitle, { color: colors.heading }]}>
+            ZOEKRESULTATEN
+          </Text>
+          {matchedStops.slice(0, 40).map((item) => (
+            <Pressable key={item.id} accessibilityRole="button"
+              accessibilityLabel={"Open halte " + item.name}
+              onPress={() => openStop(item)}
+              style={[styles.searchResultRow, { borderBottomColor: colors.border }]}>
+              <View style={styles.modeIcon}>
+                <Ionicons name={item.mode === "train" ? "train-outline" : item.mode === "ferry" ? "boat-outline"
+                  : item.mode === "metro" ? "subway-outline" : "bus-outline"}
+                  size={20} color={modaliteitColors[item.mode] || STOP_BOARD_BLUE} />
+              </View>
+              <View style={styles.searchResultCopy}>
+                <Text maxFontSizeMultiplier={1.3} numberOfLines={large ? 2 : 1}
+                  style={[styles.stopName, { color: colors.text }]}>{compactNearbyStopName(item)}</Text>
+                <Text maxFontSizeMultiplier={1.3} numberOfLines={1}
+                  style={[styles.searchResultCity, { color: colors.textSoft }]}>
+                  {nearbyStopCity(item) || "Halte"}
+                </Text>
+                {item.lines.length ? <View style={styles.lineBadges}>
+                  {item.lines.slice(0, 3).map((line, index) => <LijnBadge key={line.line + "-" + index}
+                    line={line.line} carrier={line.carrier} compact tone="carrier" />)}
+                </View> : null}
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+            </Pressable>
+          ))}
+          {searching ? <View style={styles.searchFeedback}>
+            <ActivityIndicator color={STOP_BOARD_BLUE} />
+            <Text maxFontSizeMultiplier={1.3} style={{ color: colors.textSoft }}>Haltes zoeken…</Text>
+          </View> : null}
+          {searchError ? <View style={styles.searchFeedback}>
+            <Text maxFontSizeMultiplier={1.3} style={{ color: colors.textSoft }}>Online zoeken is niet gelukt.</Text>
+            <Pressable accessibilityRole="button" onPress={() => setSearchRetry((n) => n + 1)}>
+              <Text maxFontSizeMultiplier={1.3} style={styles.refreshLabel}>Opnieuw proberen</Text>
+            </Pressable>
+          </View> : null}
+          {!searching && !searchError && matchedStops.length === 0 ? (
+            <Text maxFontSizeMultiplier={1.3} style={[styles.empty, { color: colors.textSoft }]}>
+              Geen haltes gevonden. Probeer een andere naam.
+            </Text>
+          ) : null}
+        </View> : <>
         <View style={styles.locationLine}>
           <View style={[styles.locationDot, { backgroundColor: hasCurrentGps ? "#27A96B" : "#A3AFBF" }]} />
           <Text maxFontSizeMultiplier={1.3} style={[styles.locationText, { color: colors.textSoft }]}
@@ -278,7 +385,7 @@ export default function BuurtbordScreen() {
               const isBest = item.id === highlightedStopId;
               const lineOptions = first ? [{ line: first.line, carrier: first.carrier }, ...item.lines] : item.lines;
               const lines = lineOptions.filter((line, lineIndex) =>
-                lineOptions.findIndex((candidate) => candidate.line === line.line) === lineIndex).slice(0, 4);
+                lineOptions.findIndex((candidate) => candidate.line === line.line) === lineIndex).slice(0, 3);
               const stopIcon = item.mode === "train" ? "train-outline" : item.mode === "ferry" ? "boat-outline"
                 : item.mode === "metro" ? "subway-outline" : "bus-outline";
               return (
@@ -293,7 +400,8 @@ export default function BuurtbordScreen() {
                       <Ionicons name={stopIcon} size={21} color={modaliteitColors[item.mode] || STOP_BOARD_BLUE} />
                     </View>
                     <View style={styles.stopCopy}>
-                      <Text maxFontSizeMultiplier={1.3} numberOfLines={large ? 3 : 2}
+                      <Text maxFontSizeMultiplier={1.3} numberOfLines={large ? 2 : 1}
+                        adjustsFontSizeToFit minimumFontScale={0.8}
                         style={[styles.stopName, { color: colors.text }]}>{compactNearbyStopName(item)}</Text>
                       <Text maxFontSizeMultiplier={1.3} style={[styles.walkText, { color: colors.textSoft }]}>
                         {typeof item.walkMinutes === "number" ? item.walkMinutes + " min lopen" : "Vlakbij"}
@@ -347,6 +455,7 @@ export default function BuurtbordScreen() {
             </Text>) : null}
           </View>
         )}
+        </>}
       </ScrollView>
     </View>
   );
@@ -357,6 +466,21 @@ const styles = StyleSheet.create({
   headerRow: { paddingHorizontal: 17, paddingBottom: 16, backgroundColor: STOP_BOARD_BLUE,
     flexDirection: "row", alignItems: "center", gap: 12 },
   headerCopy: { flex: 1 },
+  searchHeaderButton: { minWidth: 40, minHeight: 44, alignItems: "center", justifyContent: "center" },
+  searchBar: { flexDirection: "row", paddingHorizontal: 14, paddingVertical: 9, gap: 9, alignItems: "center",
+    borderBottomWidth: StyleSheet.hairlineWidth },
+  searchField: { flex: 1, minWidth: 0, minHeight: 43, borderRadius: 10, paddingHorizontal: 11,
+    flexDirection: "row", alignItems: "center", gap: 8 },
+  searchInput: { flex: 1, minWidth: 0, paddingVertical: 0, fontSize: 14 },
+  searchClose: { minHeight: 43, paddingHorizontal: 3, justifyContent: "center" },
+  searchCloseText: { color: STOP_BOARD_BLUE, fontSize: 12, fontWeight: "800" },
+  searchResults: { marginHorizontal: 15, gap: 4 },
+  searchResultRow: { minHeight: 65, paddingVertical: 10, flexDirection: "row", alignItems: "center", gap: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth },
+  searchResultCopy: { flex: 1, minWidth: 0, gap: 2 },
+  searchResultCity: { fontSize: 12 },
+  searchFeedback: { minHeight: 54, paddingVertical: 12, flexDirection: "row", justifyContent: "center",
+    flexWrap: "wrap", alignItems: "center", gap: 10 },
   title: { color: "#FFFFFF", fontSize: 23, fontWeight: "900", letterSpacing: -0.6 },
   subtitle: { color: "#DCEAF7", fontSize: 12, marginTop: 3 },
   locationLine: { marginHorizontal: 16, flexDirection: "row", alignItems: "center",
@@ -377,24 +501,23 @@ const styles = StyleSheet.create({
   refreshLabel: { color: STOP_BOARD_BLUE, fontSize: 12, fontWeight: "800" },
   updateText: { marginHorizontal: 16, fontSize: 11, marginBottom: 6 },
   listContent: { borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth },
-  stopItem: { flexDirection: "row", minHeight: 106, alignItems: "center", paddingLeft: 12, paddingRight: 6 },
-  bestStop: { borderLeftWidth: 3, borderLeftColor: STOP_BOARD_BLUE, paddingLeft: 9,
-     },
-  stopMain: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 10,
-    paddingVertical: 13 },
-  modeIcon: { width: 36, height: 36, borderRadius: 11, backgroundColor: "#EEF4FF",
+  stopItem: { flexDirection: "row", minHeight: 88, alignItems: "center", paddingLeft: 10, paddingRight: 3 },
+  bestStop: { borderLeftWidth: 3, borderLeftColor: STOP_BOARD_BLUE, paddingLeft: 7 },
+  stopMain: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 8,
+    paddingVertical: 8 },
+  modeIcon: { width: 32, height: 32, borderRadius: 10, backgroundColor: "#EEF4FF",
     alignItems: "center", justifyContent: "center", alignSelf: "flex-start", marginTop: 3 },
-  stopCopy: { flex: 1, minWidth: 0, gap: 3 },
-  stopName: { fontSize: 15.5, lineHeight: 19, fontWeight: "800" },
-  walkText: { fontSize: 11.5, lineHeight: 16 },
-  lineBadges: { flexDirection: "row", flexWrap: "wrap", gap: 4, marginTop: 3 },
-  departureCopy: { width: 91, flexShrink: 0, alignItems: "flex-end", justifyContent: "center", gap: 4 },
+  stopCopy: { flex: 1, minWidth: 0, gap: 2 },
+  stopName: { fontSize: 15, lineHeight: 19, fontWeight: "800" },
+  walkText: { fontSize: 11, lineHeight: 15 },
+  lineBadges: { flexDirection: "row", flexWrap: "nowrap", overflow: "hidden", gap: 4, marginTop: 2 },
+  departureCopy: { width: 88, flexShrink: 0, alignItems: "flex-end", justifyContent: "center", gap: 3 },
   departureTime: { fontSize: 18, lineHeight: 25, fontWeight: "900",
     fontVariant: ["tabular-nums"], textAlign: "right", width: "100%" },
   departureStatus: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 3, width: "100%" },
   liveDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: "#168755" },
   departureHint: { fontSize: 10.5, lineHeight: 15, fontWeight: "600", textAlign: "right", flexShrink: 1 },
-  starButton: { width: 28, minHeight: 40, alignItems: "center", justifyContent: "center" },
+  starButton: { width: 26, minHeight: 40, alignItems: "center", justifyContent: "center" },
   emptyWrap: { alignItems: "center", paddingBottom: 18 },
   empty: { padding: 20, textAlign: "center", fontSize: 13 },
   retryButton: { borderWidth: 1, borderRadius: 9, paddingHorizontal: 14, paddingVertical: 10 }

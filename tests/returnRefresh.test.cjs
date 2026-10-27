@@ -2,7 +2,7 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 const load=Module._load,extension=Module._extensions['.ts'],jsxExtension=Module._extensions['.tsx'];
 const compile=(mod,file)=>mod._compile(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020,jsx:ts.JsxEmit.React}}).outputText,file);
 Module._extensions['.ts']=compile;Module._extensions['.tsx']=compile;
-let activeHarness=null,stored=null,readStorage=async()=>stored,buurtMode=false,buurtLive=null,nearbyNetwork,boardNetwork;
+let activeHarness=null,stored=null,readStorage=async()=>stored,buurtMode=false,buurtLive=null,nearbyNetwork,boardNetwork,searchNetwork,shownStop=null;
 const storage={getItem:(key)=>readStorage(key),setItem:async(key,value)=>{stored=value;}};
 const listeners=new Set();
 const appState={currentState:'active',addEventListener:(_event,callback)=>{listeners.add(callback);return {remove:()=>listeners.delete(callback)};}};
@@ -16,18 +16,18 @@ const React={
 Module._load=function(request,parent,isMain){
   if(request==='react')return React;
   if(request==='expo-router')return {useFocusEffect:callback=>{activeHarness.focus=callback;},useRouter:()=>({navigate(){}})};
-  if(request==='react-native')return {AppState:appState,StyleSheet:{create:value=>value,hairlineWidth:1},View:'View',Text:'Text',ScrollView:'ScrollView',FlatList:'FlatList',Pressable:'Pressable',RefreshControl:'RefreshControl',useWindowDimensions:()=>({fontScale:1})};
+  if(request==='react-native')return {AppState:appState,StyleSheet:{create:value=>value,hairlineWidth:1},View:'View',Text:'Text',TextInput:'TextInput',ActivityIndicator:'ActivityIndicator',Keyboard:{dismiss(){}},ScrollView:'ScrollView',FlatList:'FlatList',Pressable:'Pressable',RefreshControl:'RefreshControl',useWindowDimensions:()=>({fontScale:1})};
   if(request==='react-native-webview')return {WebView:'WebView'};
   if(request==='@react-native-async-storage/async-storage')return {default:storage,__esModule:true};
   if(buurtMode){
     if(request==='@expo/vector-icons')return {Ionicons:'Ionicons'};
     if(request==='react-native-safe-area-context')return {useSafeAreaInsets:()=>({top:24})};
     if(request.endsWith('/context/AppProvider'))return {useApp:()=>({colors:{},manualCity:null,addRecentStop(){},setManualCity(){},toggleFavoriteStop(){},isFavoriteStop:()=>false})};
-    if(request.endsWith('/context/FlowNavigation'))return {useFlowNavigation:()=>({showStop(){}})};
+    if(request.endsWith('/context/FlowNavigation'))return {useFlowNavigation:()=>({showStop(stop,options){shownStop={stop,options};}})};
     if(request.endsWith('/lib/useLiveLocation'))return {useLiveLocation:()=>buurtLive};
     if(request.endsWith('/lib/useSmartRefresh'))return {useSmartRefresh(){}};
     if(request.endsWith('/lib/location'))return {MANUAL_CITIES:[]};
-    if(request.endsWith('/lib/api'))return {getNearby:(...args)=>nearbyNetwork(...args),getHalte:(...args)=>boardNetwork(...args)};
+    if(request.endsWith('/lib/api'))return {getNearby:(...args)=>nearbyNetwork(...args),getHalte:(...args)=>boardNetwork(...args),searchStops:(...args)=>searchNetwork(...args)};
     for(const name of ['NearbySkeleton','DepartureLine','SettingsButton','LeafletMap'])if(request.endsWith('/components/'+name))return {[name]:name};
   }
   return load.call(this,request,parent,isMain);
@@ -222,6 +222,38 @@ test('a late nearby response from the previous city cannot overwrite the current
     for(const resolve of pending.slice(0,-1))resolve([stop]);await new Promise(setImmediate);
     tree=h.render(Buurtbord);assert.deepEqual(renderedStopNames(tree),['Amsterdam']);
     assert.equal(find(tree,'LeafletMap'),null);
+  }finally{h.destroy();buurtMode=false;}
+});
+
+test('Buurtbord searches all haltes and opens a found halte with Buurtbord as its return tab',async()=>{
+  const cache=freshCache();await cache.hydrateNearbyCache();cache.rememberNearby(snapshot());
+  buurtMode=true;shownStop=null;
+  buurtLive={...leeuw,loading:false,errorCode:null,refreshToken:1,requestFresh(){}};
+  nearbyNetwork=async()=>[stop];
+  boardNetwork=async()=>({departures:[]});
+  let querySeen='';
+  searchNetwork=async(query)=>{querySeen=query;return [{...stop,id:'S',city:'',name:'Leeuwarden, Uiterdijksterweg'}];};
+  const componentPath=require.resolve('../app/(tabs)/buurtbord.tsx');delete require.cache[componentPath];
+  const Buurtbord=require(componentPath).default,h=new Harness();
+  try{
+    let tree=h.render(Buurtbord);
+    const searchButton=findLabel(tree,'Halte zoeken');
+    assert.ok(searchButton,'a magnifier must be available in Buurtbord');
+    searchButton.props.onPress();
+    tree=h.render(Buurtbord);h.flush();
+    const input=find(tree,'TextInput');
+    assert.ok(input,'search opens a field inside Buurtbord');
+    input.props.onChangeText('Uiterdijksterweg');
+    h.render(Buurtbord);h.flush();
+    await new Promise(resolve=>setTimeout(resolve,240));
+    await new Promise(setImmediate);
+    tree=h.render(Buurtbord);
+    assert.equal(querySeen,'Uiterdijksterweg');
+    const result=findLabel(tree,'Open halte Leeuwarden, Uiterdijksterweg');
+    assert.ok(result,'a remote result should be selectable');
+    result.props.onPress();
+    assert.equal(shownStop.stop.id,'S');
+    assert.equal(shownStop.options.returnTo,'/buurtbord');
   }finally{h.destroy();buurtMode=false;}
 });
 

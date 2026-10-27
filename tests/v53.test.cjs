@@ -160,7 +160,8 @@ test("large system font: two-line names, smaller Buurtbord map, capped tab label
   assert.match(read("components/FlowBoard.tsx"), /<StopBoardRow /);
   const buurt = read("app/(tabs)/buurtbord.tsx");
   assert.doesNotMatch(buurt, /LeafletMap|styles\.mapWrapLarge/);
-  assert.match(buurt, /numberOfLines=\{large \? 3 : 2\}/);
+  assert.match(buurt, /numberOfLines=\{large \? 2 : 1\}/);
+  assert.match(buurt, /adjustsFontSizeToFit minimumFontScale=\{0\.8\}/);
   assert.match(buurt, /maxFontSizeMultiplier=\{1\.3\}/);
   assert.match(read("app/(tabs)/favorieten.tsx"), /<DepartureLine /);
   assert.match(read("components/FlowHome.tsx"), /<DepartureLine /);

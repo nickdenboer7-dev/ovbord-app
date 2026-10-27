@@ -6,8 +6,8 @@ import type { HalteBoardData, JourneyStop, Mode, StopSummary } from "../types/ap
 
 /** initialLine: a board line filter key to preselect (e.g. when opening a favourite trip). */
 export type FlowScreen = { key: number; stop: StopSummary; initialBoard?: HalteBoardData; initialFetchedAt?:number; initialStale?:boolean;
-  initialLine?: string; returnTrip?: Record<string, string> & { id: string } };
-export type ShowStopOptions = { line?: string; carrier?: string };
+  initialLine?: string; returnTrip?: Record<string, string> & { id: string }; returnTo?: "/buurtbord" };
+export type ShowStopOptions = { line?: string; carrier?: string; returnTo?: "/buurtbord" };
 /** Boards stay mounted for instant Back; cap the stack so long trip↔stop chains do not grow memory forever. */
 export const MAX_FLOW_SCREENS = 8;
 type FlowContextValue = {
@@ -44,7 +44,7 @@ export function FlowNavigationProvider({ children }: { children: React.ReactNode
   const showStop = useCallback((stop: StopSummary, options?: ShowStopOptions) => {
     cancelPending();
     const initialLine = options?.line ? boardLineFilterKey(options.line, options.carrier) : undefined;
-    setScreens([{ key: ++nextScreenKey, stop, initialLine }]);
+    setScreens([{ key: ++nextScreenKey, stop, initialLine, returnTo: options?.returnTo }]);
   }, [cancelPending]);
   const followJourneyStop = useCallback((stop: JourneyStop, mode: Mode, returnTrip?: Record<string, string> & { id: string }) => {
     if (!stop.name) return;
