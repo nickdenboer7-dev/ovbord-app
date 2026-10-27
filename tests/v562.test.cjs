@@ -66,7 +66,7 @@ test("Instellingen: blue header, actionable controls, and saved items", () => {
     assert.ok(meer.includes('title="' + title + '"'), title);
   }
   for (const setting of ["departureTimeMode", "smartStopChoice", "maxWalkMinutes", "walkBufferMinutes",
-    "liveFirst", "daySeparators", "buurtbordMap"]) {
+    "liveFirst", "daySeparators"]) {
     assert.ok(meer.includes('setSetting("' + setting + '"'), setting);
   }
   assert.match(meer, /onPress=\{\(\) => router\.push\("\/favorieten"\)\}/);

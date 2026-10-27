@@ -1,5 +1,5 @@
 import type { DepartureItem, StopSummary } from "../types/api";
-import { departureTimeRemainingMs, keepBoardDeparture } from "./boardSmartness";
+import { departureTimeRemainingMs, keepBoardDeparture, sortBoardDepartures } from "./boardSmartness";
 import { formatDutchClock } from "./format";
 
 /** Rows shown under a nearby stop: upcoming only, departed trips removed, cancelled kept (marked). */
@@ -7,6 +7,20 @@ export function buurtbordPreviewRows(departures: readonly DepartureItem[], nowMs
   return departures
     .filter((item) => item.departed !== true && keepBoardDeparture(item, nowMs))
     .slice(0, limit);
+}
+
+/** A nearby list already has a city heading, so avoid repeating its exact city prefix. */
+export function compactNearbyStopName(stop: Pick<StopSummary, "name" | "city">): string {
+  const prefix = stop.city ? stop.city + ", " : "";
+  return prefix && stop.name.toLocaleLowerCase("nl").startsWith(prefix.toLocaleLowerCase("nl"))
+    ? stop.name.slice(prefix.length) : stop.name;
+}
+
+/** Earliest valid departure for one compact nearby-stop row, in actual time order. */
+export function firstNearbyDeparture(departures: readonly DepartureItem[], nowMs: number): DepartureItem | null {
+  return sortBoardDepartures(departures.filter((item) => item.cancelled !== true &&
+    item.departed !== true && keepBoardDeparture(item, nowMs) &&
+    (departureTimeRemainingMs(item, nowMs) ?? -1) >= 0), nowMs)[0] || null;
 }
 
 /**

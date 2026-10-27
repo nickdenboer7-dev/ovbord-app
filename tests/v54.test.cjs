@@ -203,12 +203,14 @@ test("stop board and trip page: options under ⋮, one row style everywhere", ()
   // Transfers sit under the timeline, collapsed.
   assert.ok(rit.indexOf("<RitTransfers") > rit.indexOf("<TimeLine journey="));
   assert.match(read("components/RitTransfers.tsx"), /Overstappen op \{name\}/);
-  for (const file of ["app/(tabs)/favorieten.tsx", "app/(tabs)/buurtbord.tsx", "components/FlowHome.tsx"]) {
+  for (const file of ["app/(tabs)/favorieten.tsx", "components/FlowHome.tsx"]) {
     assert.match(read(file), /<DepartureLine /, file);
   }
-  // Large font: the "Beste halte" label moves under the stop name.
-  assert.match(read("app/(tabs)/buurtbord.tsx"), /\{large && item\.id === highlightedStopId \?/);
-  assert.match(read("app/(tabs)/buurtbord.tsx"), /\{!large && item\.id === highlightedStopId \?/);
+  // Buurtbord has one upcoming departure per stop, with the best-stop label inline.
+  const buurt = read("app/(tabs)/buurtbord.tsx");
+  assert.match(buurt, /firstNearbyDeparture\(preview\.departures, nowMs\)/);
+  assert.match(buurt, /const isBest = item\.id === highlightedStopId/);
+  assert.match(buurt, /Beste halte/);
 });
 
 // Hertest 17-10: in het ⋮-menu sloot een tik op een optie alleen het menu (Modal in de Android-build)

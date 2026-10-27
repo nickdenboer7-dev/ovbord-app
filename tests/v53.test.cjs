@@ -159,8 +159,9 @@ test("large system font: two-line names, smaller Buurtbord map, capped tab label
   assert.match(read("components/DepartureLine.tsx"), /accessibilityLabel=\{departureLineLabel/);
   assert.match(read("components/FlowBoard.tsx"), /<StopBoardRow /);
   const buurt = read("app/(tabs)/buurtbord.tsx");
-  assert.match(buurt, /large && styles\.mapWrapLarge/);
-  assert.match(buurt, /numberOfLines=\{large \? 2 : 1\}>\{item\.name\}/);
+  assert.doesNotMatch(buurt, /LeafletMap|styles\.mapWrapLarge/);
+  assert.match(buurt, /numberOfLines=\{large \? 3 : 2\}/);
+  assert.match(buurt, /maxFontSizeMultiplier=\{1\.3\}/);
   assert.match(read("app/(tabs)/favorieten.tsx"), /<DepartureLine /);
   assert.match(read("components/FlowHome.tsx"), /<DepartureLine /);
   const tabs = read("app/(tabs)/_layout.tsx");

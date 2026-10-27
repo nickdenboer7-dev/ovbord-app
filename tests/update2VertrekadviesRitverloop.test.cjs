@@ -32,15 +32,14 @@ test("groene haalbaarheid vereist werkelijk de ingestelde loopmarge", () => {
   assert.equal(nearbyLeaveAdvice(option(7), 0, 5).leaveText, "Vertrek nu");
 });
 
-test("Vertrekadvies toont vertrekmoment, looptijd, halte en een alternatief", () => {
+test("Compact Buurtbord toont per halte de eerste lijn met live/gepland-status", () => {
   const ui = screen("app/(tabs)/buurtbord.tsx");
-  assert.match(ui, /bestOption\s*\?\s*\(/);
-  assert.match(ui, /nearbyAdviceStatus\(bestOption, settings\.walkBufferMinutes\)/);
-  assert.match(ui, />Vertrekadvies<\/Text>/);
-  assert.match(ui, /style=\{\[styles\.adviceLeave/);
-  assert.match(ui, /min lopen · \{advice\?\.marginText\}/);
-  assert.match(ui, /options\[1\] \? <View style=\{styles\.adviceAlternative\}/);
-  assert.match(ui, /bestemmingen kunnen verschillen/);
+  assert.match(ui, /firstNearbyDeparture\(preview\.departures, nowMs\)/);
+  assert.match(ui, /showsLive\(first, stale\)/);
+  assert.match(ui, /departureCountdown\(first, nowMs\)/);
+  assert.match(ui, /effectiveDepartureClock\(first\)/);
+  assert.match(ui, /min lopen/);
+  assert.match(ui, /LijnBadge/);
   assert.match(ui, /minimumFontScale=\{0\.75\}/);
 });
 

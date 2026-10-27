@@ -8,8 +8,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { NearbySkeleton } from "../../components/NearbySkeleton";
 import { hydrateNearbyCache, nearbyScope, peekNearby, peekLastLocation, rememberNearby, sameNearbyLocation } from "../../lib/nearbyCache";
 import type { NearbyPreview } from "../../lib/nearbyCache";
-import { LeafletMap } from "../../components/LeafletMap";
-import { DepartureLine } from "../../components/DepartureLine";
 import { LijnBadge } from "../../components/LijnBadge";
 import { SettingsButton } from "../../components/SettingsButton";
 import { modaliteitColors } from "../../constants/vervoerders";
@@ -18,15 +16,17 @@ import { DEFAULT_USER_SETTINGS } from "../../lib/userSettings";
 import { STOP_BOARD_BLUE } from "../../lib/stopBoardDesign";
 import { useFlowNavigation } from "../../context/FlowNavigation";
 import { getHalte, getNearby } from "../../lib/api";
-import { bestNearbyStopId, buurtbordPreviewRows, compareNearbyDepartures, nearbyAdviceStatus, nearbyLeaveAdvice, reachableOnFoot } from "../../lib/buurtbord";
-import { effectiveDepartureClock } from "../../lib/format";
+import { compactNearbyStopName, firstNearbyDeparture, compareNearbyDepartures } from "../../lib/buurtbord";
+import { departureTimeRemainingMs } from "../../lib/boardSmartness";
+import { showsLive } from "../../lib/departureLine";
+import { departureCountdown, effectiveDepartureClock } from "../../lib/format";
 import { boardRefreshNotice, failureKind } from "../../lib/offline";
 import type { FailureKind } from "../../lib/offline";
 import { useSmartRefresh } from "../../lib/useSmartRefresh";
 import { MANUAL_CITIES, type LocatieResultaat } from "../../lib/location";
 import { useLiveLocation } from "../../lib/useLiveLocation";
 import { describeLocationAge, isLocationStale, shouldApplyResponse } from "../../lib/liveLocation";
-import { DepartureItem, StopSummary } from "../../types/api";
+import { StopSummary } from "../../types/api";
 
 /** stale: the last refresh for this stop failed; departures are the last known ones. */
 type PreviewState = NearbyPreview;
@@ -45,7 +45,7 @@ export default function BuurtbordScreen() {
     void hydrateNearbyCache().then(() => { if (active) setCacheReady(true); });
     return () => { active = false; };
   }, []);
-  // Large system font: a smaller map and two-line names leave room for the departures.
+  // Allow longer stop names at larger system font settings without unlimited growth.
   const large = largeText(useWindowDimensions().fontScale);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [loadError, setLoadError] = useState(false);
@@ -60,9 +60,6 @@ export default function BuurtbordScreen() {
   const [locatieFixAt, setLocatieFixAt] = useState<number | null>(initialCache?.location.fixAt || null);
   const [locatieRetry, setLocatieRetry] = useState(0);
   const [showCities, setShowCities] = useState(false);
-  const [compareOpen, setCompareOpen] = useState(false);
-  // A compact map above departures stays inside the scroll flow, never over the bottom rows.
-  const [mapExpanded, setMapExpanded] = useState(true);
   const [focused, setFocused] = useState(false);
   useFocusEffect(useCallback(() => { setFocused(true); return () => setFocused(false); }, []));
   const [refreshTick, setRefreshTick] = useState(0);
@@ -179,20 +176,10 @@ export default function BuurtbordScreen() {
     [visibleItems, previews, nowMs, settings.maxWalkMinutes, settings.smartStopChoice]);
   const previewsAreFresh = !updating && !refreshFailure && updatedAt !== null && nowMs - updatedAt <= 120_000;
   const bestOption = hasCurrentGps && previewsAreFresh ? options[0] : undefined;
-  const advice = bestOption ? nearbyLeaveAdvice(bestOption, nowMs, settings.walkBufferMinutes) : null;
-  const adviceStatus = bestOption ? nearbyAdviceStatus(bestOption, settings.walkBufferMinutes) : null;
-
-  // Effective (delayed) time; never recommend a cancelled or departed trip.
-  const bestStopId = useMemo(() => bestNearbyStopId(visibleItems,
-    Object.fromEntries(Object.entries(previews).map(([id, preview]) => [id, preview.departures])), nowMs),
-  [visibleItems, previews, nowMs]);
-  const highlightedStopId = bestOption?.stop.id || (previewsAreFresh ? bestStopId : "");
-
-  // Start on this location before map tiles load; a cached city must never flash on screen.
-  const center = activeLocation ? { lat: activeLocation.coords.latitude, lon: activeLocation.coords.longitude } : undefined;
-  const mapMarkers = useMemo(() => visibleItems
-    .filter(item => item.lat !== undefined && item.lon !== undefined)
-    .map(item => ({ id: item.id, lat: item.lat!, lon: item.lon!, title: item.name, color: modaliteitColors[item.mode] })), [visibleItems]);
+  // Only recommend a best stop when GPS and departures are sufficiently fresh.
+  const highlightedStopId = bestOption?.stop.id || "";
+  const cityName = manualLocation?.cityName || visibleItems[0]?.city || "Jouw omgeving";
+  const refreshedAt = updatedAt !== null && nowMs - updatedAt <= 120_000 && !refreshFailure;
 
   const openStop = (stop: StopSummary) => {
     addRecentStop(stop);
@@ -204,282 +191,211 @@ export default function BuurtbordScreen() {
       {focused ? <ExpoStatusBar style="light" /> : null}
       <View style={[styles.headerRow, { paddingTop: Math.max(insets.top, 24) + 10 }]}>
         <View style={styles.headerCopy}>
-          <Text maxFontSizeMultiplier={1.3} style={[styles.title, { color: "#fff" }]}>Buurtbord</Text>
-          {!large ? <Text maxFontSizeMultiplier={1.3} style={[styles.subtitle, { color: "#DCEAF7" }]}>Haltes en snelste vertrekopties in de buurt</Text> : null}
+          <Text maxFontSizeMultiplier={1.3} style={styles.title}>Buurtbord</Text>
+          {!large ? <Text maxFontSizeMultiplier={1.3} style={styles.subtitle}>Jouw haltes in één oogopslag</Text> : null}
         </View>
         <SettingsButton inverted />
       </View>
-    <ScrollView style={{ flex: 1 }}
-      contentContainerStyle={{ paddingTop: 11, paddingBottom: Math.max(insets.bottom, 16) + 78 }}
-      refreshControl={<RefreshControl refreshing={refreshing}
-        onRefresh={() => { setRefreshing(true); setRefreshTick((value) => value + 1); if (!manualCity) live.requestFresh(); }}
-        colors={[colors.accentText]} tintColor={colors.accentText} progressBackgroundColor={colors.surface} />}>
-      {(updating || !cacheReady) ? <Text style={{ color: colors.textMuted, fontSize: 11, paddingHorizontal: 14, paddingVertical: 4 }}>Bijwerken…</Text> : null}
-      <View style={{ paddingHorizontal: 14, paddingBottom: 9, flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 7 }}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Kies een stad voor het Buurtbord"
-          onPress={() => setShowCities((value) => !value)}
-          style={{ borderColor: colors.border, borderWidth: 1, borderRadius: 9, paddingHorizontal: 11, paddingVertical: 8 }}>
-          <Text style={{ color: colors.accentText, fontWeight: "800", fontSize: 12 }}>{manualCity
-            ? "Stad: " + (MANUAL_CITIES.find((city) => city.key === manualCity)?.name || "Onbekend")
-            : "Kies stad"}</Text>
-        </Pressable>
-        {manualCity ? <Pressable accessibilityRole="button" accessibilityLabel="Gebruik GPS in Buurtbord"
-          onPress={() => { setManualCity(null); setLocatieRetry((n) => n + 1); live.requestFresh(); }}
-          style={{ borderColor: colors.border, borderWidth: 1, borderRadius: 9, paddingHorizontal: 11, paddingVertical: 8 }}>
-          <Text style={{ color: colors.accentText, fontWeight: "800", fontSize: 12 }}>Gebruik GPS</Text>
-        </Pressable> : null}
-        {showCities ? MANUAL_CITIES.map((city) => (
-          <Pressable key={city.key} accessibilityRole="button" accessibilityLabel={"Kies stad " + city.name}
-            onPress={() => { setManualCity(city.key); setShowCities(false); }}
-            style={{ borderColor: colors.border, backgroundColor: manualCity === city.key ? colors.accentSoft : colors.surface,
-              borderWidth: 1, borderRadius: 9, paddingHorizontal: 9, paddingVertical: 8 }}>
-            <Text style={{ color: colors.text, fontSize: 12 }}>{city.name}</Text>
-          </Pressable>
-        )) : null}
-      </View>
-      {manualCity ? (
-        <Text style={{ color: colors.textSoft, marginHorizontal: 14, marginBottom: 7, fontSize: 12 }}>
-          Handmatig gekozen plaats · geen GPS-positie
-        </Text>
-      ) : liveBron && liveBron !== "handmatig" && isLocationStale(liveBron, liveFixAt, nowMs) ? (
-        // V5.8.1: an old or missing GPS fix is never shown as if it were current.
-        <View style={{ marginHorizontal: 13, marginBottom: 4, padding: 10, borderRadius: 10, backgroundColor: colors.warningSoft, flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <Ionicons name="time-outline" size={16} color={colors.text} />
-          <Text style={{ color: colors.text, flex: 1, fontSize: 12 }}>
-            Laatst bekende locatie · {describeLocationAge(liveFixAt ?? nowMs, nowMs)}
-          </Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="GPS-locatie opnieuw ophalen"
-            onPress={live.requestFresh}
-            style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, backgroundColor: colors.surface }}>
-            <Text style={{ color: colors.accentText, fontSize: 12, fontWeight: "800" }}>Ververs GPS</Text>
+      <ScrollView style={{ flex: 1 }}
+        contentContainerStyle={{ paddingTop: 14, paddingBottom: Math.max(insets.bottom, 16) + 78 }}
+        refreshControl={<RefreshControl refreshing={refreshing}
+          onRefresh={() => { setRefreshing(true); setRefreshTick((value) => value + 1); if (!manualCity) live.requestFresh(); }}
+          colors={[colors.accentText]} tintColor={colors.accentText} progressBackgroundColor={colors.surface} />}>
+        <View style={styles.locationLine}>
+          <View style={[styles.locationDot, { backgroundColor: hasCurrentGps ? "#27A96B" : "#A3AFBF" }]} />
+          <Text maxFontSizeMultiplier={1.3} style={[styles.locationText, { color: colors.textSoft }]}
+            numberOfLines={2}>{cityName} · {visibleItems.length} haltes dichtbij
+            {manualCity ? " · handmatig" : !hasCurrentGps ? " · laatst bekend" : ""}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Kies een andere stad"
+            onPress={() => setShowCities((value) => !value)} style={styles.cityButton}>
+            <Ionicons name="location-outline" size={18} color={STOP_BOARD_BLUE} />
           </Pressable>
         </View>
-      ) : null}
 
-      {refreshFailure && items.length ? (
-        <View style={{ marginHorizontal: 13, marginTop: 6, padding: 10, borderRadius: 10, backgroundColor: colors.warningSoft, flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <Ionicons name="cloud-offline-outline" size={16} color={colors.text} />
-          <Text style={{ color: colors.text, flex: 1, fontSize: 12 }}>{boardRefreshNotice(refreshFailure, updatedAt)}</Text>
-        </View>
-      ) : null}
-      {settings.buurtbordMap ? <View style={styles.mapSection}>
-        <Pressable onPress={() => setMapExpanded(value => !value)} accessibilityRole="button"
-          accessibilityLabel={mapExpanded ? "Kaart inklappen" : "Kaart uitklappen"}
-          accessibilityState={{ expanded: mapExpanded }}
-          style={[styles.mapToggle, { backgroundColor: colors.background === "#FFFFFF" ? "#EEF4FF" : colors.surfaceAlt, borderColor: colors.border }]}>
-          <Ionicons name="map-outline" size={18} color={STOP_BOARD_BLUE} />
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text maxFontSizeMultiplier={1.3} style={styles.mapToggleText}>Haltes op de kaart</Text>
-            <Text maxFontSizeMultiplier={1.3} style={{ fontSize: 10, color: colors.textSoft }}>{visibleItems.length} haltes dichtbij · kies hieronder je vertrek</Text>
-          </View>
-          <Ionicons name={mapExpanded ? "chevron-up" : "chevron-down"} size={18} color={STOP_BOARD_BLUE} />
-        </Pressable>
-        {mapExpanded ? <View style={[styles.mapWrap, large && styles.mapWrapLarge, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-          {center ? <LeafletMap markers={mapMarkers} center={center} /> :
-            <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}><Text style={{ color: colors.textMuted }}>Locatie bepalen…</Text></View>}
-        </View> : null}
-      </View> : null}
-      {bestOption ? (
-        <View style={[styles.adviceCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <View style={styles.adviceTop}>
-            <View style={{ flex: 1 }}>
-              <Text maxFontSizeMultiplier={1.3} style={[styles.adviceTitle, { color: colors.heading }]}>Vertrekadvies</Text>
-              <Text maxFontSizeMultiplier={1.3} style={[styles.adviceHint, { color: colors.textSoft }]}>{advice?.later ? "Eerstvolgende bereikbare vertrek" : "Op basis van actuele vertrektijden en je GPS"}</Text>
-            </View>
-            <View style={[styles.advicePill, { backgroundColor: adviceStatus?.tone === "warning" ? colors.warningSoft : adviceStatus?.tone === "neutral" ? colors.accentSoft : colors.successSoft }]}>
-              <Text maxFontSizeMultiplier={1.3} style={[styles.advicePillText, { color: adviceStatus?.tone === "warning" ? colors.delayWarning : colors.accentText }]}>{adviceStatus?.label}</Text>
-            </View>
-          </View>
-          <View style={styles.adviceTiming}>
-            <Text maxFontSizeMultiplier={1.3} style={[styles.adviceLeave, { color: colors.text }]}>{advice?.leaveText}</Text>
-            <View style={styles.adviceWalkRow}>
-              <Ionicons name="walk-outline" size={16} color={colors.textSoft}/>
-              <Text maxFontSizeMultiplier={1.3} style={[styles.adviceHint, { color: colors.textSoft }]}>{bestOption.walkMinutes} min lopen · {advice?.marginText}</Text>
-            </View>
-          </View>
-          <Pressable accessibilityRole="button" accessibilityLabel={"Open halte " + bestOption.stop.name + " voor lijn " + bestOption.departure.line}
-            onPress={() => openStop(bestOption.stop)} style={[styles.adviceTrip, { backgroundColor: colors.background === "#FFFFFF" ? "#EEF4FF" : colors.surfaceAlt }]}>
-            <LijnBadge line={bestOption.departure.line} carrier={bestOption.departure.carrier} compact tone="flow" />
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text maxFontSizeMultiplier={1.3} style={[styles.adviceDestination, { color: colors.text }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{bestOption.departure.destination}</Text>
-              <Text maxFontSizeMultiplier={1.3} style={[styles.adviceHint, { color: colors.textSoft }]} numberOfLines={2}>
-                {bestOption.stop.name} · {effectiveDepartureClock(bestOption.departure)}
-              </Text>
-            </View>
-            <Text maxFontSizeMultiplier={1.3} style={[styles.adviceMinutes, { color: colors.heading }]}>{advice?.later ? effectiveDepartureClock(bestOption.departure) : bestOption.departureInMinutes + " min"}</Text>
-          </Pressable>
-          {options[1] ? <View style={styles.adviceAlternative}>
-            <Text maxFontSizeMultiplier={1.3} style={[styles.adviceAlternativeTitle, { color: colors.textSoft }]}>Andere mogelijkheid · bestemmingen kunnen verschillen</Text>
-            <Pressable onPress={() => openStop(options[1].stop)} accessibilityRole="button"
-              accessibilityLabel={"Andere mogelijkheid: lijn " + options[1].departure.line + " naar " + options[1].departure.destination + " vanaf " + options[1].stop.name}
-              style={styles.adviceAlternativeRow}>
-              <LijnBadge line={options[1].departure.line} carrier={options[1].departure.carrier} compact tone="flow"/>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text maxFontSizeMultiplier={1.3} style={[styles.adviceAlternativeDestination, { color: colors.text }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{options[1].departure.destination}</Text>
-                <Text maxFontSizeMultiplier={1.3} style={[styles.adviceHint, { color: colors.textSoft }]} numberOfLines={1}>{options[1].stop.name} · {options[1].walkMinutes} min lopen</Text>
-              </View>
-              <Text maxFontSizeMultiplier={1.3} style={[styles.adviceAlternativeTime, { color: colors.heading }]}>{options[1].withinHour ? options[1].departureInMinutes + " min" : effectiveDepartureClock(options[1].departure)}</Text>
-            </Pressable>
-          </View> : null}
-          {options.length > 1 ? (
-            <Pressable onPress={() => setCompareOpen((value) => !value)} accessibilityRole="button"
-              accessibilityState={{ expanded: compareOpen }} style={styles.compareToggle}>
-              <Text maxFontSizeMultiplier={1.3} style={{ color: colors.accentText, fontSize: 12, fontWeight: "800" }}>
-                {compareOpen ? "Overzicht sluiten" : "Bekijk alle " + options.length + " vertrekopties"}
-              </Text>
-              <Ionicons name={compareOpen ? "chevron-up" : "chevron-down"} size={16} color={colors.accentText} />
-            </Pressable>
-          ) : null}
-        </View>
-      ) : null}
-      {bestOption && compareOpen && options.length > 1 ? (
-        <View style={[styles.compareCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text maxFontSizeMultiplier={1.3} style={[styles.compareTitle, { color: colors.heading }]}>Haalbare vertrekken vergelijken</Text>
-          <Text maxFontSizeMultiplier={1.3} style={[styles.adviceHint, { color: colors.textSoft }]}>Bestemmingen kunnen verschillen. Kies de rit die je nodig hebt.</Text>
-          {options.slice(0, 5).map((option, index) => (
-            <Pressable key={option.stop.id} onPress={() => openStop(option.stop)} accessibilityRole="button"
-              accessibilityLabel={"Halte " + option.stop.name + ", lijn " + option.departure.line + ", " + option.departureInMinutes + " minuten tot vertrek, " + option.walkMinutes + " minuten lopen"}
-              style={[styles.compareRow, index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
-              <Ionicons name="location-outline" size={17} color={index === 0 ? colors.accentText : colors.textSoft} />
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text maxFontSizeMultiplier={1.3} numberOfLines={1} style={[styles.compareStop, { color: colors.text }]}>{option.stop.name}</Text>
-                <Text maxFontSizeMultiplier={1.3} numberOfLines={1} style={[styles.adviceHint, { color: colors.textSoft }]}>
-                  Lijn {option.departure.line} → {option.departure.destination} · {option.walkMinutes} min lopen
-                </Text>
-              </View>
-              <View style={{ alignItems: "flex-end" }}>
-                <Text maxFontSizeMultiplier={1.3} style={[styles.compareTime, { color: colors.heading }]}>{option.withinHour ? option.departureInMinutes + " min" : effectiveDepartureClock(option.departure)}</Text>
-                <Text maxFontSizeMultiplier={1.3} style={[styles.adviceHint, { color: option.tight ? colors.delayWarning : colors.accentText }]}>
-                  {option.withinHour ? option.spareMinutes + " min speling" : nearbyLeaveAdvice(option, nowMs, settings.walkBufferMinutes).leaveText}
-                </Text>
-              </View>
+        {showCities ? <View style={styles.cities}>
+          {manualCity ? <Pressable accessibilityRole="button" onPress={() => {
+            setManualCity(null); setShowCities(false); setLocatieRetry((n) => n + 1); live.requestFresh();
+          }} style={[styles.cityChoice, { borderColor: colors.border }]}>
+            <Text maxFontSizeMultiplier={1.3} style={{ color: colors.accentText }}>Gebruik GPS</Text>
+          </Pressable> : null}
+          {MANUAL_CITIES.map((city) => (
+            <Pressable key={city.key} accessibilityRole="button" accessibilityLabel={"Kies stad " + city.name}
+              onPress={() => { setManualCity(city.key); setShowCities(false); }}
+              style={[styles.cityChoice, { borderColor: colors.border,
+                backgroundColor: manualCity === city.key ? colors.accentSoft : colors.surface }]}>
+              <Text maxFontSizeMultiplier={1.3} style={{ color: colors.text }}>{city.name}</Text>
             </Pressable>
           ))}
+        </View> : null}
+
+        {!manualCity && liveBron && liveBron !== "handmatig" && isLocationStale(liveBron, liveFixAt, nowMs) ? (
+          <View style={[styles.notice, { backgroundColor: colors.warningSoft }]}>
+            <Ionicons name="time-outline" size={16} color={colors.text} />
+            <Text maxFontSizeMultiplier={1.3} style={[styles.noticeText, { color: colors.text }]}>
+              Laatst bekende locatie · {describeLocationAge(liveFixAt ?? nowMs, nowMs)}
+            </Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="GPS-locatie opnieuw ophalen"
+              onPress={live.requestFresh} style={[styles.noticeAction, { backgroundColor: colors.surface }]}>
+              <Text maxFontSizeMultiplier={1.3} style={{ color: colors.accentText, fontSize: 12, fontWeight: "800" }}>Ververs GPS</Text>
+            </Pressable>
+          </View>
+        ) : null}
+        {refreshFailure && visibleItems.length ? (
+          <View style={[styles.notice, { backgroundColor: colors.warningSoft }]}>
+            <Ionicons name="cloud-offline-outline" size={16} color={colors.text} />
+            <Text maxFontSizeMultiplier={1.3} style={[styles.noticeText, { color: colors.text }]}>
+              {boardRefreshNotice(refreshFailure, updatedAt)}
+            </Text>
+          </View>
+        ) : null}
+
+        <View style={styles.sectionHeading}>
+          <Text maxFontSizeMultiplier={1.3} style={[styles.sectionTitle, { color: colors.heading }]}>DICHTBIJ JOU</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Buurtbord verversen"
+            onPress={() => { setRefreshing(true); setRefreshTick((value) => value + 1); if (!manualCity) live.requestFresh(); }}
+            style={styles.refreshButton}>
+            <Ionicons name="refresh-outline" size={15} color={STOP_BOARD_BLUE} />
+            <Text maxFontSizeMultiplier={1.3} style={styles.refreshLabel}>Ververs</Text>
+          </Pressable>
         </View>
-      ) : null}
-      {loading && !visibleItems.length ? <NearbySkeleton label={center ? "Haltes laden…" : "Locatie bepalen…"} /> : (
-        <View style={styles.listContent}>
-          {visibleItems.map((item) => {
-            const preview = previews[item.id] || { loading: true, departures: [] };
-            const rows = buurtbordPreviewRows(preview.departures, nowMs);
-            return (
-              <View key={item.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <View style={styles.topRow}>
+        {(updating || !cacheReady) && visibleItems.length ? <Text maxFontSizeMultiplier={1.3}
+          style={[styles.updateText, { color: colors.textMuted }]}>Bijwerken…</Text> : null}
+
+        {loading && !visibleItems.length ? <NearbySkeleton label="Haltes laden…" /> : (
+          <View style={[styles.listContent, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            {visibleItems.map((item, index) => {
+              const preview = previews[item.id] || { loading: true, departures: [] };
+              const first = firstNearbyDeparture(preview.departures, nowMs);
+              const stale = preview.stale === true || !refreshedAt;
+              const liveDeparture = first ? showsLive(first, stale) && first.reliabilityDetail?.estimatedPosition !== true : false;
+              const estimated = first?.reliabilityDetail?.estimatedPosition === true ||
+                (first?.isLive === undefined && Boolean(first?.expectedTime && first.expectedTime !== first.plannedTime));
+              const remaining = first ? departureTimeRemainingMs(first, nowMs) : null;
+              const when = first ? (liveDeparture && remaining !== null && remaining <= 60 * 60 * 1000
+                ? departureCountdown(first, nowMs) : effectiveDepartureClock(first)) : "--:--";
+              const status = stale ? "Laatst bekend" : first?.liveDataStale ? "Live-info oud"
+                : estimated ? "Geschat" : liveDeparture ? "Live" : "Gepland";
+              const isBest = item.id === highlightedStopId;
+              const lineOptions = first ? [{ line: first.line, carrier: first.carrier }, ...item.lines] : item.lines;
+              const lines = lineOptions.filter((line, lineIndex) =>
+                lineOptions.findIndex((candidate) => candidate.line === line.line) === lineIndex).slice(0, 4);
+              const stopIcon = item.mode === "train" ? "train-outline" : item.mode === "ferry" ? "boat-outline"
+                : item.mode === "metro" ? "subway-outline" : "bus-outline";
+              return (
+                <View key={item.id} style={[styles.stopItem,
+                  index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+                  isBest && styles.bestStop,
+                  isBest && { backgroundColor: colors.background === "#FFFFFF" ? "#F7FAFF" : colors.surfaceAlt }]}>
                   <Pressable onPress={() => openStop(item)} accessibilityRole="button"
-                    accessibilityLabel={"Open halte " + item.name + (item.id === highlightedStopId ? ", beste halte" : "")}
-                    style={styles.nameArea}>
-                    <View style={[styles.modeDot, { backgroundColor: modaliteitColors[item.mode] }]} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.name, { color: colors.text }]} numberOfLines={large ? 2 : 1}>{item.name}</Text>
-                      <Text style={[styles.meta, { color: colors.textSoft }]}>{item.walkMinutes ? `${item.walkMinutes} min lopen` : "Nabij"}</Text>
-                      {/* With a large font the label goes under the name, so the name keeps the full width. */}
-                      {large && item.id === highlightedStopId ? <View style={[styles.bestBadge, styles.bestBadgeBelow, { backgroundColor: colors.successSoft }]}><Text style={[styles.bestBadgeText, { color: colors.accentText }]}>Beste halte</Text></View> : null}
+                    accessibilityLabel={"Open halte " + item.name + (isBest ? ", beste halte" : "")}
+                    style={styles.stopMain}>
+                    <View style={styles.modeIcon}>
+                      <Ionicons name={stopIcon} size={21} color={modaliteitColors[item.mode] || STOP_BOARD_BLUE} />
+                    </View>
+                    <View style={styles.stopCopy}>
+                      <Text maxFontSizeMultiplier={1.3} numberOfLines={large ? 3 : 2}
+                        style={[styles.stopName, { color: colors.text }]}>{compactNearbyStopName(item)}</Text>
+                      <Text maxFontSizeMultiplier={1.3} style={[styles.walkText, { color: colors.textSoft }]}>
+                        {typeof item.walkMinutes === "number" ? item.walkMinutes + " min lopen" : "Vlakbij"}
+                        {isBest ? <Text style={{ color: "#168755", fontWeight: "800" }}> · Beste halte</Text> : null}
+                      </Text>
+                      <View style={styles.lineBadges}>
+                        {lines.map((line, lineIndex) => <LijnBadge key={line.line + "-" + lineIndex} line={line.line}
+                            carrier={line.carrier} compact tone="carrier" />)}
+                      </View>
+                    </View>
+                    <View style={styles.departureCopy}>
+                      {preview.loading && !first ? (
+                        <Text maxFontSizeMultiplier={1.3} style={[styles.departureHint, { color: colors.textSoft }]}>Laden…</Text>
+                      ) : first ? <>
+                        <Text maxFontSizeMultiplier={1.3} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}
+                          style={[styles.departureTime, { color: colors.heading }]}>{when}</Text>
+                        <View style={styles.departureStatus}>
+                          {liveDeparture ? <View style={styles.liveDot} /> : null}
+                          <Text maxFontSizeMultiplier={1.3} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}
+                            style={[styles.departureHint, { color: liveDeparture ? "#168755" : colors.textSoft }]}>
+                            {"Lijn " + first.line + " · " + status}
+                          </Text>
+                        </View>
+                      </> : <Text maxFontSizeMultiplier={1.3} style={[styles.departureHint, { color: colors.textSoft }]}>
+                        Geen vertrekken
+                      </Text>}
                     </View>
                   </Pressable>
-                  {!large && item.id === highlightedStopId ? <View style={[styles.bestBadge, { backgroundColor: colors.successSoft }]}><Text style={[styles.bestBadgeText, { color: colors.accentText }]}>Beste halte</Text></View> : null}
-                  <Pressable onPress={() => toggleFavoriteStop(item)} hitSlop={6} accessibilityRole="button"
+                  <Pressable onPress={() => toggleFavoriteStop(item)} accessibilityRole="button" hitSlop={8}
                     accessibilityLabel={(isFavoriteStop(item.id) ? "Verwijder favoriete halte " : "Bewaar als favoriete halte ") + item.name}
-                    accessibilityState={{ selected: isFavoriteStop(item.id) }} style={styles.star}>
-                    <Ionicons name={isFavoriteStop(item.id) ? "star" : "star-outline"} size={21}
-                      color={isFavoriteStop(item.id) ? colors.warning : colors.textSoft} />
+                    accessibilityState={{ selected: isFavoriteStop(item.id) }} style={styles.starButton}>
+                    <Ionicons name={isFavoriteStop(item.id) ? "star" : "star-outline"} size={17}
+                      color={isFavoriteStop(item.id) ? colors.warning : colors.textMuted} />
                   </Pressable>
                 </View>
-                {/* The departures belong to the stop: tapping them opens its board too. */}
-                <Pressable onPress={() => openStop(item)} accessible={false}>
-
-                {preview.loading ? (
-                  <View style={styles.previewLoading}>{[0, 1, 2].map(i => <View key={i} style={{ height: 9, marginVertical: 5, width: i === 1 ? "60%" : "85%", borderRadius: 4, backgroundColor: colors.border }} />)}</View>
-                ) : rows.length ? (
-                  <View style={[styles.departureList, { borderTopColor: colors.border }]}>
-                    {rows.map((departure, index) => {
-                      const nearbyCarrier = item.lines.find((line) => line.line === departure.line)?.carrier;
-                      // Departures leaving before you can walk there are dimmed, not hidden.
-                      const tooTight = departure.cancelled !== true && reachableOnFoot(departure, item.walkMinutes, nowMs) === false;
-                      // Last known times (preview.stale): the countdown is an estimate.
-                      return <DepartureLine key={departure.id + "-" + index} item={departure} nowMs={nowMs} stale={preview.stale}
-                        tooTight={tooTight} carrier={nearbyCarrier} size="list" last={index === rows.length - 1} />;
-                    })}
-                  </View>
-                ) : (
-                  <Text style={[styles.previewText, { color: colors.textSoft }]}>Geen actuele vertrekken.</Text>
-                )}
+              );
+            })}
+            {!visibleItems.length ? (loadError ? (
+              <View style={styles.emptyWrap}>
+                <Text maxFontSizeMultiplier={1.3} style={[styles.empty, { color: colors.textSoft }]}>
+                  Haltes konden niet worden geladen. Controleer je verbinding.
+                </Text>
+                <Pressable accessibilityRole="button" accessibilityLabel="Buurtbord opnieuw laden"
+                  onPress={() => { setLocatieRetry((n) => n + 1); live.requestFresh(); }}
+                  style={[styles.retryButton, { borderColor: colors.border }]}>
+                  <Text maxFontSizeMultiplier={1.3} style={{ color: colors.accentText, fontWeight: "800" }}>Opnieuw proberen</Text>
                 </Pressable>
               </View>
-            );
-          })}
-          {!visibleItems.length ? (loadError ? (
-            <View style={{ alignItems: "center" }}>
-              <Text style={[styles.empty, { color: colors.textSoft }]}>Haltes in de buurt konden niet worden geladen. Controleer je verbinding.</Text>
-              <Pressable accessibilityRole="button" accessibilityLabel="Buurtbord opnieuw laden"
-                onPress={() => { setLocatieRetry((n) => n + 1); live.requestFresh(); }}
-                style={{ borderColor: colors.border, borderWidth: 1, borderRadius: 9, paddingHorizontal: 14, paddingVertical: 10 }}>
-                <Text style={{ color: colors.accentText, fontWeight: "800" }}>Opnieuw proberen</Text>
-              </Pressable>
-            </View>
-          ) : <Text style={[styles.empty, { color: colors.textSoft }]}>{!center ? "Geen GPS-positie beschikbaar. Kies een stad of probeer GPS opnieuw." : "Geen haltes in de buurt gevonden."}</Text>) : null}
-        </View>
-      )}
-
-    </ScrollView>
+            ) : <Text maxFontSizeMultiplier={1.3} style={[styles.empty, { color: colors.textSoft }]}>
+              {!activeLocation ? "Geen GPS-positie beschikbaar. Kies een stad of probeer GPS opnieuw." : "Geen haltes in de buurt gevonden."}
+            </Text>) : null}
+          </View>
+        )}
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  headerRow: { paddingHorizontal: 14, paddingBottom: 13, backgroundColor: STOP_BOARD_BLUE, flexDirection: "row", alignItems: "center", gap: 12 },
+  headerRow: { paddingHorizontal: 17, paddingBottom: 16, backgroundColor: STOP_BOARD_BLUE,
+    flexDirection: "row", alignItems: "center", gap: 12 },
   headerCopy: { flex: 1 },
-  title: { fontSize: 21, fontWeight: "800", letterSpacing: -0.6 },
-  subtitle: { fontSize: 12, marginTop: 3 },
-  mapSection: { marginHorizontal: 13, marginTop: 7, marginBottom: 3, gap: 6 },
-  mapToggle: { minHeight: 46, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, flexDirection: "row", alignItems: "center", gap: 9 },
-  mapToggleText: { color: STOP_BOARD_BLUE, flex: 1, fontSize: 13, fontWeight: "800" },
-  mapClose: { alignSelf: "center", minHeight: 34, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, borderRadius: 9 },
-  mapWrap: { height: 165, borderRadius: 12, overflow: "hidden", borderWidth: 1 },
-  mapWrapLarge: { height: 118, marginVertical: 6 },
-  adviceCard: { marginHorizontal: 13, marginTop: 8, padding: 12, borderRadius: 12, borderWidth: 1, gap: 10 },
-  adviceTop: { flexDirection: "row", alignItems: "center", gap: 8 },
-  adviceTitle: { fontSize: 16, fontWeight: "900" },
-  adviceTiming: { gap: 3, paddingTop: 3 },
-  adviceLeave: { fontSize: 21, lineHeight: 27, fontWeight: "900", fontVariant: ["tabular-nums"] },
-  adviceWalkRow: { flexDirection: "row", alignItems: "center", gap: 5 },
-  adviceAlternative: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "#CEDBEC", paddingTop: 9, gap: 4 },
-  adviceAlternativeTitle: { fontSize: 11, fontWeight: "700" },
-  adviceAlternativeRow: { minHeight: 43, flexDirection: "row", alignItems: "center", gap: 9 },
-  adviceAlternativeDestination: { fontSize: 12.5, fontWeight: "800" },
-  adviceAlternativeTime: { fontSize: 13, fontWeight: "900", fontVariant: ["tabular-nums"] },
-  adviceHint: { fontSize: 11, lineHeight: 16 },
-  advicePill: { paddingHorizontal: 9, paddingVertical: 6, borderRadius: 15 },
-  advicePillText: { fontSize: 11, fontWeight: "900" },
-  adviceTrip: { minHeight: 59, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10 },
-  adviceDestination: { fontSize: 14, fontWeight: "800" },
-  adviceMinutes: { fontSize: 16, fontWeight: "900", fontVariant: ["tabular-nums"] },
-  adviceFoot: { minHeight: 36, paddingHorizontal: 10, flexDirection: "row", alignItems: "center", gap: 7, borderRadius: 8 },
-  compareToggle: { minHeight: 44, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 8 },
-  compareCard: { marginHorizontal: 13, marginTop: 8, padding: 12, borderWidth: 1, borderRadius: 12, gap: 5 },
-  compareTitle: { fontSize: 14, fontWeight: "900" },
-  compareRow: { minHeight: 66, flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 8 },
-  compareStop: { fontSize: 13, fontWeight: "800" },
-  compareTime: { fontSize: 14, fontWeight: "900", fontVariant: ["tabular-nums"] },
-  listContent: { paddingHorizontal: 13, paddingBottom: 5, gap: 7 },
-  card: { borderRadius: 12, borderWidth: 1, padding: 10, gap: 5 },
-  topRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
-  nameArea: { flexDirection: "row", gap: 9, alignItems: "center", flex: 1 },
-  modeDot: { width: 14, height: 14, borderRadius: 999 },
-  name: { fontSize: 15, fontWeight: "800" },
-  meta: { marginTop: 3, fontSize: 12 },
-  bestBadge: { paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999 },
-  bestBadgeText: { fontSize: 11, fontWeight: "900" },
-  bestBadgeBelow: { alignSelf: "flex-start", marginTop: 5 },
-  star: { width: 34, height: 34, alignItems: "center", justifyContent: "center" },
-  previewLoading: { minHeight: 54, gap: 4 },
-  previewText: { fontSize: 12, fontWeight: "600" },
-  departureList: { marginTop: 8, borderTopWidth: StyleSheet.hairlineWidth },
-  departureRow: { minHeight: 28, flexDirection: "row", alignItems: "center", gap: 7 },
-  destination: { flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: "700" },
-  departureTime: { minWidth: 72, alignItems: "flex-end" },
-  clock: { fontSize: 12, fontWeight: "900", fontVariant: ["tabular-nums"] },
-  countdown: { marginTop: 1, fontSize: 9.5, fontWeight: "600" },
-  center: { flex: 1, alignItems: "center", justifyContent: "center" },
-  empty: { padding: 20, textAlign: "center" }
+  title: { color: "#FFFFFF", fontSize: 23, fontWeight: "900", letterSpacing: -0.6 },
+  subtitle: { color: "#DCEAF7", fontSize: 12, marginTop: 3 },
+  locationLine: { marginHorizontal: 16, flexDirection: "row", alignItems: "center",
+    minHeight: 35, gap: 8, marginBottom: 10 },
+  locationDot: { width: 8, height: 8, borderRadius: 4 },
+  locationText: { fontSize: 12.5, flex: 1, minWidth: 0, fontWeight: "600" },
+  cityButton: { padding: 8, minWidth: 35, minHeight: 35, alignItems: "center", justifyContent: "center" },
+  cities: { flexDirection: "row", flexWrap: "wrap", marginHorizontal: 15, gap: 7, marginBottom: 10 },
+  cityChoice: { borderWidth: 1, borderRadius: 9, paddingHorizontal: 11, paddingVertical: 8 },
+  notice: { marginHorizontal: 14, marginBottom: 8, borderRadius: 10,
+    flexDirection: "row", alignItems: "center", gap: 7, padding: 10 },
+  noticeText: { flex: 1, fontSize: 12 },
+  noticeAction: { borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8 },
+  sectionHeading: { marginHorizontal: 17, marginTop: 4, marginBottom: 9,
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  sectionTitle: { fontSize: 12, fontWeight: "900", letterSpacing: 1.2 },
+  refreshButton: { flexDirection: "row", alignItems: "center", gap: 5, padding: 7, minHeight: 36 },
+  refreshLabel: { color: STOP_BOARD_BLUE, fontSize: 12, fontWeight: "800" },
+  updateText: { marginHorizontal: 16, fontSize: 11, marginBottom: 6 },
+  listContent: { borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth },
+  stopItem: { flexDirection: "row", minHeight: 106, alignItems: "center", paddingLeft: 12, paddingRight: 6 },
+  bestStop: { borderLeftWidth: 3, borderLeftColor: STOP_BOARD_BLUE, paddingLeft: 9,
+     },
+  stopMain: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 10,
+    paddingVertical: 13 },
+  modeIcon: { width: 36, height: 36, borderRadius: 11, backgroundColor: "#EEF4FF",
+    alignItems: "center", justifyContent: "center", alignSelf: "flex-start", marginTop: 3 },
+  stopCopy: { flex: 1, minWidth: 0, gap: 3 },
+  stopName: { fontSize: 15.5, lineHeight: 19, fontWeight: "800" },
+  walkText: { fontSize: 11.5, lineHeight: 16 },
+  lineBadges: { flexDirection: "row", flexWrap: "wrap", gap: 4, marginTop: 3 },
+  departureCopy: { width: 91, flexShrink: 0, alignItems: "flex-end", justifyContent: "center", gap: 4 },
+  departureTime: { fontSize: 18, lineHeight: 25, fontWeight: "900",
+    fontVariant: ["tabular-nums"], textAlign: "right", width: "100%" },
+  departureStatus: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 3, width: "100%" },
+  liveDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: "#168755" },
+  departureHint: { fontSize: 10.5, lineHeight: 15, fontWeight: "600", textAlign: "right", flexShrink: 1 },
+  starButton: { width: 28, minHeight: 40, alignItems: "center", justifyContent: "center" },
+  emptyWrap: { alignItems: "center", paddingBottom: 18 },
+  empty: { padding: 20, textAlign: "center", fontSize: 13 },
+  retryButton: { borderWidth: 1, borderRadius: 9, paddingHorizontal: 14, paddingVertical: 10 }
 });

@@ -6,17 +6,14 @@ const ts = require("typescript");
 
 const read = (relative) => fs.readFileSync(path.join(__dirname, "..", relative), "utf8");
 
-test("Buurtbord kaart is alleen zichtbaar als de instelling aanstaat en de kaart opengeklapt is", () => {
+test("Buurtbord toont dichtbijgelegen haltes op compacte rijen, zonder kaart", () => {
   const screen = read("app/(tabs)/buurtbord.tsx");
-  assert.match(screen, /settings\.buurtbordMap\s*\?/);
-  assert.match(screen, /mapExpanded\s*,\s*setMapExpanded/);
-  assert.match(screen, /\[mapExpanded, setMapExpanded\] = useState\(true\)/);
-  assert.match(screen, /accessibilityState=\{\{ expanded: mapExpanded \}\}/);
-  assert.match(screen, /mapExpanded\s*\?\s*<View[^>]+styles\.mapWrap/);
-  assert.match(screen, /<LeafletMap markers=\{mapMarkers\} center=\{center\}/);
+  assert.doesNotMatch(screen, /<LeafletMap|mapExpanded|settings\.buurtbordMap/);
+  assert.match(screen, /DICHTBIJ JOU/);
+  assert.match(screen, /firstNearbyDeparture/);
+  assert.match(screen, /<LijnBadge/);
   assert.match(screen, /paddingBottom: Math\.max\(insets\.bottom, 16\) \+ 78/);
-  assert.ok(screen.indexOf("settings.buurtbordMap ? <View") < screen.indexOf("<View style={styles.listContent}>"),
-    "de kaart staat boven de vertrekkaarten, maar binnen de ScrollView");
+  assert.match(screen, /showCities/);
 });
 
 test("Favorieten hebben actuele tijden, sorteermogelijkheden en een haltebord-snelkoppeling", () => {

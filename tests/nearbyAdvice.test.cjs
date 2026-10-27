@@ -9,7 +9,7 @@ Module._extensions[".ts"] = (mod, filename) => mod._compile(
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true }
   }).outputText, filename
 );
-const { compareNearbyDepartures, nearbyLeaveAdvice } = require("../lib/buurtbord.ts");
+const { compareNearbyDepartures, nearbyLeaveAdvice, firstNearbyDeparture, compactNearbyStopName } = require("../lib/buurtbord.ts");
 if (old) Module._extensions[".ts"] = old;
 else delete Module._extensions[".ts"];
 
@@ -19,6 +19,26 @@ const dep = (id, minutes, extra = {}) => ({
   id, line: "25", destination: "Busstation", carrier: "Qbuzz",
   plannedTime: "23:00", expectedTime: "23:00", isLive: true,
   effectiveAt: new Date(now + minutes * 60000).toISOString(), ...extra
+});
+
+test("compact Buurtbord omits the redundant city prefix but preserves unusual stop names", () => {
+  assert.equal(compactNearbyStopName({ name: "Leeuwarden, Bordineweg", city: "Leeuwarden" }), "Bordineweg");
+  assert.equal(compactNearbyStopName({ name: "Bordineweg", city: "Leeuwarden" }), "Bordineweg");
+  assert.equal(compactNearbyStopName({ name: "Amsterdam Zuid", city: "Amsterdam" }), "Amsterdam Zuid");
+});
+
+test("compact Buurtbord selects the chronologically earliest upcoming trip, ignoring old and cancelled rows", () => {
+  const trips = [
+    dep("later", 12, { isLive: false }),
+    dep("cancelled", 1, { cancelled: true }),
+    dep("departed", 2, { departed: true }),
+    dep("past", -2),
+    dep("soon", 5, { expectedTime: "23:05", isLive: true }),
+    dep("unknown", 0, { effectiveAt: undefined, plannedTime: "--:--", expectedTime: undefined })
+  ];
+  assert.equal(firstNearbyDeparture(trips, now).id, "soon");
+  assert.deepEqual(trips.map(t => t.id), ["later", "cancelled", "departed", "past", "soon", "unknown"]);
+  assert.equal(firstNearbyDeparture(trips.filter(t => t.id !== "soon" && t.id !== "later"), now), null);
 });
 
 test("smart Buurtbord prefers a comfortable walk over an earlier but tight departure", () => {
@@ -116,5 +136,5 @@ test("unknown walking time is not silently guessed; caller must have current GPS
   const ui = fs.readFileSync(require("node:path").join(__dirname, "../app/(tabs)/buurtbord.tsx"), "utf8");
   assert.match(ui, /hasCurrentGps = !manualCity/);
   assert.match(ui, /liveBron === "gps"/);
-  assert.match(ui, /Bekijk alle /);
+  assert.match(ui, /DICHTBIJ JOU/);
 });

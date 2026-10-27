@@ -202,9 +202,7 @@ export default function MeerScreen() {
         <ToggleRow label="Live ritten vooraan" hint="Sorteer actuele ritten vóór geplande ritten"
           value={settings.liveFirst} onChange={value => setSetting("liveFirst", value)} />
         <ToggleRow label="Dagscheidingen" hint="Toon de scheiding bij ruim een uur zonder vertrek"
-          value={settings.daySeparators} onChange={value => setSetting("daySeparators", value)} />
-        <ToggleRow label="Kaart op Buurtbord" value={settings.buurtbordMap}
-          onChange={value => setSetting("buurtbordMap", value)} last />
+          value={settings.daySeparators} onChange={value => setSetting("daySeparators", value)} last />
       </Section>
 
       {Platform.OS === "android" ? <Section title="Android · extra functies" icon="phone-portrait-outline">

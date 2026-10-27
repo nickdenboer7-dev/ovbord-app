@@ -185,7 +185,7 @@ test('Buurtbord renders cached rows immediately and keeps them during a slow or 
   const Buurtbord=require(componentPath).default,h=new Harness();
   try{
     let tree=h.render(Buurtbord);assert.deepEqual(renderedStopNames(tree),[stop.name]);
-    assert.deepEqual(find(tree,'LeafletMap').props.center,{lat:53.2012,lon:5.7999}); // Compact bovenin; geen overlay.
+    assert.equal(find(tree,'LeafletMap'),null); // Buurtbord now contains only the stop list.
     h.flush();tree=h.render(Buurtbord);assert.match(textOf(tree),/Bijwerken…/);
     assert.deepEqual(renderedStopNames(tree),[stop.name]);assert.equal(find(tree,'NearbySkeleton'),null);
     reject(Error('network request failed'));await new Promise(setImmediate);
@@ -203,11 +203,11 @@ test('Buurtbord restores persisted results before GPS completes, with no unrelat
     assert.equal(find(tree,'LeafletMap'), null); // No unhydrated map before cached location is available.
     h.flush();await new Promise(setImmediate);tree=h.render(Buurtbord);h.flush();tree=h.render(Buurtbord);
     assert.deepEqual(renderedStopNames(tree),[stop.name]);
-    assert.deepEqual(find(tree,'LeafletMap').props.center,{lat:53.2012,lon:5.7999});
+    assert.equal(find(tree,'LeafletMap'),null);
     assert.equal(find(tree,'NearbySkeleton'),null);
   }finally{h.destroy();buurtMode=false;}
 });
-test('a late nearby response from the previous city cannot overwrite the current map or list',async()=>{
+test('a late nearby response from the previous city cannot overwrite the current stop list',async()=>{
   const cache=freshCache();await cache.hydrateNearbyCache();cache.rememberNearby(snapshot());
   buurtMode=true;buurtLive={...leeuw,loading:false,errorCode:null,refreshToken:1,requestFresh(){}};
   const pending=[];nearbyNetwork=()=>new Promise(resolve=>pending.push(resolve));boardNetwork=async()=>({departures:[]});
@@ -221,7 +221,7 @@ test('a late nearby response from the previous city cannot overwrite the current
     newer([a]);await new Promise(setImmediate);
     for(const resolve of pending.slice(0,-1))resolve([stop]);await new Promise(setImmediate);
     tree=h.render(Buurtbord);assert.deepEqual(renderedStopNames(tree),['Amsterdam']);
-    assert.deepEqual(find(tree,'LeafletMap').props.center,{lat:52.3676,lon:4.9041});
+    assert.equal(find(tree,'LeafletMap'),null);
   }finally{h.destroy();buurtMode=false;}
 });
 

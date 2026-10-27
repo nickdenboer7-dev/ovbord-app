@@ -66,6 +66,6 @@ test("settings screen has navigable location and no fake native notification con
   const ui = fs.readFileSync(require("node:path").join(__dirname, "../app/(tabs)/meer.tsx"), "utf8");
   assert.match(ui, /setManualCity\(city\.key\)/);
   assert.match(ui, /setSetting\("walkBufferMinutes"/);
-  assert.match(ui, /setSetting\("buurtbordMap"/);
+  assert.doesNotMatch(ui, /setSetting\("buurtbordMap"/);
   assert.doesNotMatch(ui, /setNotificationsEnabled/);
 });

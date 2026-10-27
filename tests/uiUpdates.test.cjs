@@ -43,21 +43,22 @@ test("stale stop board displays refresh skeleton while fetching; disruptions ope
   assert.match(board, /Bekijk melding/);
 });
 
-test("nearby advice only recommends with current GPS and recent departures", () => {
+test("Buurtbord noemt alleen een beste halte met actuele GPS en recente vertrekinfo", () => {
   const ui = read("app/(tabs)/buurtbord.tsx");
   assert.match(ui, /hasCurrentGps && previewsAreFresh/);
-  assert.match(ui, /Haalbare vertrekken vergelijken/);
-  assert.match(ui, /Eerstvolgende bereikbare vertrek/);
-  assert.match(ui, /advice\?\.leaveText/);
-  assert.match(ui, /\{manualCity \? \(/);
+  assert.match(ui, /highlightedStopId = bestOption\?\.stop\.id \|\| ""/);
+  assert.match(ui, /DICHTBIJ JOU/);
+  assert.match(ui, /firstNearbyDeparture\(preview\.departures, nowMs\)/);
+  assert.match(ui, /toggleFavoriteStop\(item\)/);
 });
 
-test("Buurtbord toont een compacte kaart boven de vertrektijden in dezelfde scroll", () => {
+test("Buurtbord is een compacte halte-lijst zonder kaart of grote advieskaarten", () => {
   const ui = read("app/(tabs)/buurtbord.tsx");
   assert.match(ui, /<ScrollView/);
   assert.match(ui, /refreshControl=\{<RefreshControl/);
-  assert.match(ui, /visibleItems\.map\(\(item\) =>/);
-  assert.match(ui, /Haltes op de kaart/);
-  assert.ok(ui.indexOf("Haltes op de kaart") < ui.indexOf("visibleItems.map((item) =>"));
+  assert.match(ui, /visibleItems\.map\(\(item, index\) =>/);
+  assert.match(ui, /departureTimeRemainingMs\(first, nowMs\)/);
+  assert.match(ui, /showsLive\(first, stale\)/);
+  assert.doesNotMatch(ui, /LeafletMap|Vertrekadvies|Haltes op de kaart|Haalbare vertrekken vergelijken/);
   assert.doesNotMatch(ui, /<FlatList/);
 });
