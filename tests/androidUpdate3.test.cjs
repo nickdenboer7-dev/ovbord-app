@@ -12,7 +12,7 @@ Module._extensions[".ts"] = (mod, filename) => {
   }).outputText, filename);
 };
 const { favoriteWidgetModel } = require(path.resolve(__dirname, "../lib/androidWidgetData.ts"));
-const { plannedAlightReminder } = require(path.resolve(__dirname, "../lib/journeyReminderPlan.ts"));
+const { plannedAlightReminder, sameAlightSelection } = require(path.resolve(__dirname, "../lib/journeyReminderPlan.ts"));
 if (previous) Module._extensions[".ts"] = previous;
 else delete Module._extensions[".ts"];
 
@@ -57,10 +57,17 @@ test("Reminder fires about five minutes before selected exit", () => {
   assert.equal(plan.at, Date.parse("2026-10-26T11:15:00Z"));
   assert.match(plan.body, /Controleer de actuele ritinformatie/);
 });
-test("Reminder is not scheduled without exit or when exit is too close", () => {
+test("Reminder alerts promptly for a nearby stop, but not for a passed or distant stop", () => {
   assert.equal(plannedAlightReminder({ ...active, alighting: null }, now), null);
-  assert.equal(plannedAlightReminder({ ...active, alightClock: "12:05" }, now), null);
+  assert.equal(plannedAlightReminder({ ...active, alightClock: "12:05" }, now).at, now + 2_000);
+  assert.equal(plannedAlightReminder({ ...active, alightClock: "12:02" }, now).at, now + 2_000);
+  assert.equal(plannedAlightReminder({ ...active, alightClock: "12:00" }, now), null);
   assert.equal(plannedAlightReminder({ ...active, alightClock: "16:20" }, now), null);
+});
+test("Same alighting stop is recognized after a live arrival-time change", () => {
+  const pending = { tripId: "rit-1", key: "rit-1|halte-2|12:11" };
+  assert.equal(sameAlightSelection(pending, { ...active, alightClock: "12:10" }), true);
+  assert.equal(sameAlightSelection(pending, { ...active, alighting: { id: "halte-3" } }), false);
 });
 test("Update 3 has its own native runtime version and config plugins", () => {
   const config = require("../app.json").expo;

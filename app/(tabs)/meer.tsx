@@ -13,7 +13,8 @@ import { MANUAL_CITIES } from "../../lib/location";
 import type { DepartureTimeMode, MaxWalkMinutes, WalkBufferMinutes } from "../../lib/userSettings";
 import { STOP_BOARD_BLUE } from "../../lib/stopBoardDesign";
 import { pinFavoriteWidget, refreshFavoriteWidget } from "../../lib/androidWidget";
-import { enableNativeReminders, disableNativeReminders, nativeRemindersEnabled, syncNativeAlightReminder } from "../../lib/journeyReminders";
+import { enableNativeReminders, disableNativeReminders, nativeRemindersEnabled, nativeAlightReminderStatus, syncNativeAlightReminder } from "../../lib/journeyReminders";
+import type { NativeAlightReminderStatus } from "../../lib/journeyReminders";
 import { loadActiveTrip } from "../../lib/activeTripStore";
 
 const UPDATE_ROWS = updateInfoRows({
@@ -99,10 +100,29 @@ export default function MeerScreen() {
   const [locationOpen, setLocationOpen] = useState(false);
   const [focused, setFocused] = useState(false);
   const [alightReminders, setAlightReminders] = useState(false);
+  const [alightStatus, setAlightStatus] = useState<NativeAlightReminderStatus>({ state: "disabled" });
+  const refreshAlightStatus = async () => {
+    const status = await nativeAlightReminderStatus();
+    setAlightReminders(status.state === "ready" || status.state === "scheduled" || status.state === "error");
+    setAlightStatus(status);
+  };
   useFocusEffect(useCallback(() => {
+    let active = true;
     setFocused(true);
-    void nativeRemindersEnabled().then(setAlightReminders).catch(() => setAlightReminders(false));
-    return () => setFocused(false);
+    void (async () => {
+      try {
+        // Migrates existing reminders to the more visible Android channel.
+        if (await nativeRemindersEnabled()) await syncNativeAlightReminder(await loadActiveTrip(Date.now()));
+        const status = await nativeAlightReminderStatus();
+        if (active) {
+          setAlightReminders(status.state === "ready" || status.state === "scheduled" || status.state === "error");
+          setAlightStatus(status);
+        }
+      } catch {
+        if (active) setAlightStatus({ state: "error" });
+      }
+    })();
+    return () => { active = false; setFocused(false); };
   }, []));
 
   const changeAlightReminders = (on: boolean) => {
@@ -111,18 +131,21 @@ export default function MeerScreen() {
         if (!on) {
           await disableNativeReminders();
           setAlightReminders(false);
+          setAlightStatus({ state: "disabled" });
           return;
         }
         if (!await enableNativeReminders()) {
           Alert.alert("Meldingen niet toegestaan", "Sta meldingen toe in Android-instellingen als je een uitstapherinnering wilt.");
           setAlightReminders(false);
+          setAlightStatus({ state: "blocked" });
           return;
         }
         setAlightReminders(true);
         await syncNativeAlightReminder(await loadActiveTrip(Date.now()));
+        await refreshAlightStatus();
       } catch {
-        Alert.alert("Herinnering instellen mislukt", "Probeer het later opnieuw.");
-        setAlightReminders(false);
+        Alert.alert("Herinnering instellen mislukt", "Controleer de meldingsinstellingen en probeer opnieuw.");
+        setAlightStatus({ state: "error" });
       }
     })();
   };
@@ -139,6 +162,13 @@ export default function MeerScreen() {
       { text: "Wissen", style: "destructive", onPress: clearRecentStops }
     ]);
 
+  const reminderStatusText = alightStatus.state === "scheduled"
+    ? "Melding gepland om " + new Date(alightStatus.at).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" }) +
+      " · " + alightStatus.stopName
+    : alightStatus.state === "ready" ? "Nog geen melding gepland. Kies je uitstaphalte in een rit."
+    : alightStatus.state === "blocked" ? "Android blokkeert meldingen. Sta meldingen voor OVbord toe."
+    : alightStatus.state === "error" ? "Melding controleren mislukt. Tik om opnieuw te proberen."
+    : "Uitstapherinneringen staan uit.";
   const locationName = MANUAL_CITIES.find(city => city.key === manualCity)?.name || "GPS automatisch";
   return <View style={[styles.screen, { backgroundColor: colors.background }]}>
     {focused ? <ExpoStatusBar style="light" /> : null}
@@ -195,6 +225,20 @@ export default function MeerScreen() {
         <Divider />
         <ToggleRow label="Uitstapherinnering" hint="Eenmalige melding circa 5 minuten vóór je gekozen uitstaphalte (dienstregeling; kan afwijken). Alleen na jouw toestemming."
           value={alightReminders} onChange={changeAlightReminders} last />
+        <Pressable accessibilityRole="button" accessibilityLabel="Status uitstapherinnering controleren"
+          onPress={() => void (async () => {
+            try {
+              if (await nativeRemindersEnabled()) await syncNativeAlightReminder(await loadActiveTrip(Date.now()));
+              await refreshAlightStatus();
+            } catch { setAlightStatus({ state: "error" }); }
+          })()} style={styles.reminderStatusRow}>
+          <Ionicons name={alightStatus.state === "scheduled" ? "checkmark-circle-outline" : "notifications-outline"}
+            color={alightStatus.state === "scheduled" ? "#27865B" : colors.textSoft} size={19} />
+          <Text maxFontSizeMultiplier={1.3} style={[styles.reminderStatusText, { color: colors.textSoft }]}>
+            {reminderStatusText}
+          </Text>
+          <Ionicons name="refresh-outline" color={STOP_BOARD_BLUE} size={18} />
+        </Pressable>
       </Section> : null}
 
       <Section title="Locatie & gegevens" icon="map-outline">
@@ -295,5 +339,7 @@ const styles = StyleSheet.create({
   versionRow: { flexDirection: "row", gap: 9, marginBottom: 6 },
   versionLabel: { width: 92, fontSize: 12 },
   versionValue: { flex: 1, minWidth: 0, fontSize: 12, fontWeight: "600" },
-  helpRow: { minHeight: 42, flexDirection: "row", alignItems: "center", gap: 8 }
+  helpRow: { minHeight: 42, flexDirection: "row", alignItems: "center", gap: 8 },
+  reminderStatusRow: { minHeight: 46, flexDirection: "row", alignItems: "center", gap: 9, paddingVertical: 8 },
+  reminderStatusText: { fontSize: 12, lineHeight: 17, flex: 1, minWidth: 0 }
 });
