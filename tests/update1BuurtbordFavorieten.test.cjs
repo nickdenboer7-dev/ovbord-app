@@ -24,6 +24,22 @@ test("Terug vanuit een Buurtbord-halte brengt je naar Buurtbord, niet Start", ()
   assert.match(navigation, /returnTo: options\?\.returnTo/);
   assert.match(workspace, /screens\.length === 1 && current\?\.returnTo === "\/buurtbord"/);
   assert.match(workspace, /router\.navigate\("\/buurtbord"\)/);
+  // The stop board stays inside Buurtbord. No detour through Start/tab history.
+  assert.match(buurt, /showingBuurtbordBoard \? <FlowWorkspace inBuurtbord/);
+  assert.match(buurt, /display: showingBuurtbordBoard \? "none" : "flex"/); // preserve search + scroll
+  assert.doesNotMatch(buurt, /router\.navigate\("\/"\)/);
+  assert.match(buurt, /ignoreRepeatedBackUntil\.current = Date\.now\(\) \+ 700/);
+  assert.match(workspace, /if \(inBuurtbord\) onReturnToBuurtbord\?\.\(\)/);
+  const home = read("components/FlowHome.tsx");
+  assert.match(home, /screens\[0\]\?\.returnTo !== "\/buurtbord"/);
+});
+
+test("Buurtbord kiest exact het haltebord-kleurenschema voor lijnbadges", () => {
+  const buurt = read("app/(tabs)/buurtbord.tsx");
+  const badge = read("components/LijnBadge.tsx");
+  assert.match(badge, /tone === "board" \? stopBoardLineBadge\(/);
+  assert.match(buurt, /mode=\{line\.mode \?\? item\.mode\} compact tone="board"/);
+  assert.match(buurt, /routeColor=\{first\?\.line === line\.line \? first\.routeColor : undefined\}/);
 });
 
 test("Buurtbord zoekt haltes in dezelfde tab met de bestaande zoek-API", () => {

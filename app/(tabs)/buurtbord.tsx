@@ -1,8 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect } from "expo-router";
 import { StatusBar as ExpoStatusBar } from "expo-status-bar";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Keyboard, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, BackHandler, Keyboard, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
 import { largeText } from "../../lib/textScale";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { NearbySkeleton } from "../../components/NearbySkeleton";
@@ -10,6 +10,7 @@ import { hydrateNearbyCache, nearbyScope, peekNearby, peekLastLocation, remember
 import type { NearbyPreview } from "../../lib/nearbyCache";
 import { LijnBadge } from "../../components/LijnBadge";
 import { SettingsButton } from "../../components/SettingsButton";
+import { FlowWorkspace } from "../../components/FlowWorkspace";
 import { modaliteitColors } from "../../constants/vervoerders";
 import { useApp } from "../../context/AppProvider";
 import { DEFAULT_USER_SETTINGS } from "../../lib/userSettings";
@@ -87,8 +88,14 @@ export default function BuurtbordScreen() {
     return () => clearInterval(timer);
   }, []);
   useSmartRefresh(async () => { setRefreshTick((value) => value + 1); }, 90000, (manualCity || "gps") + ":" + locatieRetry);
-  const router = useRouter();
-  const { showStop: showFlowStop } = useFlowNavigation();
+  const { showStop: showFlowStop, screens } = useFlowNavigation();
+  const showingBuurtbordBoard = screens.length > 0 && screens[0]?.returnTo === "/buurtbord";
+  const ignoreRepeatedBackUntil = useRef(0);
+  useFocusEffect(useCallback(() => {
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () =>
+      Date.now() < ignoreRepeatedBackUntil.current);
+    return () => subscription.remove();
+  }, []));
 
   // A chosen city or last known GPS fix supplies the first view; never choose a fallback city.
   const manualLocation = useMemo<LocatieResultaat | null>(() => {
@@ -222,13 +229,20 @@ export default function BuurtbordScreen() {
   const openStop = (stop: StopSummary) => {
     Keyboard.dismiss();
     addRecentStop(stop);
-    // A board opened here returns here, including an active search, not to Start.
-    showFlowStop(stop, { returnTo: "/buurtbord" }); router.navigate("/");
+    // Keep the board in this tab, so one Back action never crosses the Start tab.
+    showFlowStop(stop, { returnTo: "/buurtbord" });
   };
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      {focused ? <ExpoStatusBar style="light" /> : null}
+      {showingBuurtbordBoard ? <FlowWorkspace inBuurtbord onReturnToBuurtbord={() => {
+        ignoreRepeatedBackUntil.current = Date.now() + 700;
+      }} /> : null}
+      <View style={{ flex: 1, display: showingBuurtbordBoard ? "none" : "flex" }}
+        pointerEvents={showingBuurtbordBoard ? "none" : "auto"}
+        accessibilityElementsHidden={showingBuurtbordBoard}
+        importantForAccessibility={showingBuurtbordBoard ? "no-hide-descendants" : "auto"}>
+      {focused && !showingBuurtbordBoard ? <ExpoStatusBar style="light" /> : null}
       <View style={[styles.headerRow, { paddingTop: Math.max(insets.top, 24) + 10 }]}>
         <View style={styles.headerCopy}>
           <Text maxFontSizeMultiplier={1.3} style={styles.title}>Buurtbord</Text>
@@ -286,7 +300,7 @@ export default function BuurtbordScreen() {
                 </Text>
                 {item.lines.length ? <View style={styles.lineBadges}>
                   {item.lines.slice(0, 3).map((line, index) => <LijnBadge key={line.line + "-" + index}
-                    line={line.line} carrier={line.carrier} compact tone="carrier" />)}
+                    line={line.line} carrier={line.carrier} mode={line.mode ?? item.mode} compact tone="board" />)}
                 </View> : null}
               </View>
               <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
@@ -383,7 +397,7 @@ export default function BuurtbordScreen() {
               const status = stale ? "Laatst bekend" : first?.liveDataStale ? "Live-info oud"
                 : estimated ? "Geschat" : liveDeparture ? "Live" : "Gepland";
               const isBest = item.id === highlightedStopId;
-              const lineOptions = first ? [{ line: first.line, carrier: first.carrier }, ...item.lines] : item.lines;
+              const lineOptions = first ? [{ line: first.line, carrier: first.carrier, mode: first.mode ?? item.mode }, ...item.lines] : item.lines;
               const lines = lineOptions.filter((line, lineIndex) =>
                 lineOptions.findIndex((candidate) => candidate.line === line.line) === lineIndex).slice(0, 3);
               const stopIcon = item.mode === "train" ? "train-outline" : item.mode === "ferry" ? "boat-outline"
@@ -409,7 +423,10 @@ export default function BuurtbordScreen() {
                       </Text>
                       <View style={styles.lineBadges}>
                         {lines.map((line, lineIndex) => <LijnBadge key={line.line + "-" + lineIndex} line={line.line}
-                            carrier={line.carrier} compact tone="carrier" />)}
+                            carrier={line.carrier} mode={line.mode ?? item.mode} compact tone="board"
+                            routeId={first?.line === line.line ? first.routeId : undefined}
+                            routeColor={first?.line === line.line ? first.routeColor : undefined}
+                            routeTextColor={first?.line === line.line ? first.routeTextColor : undefined} />)}
                       </View>
                     </View>
                     <View style={styles.departureCopy}>
@@ -457,6 +474,7 @@ export default function BuurtbordScreen() {
         )}
         </>}
       </ScrollView>
+      </View>
     </View>
   );
 }

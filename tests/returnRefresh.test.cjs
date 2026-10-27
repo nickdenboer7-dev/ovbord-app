@@ -16,14 +16,15 @@ const React={
 Module._load=function(request,parent,isMain){
   if(request==='react')return React;
   if(request==='expo-router')return {useFocusEffect:callback=>{activeHarness.focus=callback;},useRouter:()=>({navigate(){}})};
-  if(request==='react-native')return {AppState:appState,StyleSheet:{create:value=>value,hairlineWidth:1},View:'View',Text:'Text',TextInput:'TextInput',ActivityIndicator:'ActivityIndicator',Keyboard:{dismiss(){}},ScrollView:'ScrollView',FlatList:'FlatList',Pressable:'Pressable',RefreshControl:'RefreshControl',useWindowDimensions:()=>({fontScale:1})};
+  if(request==='react-native')return {AppState:appState,BackHandler:{addEventListener:()=>({remove(){}})},StyleSheet:{create:value=>value,hairlineWidth:1},View:'View',Text:'Text',TextInput:'TextInput',ActivityIndicator:'ActivityIndicator',Keyboard:{dismiss(){}},ScrollView:'ScrollView',FlatList:'FlatList',Pressable:'Pressable',RefreshControl:'RefreshControl',useWindowDimensions:()=>({fontScale:1})};
   if(request==='react-native-webview')return {WebView:'WebView'};
   if(request==='@react-native-async-storage/async-storage')return {default:storage,__esModule:true};
   if(buurtMode){
     if(request==='@expo/vector-icons')return {Ionicons:'Ionicons'};
     if(request==='react-native-safe-area-context')return {useSafeAreaInsets:()=>({top:24})};
     if(request.endsWith('/context/AppProvider'))return {useApp:()=>({colors:{},manualCity:null,addRecentStop(){},setManualCity(){},toggleFavoriteStop(){},isFavoriteStop:()=>false})};
-    if(request.endsWith('/context/FlowNavigation'))return {useFlowNavigation:()=>({showStop(stop,options){shownStop={stop,options};}})};
+    if(request.endsWith('/context/FlowNavigation'))return {useFlowNavigation:()=>({screens:[],showStop(stop,options){shownStop={stop,options};}})};
+    if(request.endsWith('/components/FlowWorkspace'))return {FlowWorkspace:'FlowWorkspace'};
     if(request.endsWith('/lib/useLiveLocation'))return {useLiveLocation:()=>buurtLive};
     if(request.endsWith('/lib/useSmartRefresh'))return {useSmartRefresh(){}};
     if(request.endsWith('/lib/location'))return {MANUAL_CITIES:[]};

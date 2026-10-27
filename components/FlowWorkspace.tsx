@@ -9,7 +9,9 @@ import { FlowBoard } from "./FlowBoard";
 import { DepartureSkeleton } from "./DepartureSkeleton";
 
 /** Invisible earlier boards stay mounted. The FlatList offset and open journey survive back navigation. */
-export function FlowWorkspace() {
+export function FlowWorkspace({ inBuurtbord = false, onReturnToBuurtbord }: {
+  inBuurtbord?: boolean; onReturnToBuurtbord?: () => void;
+} = {}) {
   const { screens, back, pendingStopName, pendingStopError, clearPendingError } = useFlowNavigation();
   const { colors } = useApp();
   const router = useRouter();
@@ -19,9 +21,10 @@ export function FlowWorkspace() {
     if (current?.returnTrip?.id) {
       router.push({ pathname: "/rit/[id]", params: current.returnTrip });
     } else if (screens.length === 1 && current?.returnTo === "/buurtbord") {
-      router.navigate("/buurtbord");
+      if (inBuurtbord) onReturnToBuurtbord?.();
+      else router.navigate("/buurtbord"); // fallback for boards opened from the old Start flow
     }
-  }, [back, router, screens]);
+  }, [back, router, screens, inBuurtbord, onReturnToBuurtbord]);
 
   // OVBORD_FLOW4_FOCUS_BACK: do not swallow Android Back while /rit/[id] is the focused screen.
   useFocusEffect(useCallback(() => {

@@ -286,7 +286,7 @@ export function FlowHome() {
   const resultCount = finding
     ? (searchFilter === "ritten" ? journeys.length : searchFilter === "haltes" ? data.length : data.length + journeys.length)
     : data.length;
-  const showingBoard = screens.length > 0 && !finding;
+  const showingBoard = screens.length > 0 && screens[0]?.returnTo !== "/buurtbord" && !finding;
   // "Mijn ritten": saved trips with their next departures, at the top of the nearby list.
   const showMine = !finding && tab === "nabij" && (favoriteJourneys.length+favoriteStops.length+favoriteLines.length)>0;
   const personalBoards:Record<string,ForYouBoard>={...savedLineBoards};
@@ -805,7 +805,7 @@ export function FlowHome() {
         )}
       </View>
       <View style={[styles.boardLayer, showingBoard ? null : styles.hidden]} pointerEvents={showingBoard ? "auto" : "none"}>
-        <FlowWorkspace />
+        {screens[0]?.returnTo !== "/buurtbord" ? <FlowWorkspace /> : null}
       </View>
     </View>
   );
