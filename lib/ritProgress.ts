@@ -114,7 +114,7 @@ export function markAlightAlert(key: string): boolean {
 
 /** A notice that says the vehicle does not call at its stops ("Halte vervalt", "stopt hier niet"). */
 export function isSkipNotice(notice: { badge?: string; title?: string; description?: string }): boolean {
-  return /halte\s*vervalt|vervallen\s+halte|stopt\s+(hier\s+)?niet|rijdt\s+niet\s+langs/i.test(
+  return /\bhalte\s*vervalt\b|\bhalte\b[^.!?\n]{0,100}\bvervalt\b|\bvervallen\s+haltes?\b|\bhaltes?\b[^.!?\n]{0,150}\bvervallen\b|\bstop(?:t|pen)\s+(?:hier\s+)?niet\b|\brijdt\s+niet\s+langs\b/i.test(
     [notice.badge, notice.title, notice.description].filter(Boolean).join(" "));
 }
 

@@ -37,5 +37,7 @@ test("boarding-stop clock is departure, never an earlier arrival", () => {
   assert.match(rit, /isTime\(stop.expectedDepartureTime\)/);
   assert.match(rit, /isTime\(stop.plannedDepartureTime\)/);
   assert.match(rit, /clock: stopClock/);
-  assert.match(rit, /styles\.alightTime, passed && styles\.passedText\]\}>\{stopClock\}<\/Text>/);
+  // The boarding clock is preserved; skipped stops also strike through their planned clock.
+  assert.match(rit, /styles\.alightTime, passed && styles\.passedText, skip && styles\.skippedTime/);
+  assert.match(rit, /skip && isTime\(stop\.plannedTime\)/);
 });

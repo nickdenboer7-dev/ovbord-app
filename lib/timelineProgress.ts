@@ -6,7 +6,10 @@ export type TimelineLocation = {kind:"at"|"between";index:number};
 const isClock=(s:string|undefined):s is string=>Boolean(s&&/^(?:[01]?\d|2[0-3]):[0-5]\d$/.test(s));
 /** Actual observations are used for history only; expected times lead the remaining route. */
 export function journeyStopClock(stop:JourneyStop,passed=false):string {
-  if(passed&&stop.actualKnown&&isClock(stop.actualTime))return stop.actualTime;
+  // Past stops without a verified actual clock must never inherit the live
+  // vehicle's current trip-wide delay as if it were a measured passage.
+  if(passed)return stop.actualKnown&&isClock(stop.actualTime)?stop.actualTime:
+    isClock(stop.plannedTime)?stop.plannedTime:"-";
   if(isClock(stop.expectedTime))return stop.expectedTime;
   if(isClock(stop.plannedTime))return typeof stop.delayMinutes==="number"&&Number.isFinite(stop.delayMinutes)
     ? shiftClock(stop.plannedTime,stop.delayMinutes):stop.plannedTime;

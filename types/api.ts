@@ -117,6 +117,8 @@ export interface JourneyStop {
   plannedDepartureTime?: string;
   expectedDepartureTime?: string;
   delayMinutes?: number;
+  /** Source of the stop clock: per-stop feed, KV6 trip-level estimate, or schedule. */
+  timingSource?: "stop" | "journey_estimate" | "schedule";
   state: JourneyStopState;
   platform?: string;
   platformChanged?: boolean;

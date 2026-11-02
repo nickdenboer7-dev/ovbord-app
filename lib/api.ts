@@ -234,8 +234,10 @@ function normalizeJourneyStop(item: any, index: number, total: number, journeyDe
   const distinctArrival = item?.arrival_timing_live === true &&
     reportedArrival !== undefined && arrivalPlan !== undefined &&
     formatDutchClock(reportedArrival) !== formatDutchClock(arrivalPlan);
-  const actualKnown = state === "passed" && Boolean(explicitActual || distinctArrival);
-  const actualRaw = explicitActual || (distinctArrival ? reportedArrival : undefined);
+  // A changed timetable prediction is not a confirmed passage. Only a
+  // separately identified actual observation may be called an actual time.
+  const actualKnown = state === "passed" && Boolean(explicitActual);
+  const actualRaw = explicitActual;
   const directDelay = num(item?.delay_minutes);
   const delaySeconds = num(item?.delay_seconds);
   const delayMinutes = directDelay !== undefined
@@ -247,11 +249,22 @@ function normalizeJourneyStop(item: any, index: number, total: number, journeyDe
   const scheduledClock = formatDutchClock(plannedArrival);
   const plannedDepartureRaw = first(item?.planned_departure_time, item?.planned_departure);
   const plannedDeparture = plannedDepartureRaw !== undefined ? formatDutchClock(plannedDepartureRaw) : undefined;
-  const expectedDeparture = plannedDeparture && journeyLive && journeyDelaySeconds !== undefined
-    ? delayedClock(plannedDeparture, journeyDelaySeconds) : plannedDeparture;
-  const expectedFromJourney = journeyLive && !actualKnown
-    ? delayedClock(scheduledClock, journeyDelaySeconds)
-    : undefined;
+  const reportedDeparture = first(item?.actual_departure, item?.departure_time);
+  const distinctDeparture = item?.departure_timing_live === true && plannedDepartureRaw !== undefined &&
+    reportedDeparture !== undefined && formatDutchClock(reportedDeparture) !== formatDutchClock(plannedDepartureRaw);
+  const stopPredictionAvailable = distinctArrival || distinctDeparture ||
+    (item?.timing_live === true && delayMinutes !== undefined && delayMinutes !== 0);
+  const tripEstimateAvailable = journeyLive && typeof journeyDelaySeconds === "number" &&
+    Number.isFinite(journeyDelaySeconds) && Math.abs(journeyDelaySeconds) <= 3600;
+  const timingSource: JourneyStop["timingSource"] = stopPredictionAvailable ? "stop" :
+    tripEstimateAvailable ? "journey_estimate" : "schedule";
+  const expectedFromStop = distinctArrival ? formatDutchClock(reportedArrival) :
+    stopPredictionAvailable && delayMinutes !== undefined ? shiftClock(scheduledClock, delayMinutes) : undefined;
+  const expectedFromJourney = tripEstimateAvailable && !actualKnown
+    ? delayedClock(scheduledClock, journeyDelaySeconds) : undefined;
+  const expectedDeparture = distinctDeparture ? formatDutchClock(reportedDeparture) :
+    stopPredictionAvailable && plannedDeparture && delayMinutes !== undefined ? shiftClock(plannedDeparture, delayMinutes) :
+    plannedDeparture && tripEstimateAvailable ? delayedClock(plannedDeparture, journeyDelaySeconds) : plannedDeparture;
 
   return {
     id: str(first(item?.id, item?.stop_id, `${index}`)),
@@ -259,12 +272,12 @@ function normalizeJourneyStop(item: any, index: number, total: number, journeyDe
     plannedTime: scheduledClock,
     actualTime: actualKnown && actualRaw ? formatDutchClock(actualRaw) : undefined,
     actualKnown,
-    expectedTime: expectedFromJourney || (!actualKnown && delayMinutes !== undefined
-      ? shiftClock(scheduledClock,delayMinutes) : scheduledClock),
+    expectedTime: expectedFromStop || expectedFromJourney || scheduledClock,
     plannedDepartureTime: plannedDeparture,
     expectedDepartureTime: expectedDeparture,
-    delayMinutes: journeyLive && journeyDelaySeconds !== undefined
-      ? Math.round(journeyDelaySeconds / 60) : delayMinutes,
+    delayMinutes: stopPredictionAvailable ? delayMinutes :
+      tripEstimateAvailable ? Math.round(journeyDelaySeconds / 60) : undefined,
+    timingSource,
     state,
     platform: str(first(item?.track, item?.platform, item?.spoor, item?.perron), "") || undefined,
     platformChanged: Boolean(first(item?.platform_changed, item?.spoorwijziging, item?.platform_change)),
@@ -542,7 +555,8 @@ export function normalizeRit(id: string, raw: any): RitData {
     estimatedPosition: raw?.estimated_position === true || raw?.estimatedPosition === true ||
       vehicle?.estimated_position === true || vehicle?.estimatedPosition === true,
     polyline: points.filter((point) => point.latitude !== 0 && point.longitude !== 0),
-    stops: stopItems.map((item, index) => normalizeJourneyStop(item, index, stopItems.length, journeyDelaySeconds, raw?.live === true)),
+    stops: stopItems.map((item, index) => normalizeJourneyStop(item, index, stopItems.length, journeyDelaySeconds,
+      raw?.live === true && typeof gpsAgeSeconds === "number" && gpsAgeSeconds >= 0 && gpsAgeSeconds <= 120)),
     liveLabel: str(first(raw?.live_label, raw?.status_label), raw?.live === false ? "Dienstregeling" : "Live ritinformatie"),
     delayLabel: str(first(raw?.delay_label, raw?.delay_text), "") || undefined,
     cancelled: raw?.cancelled === true,

@@ -339,7 +339,8 @@ function TimeLine({ journey, lineColor, lineTextColor, liveLocation, boarding, o
       const skip = !passed && Boolean(skipped?.has(String(stop.id)));
       // A boarding stop's clock is its DEPARTURE, not the earlier arrival time.
       // Other stops retain their existing arrival/actual-time semantics.
-      const stopClock = isBoarding && !passed
+      const stopClock = skip && isTime(stop.plannedTime) ? stop.plannedTime
+        : isBoarding && !passed
         ? (isTime(stop.expectedDepartureTime) ? stop.expectedDepartureTime! :
           isTime(stop.plannedDepartureTime) ? stop.plannedDepartureTime! : timeOf(stop, passed))
         : timeOf(stop, passed);
@@ -373,8 +374,9 @@ function TimeLine({ journey, lineColor, lineTextColor, liveLocation, boarding, o
         <View style={styles.timelineTimeCol}>
           <View style={styles.timelineActualLine}>
             <Text maxFontSizeMultiplier={1.3} numberOfLines={1} style={[styles.timelineTime, passed && styles.passedText, afterAlight && styles.afterAlightText,
-              (isBoarding || isNext || atStop) && !passed && styles.timelineImportantTime, isAlight && styles.alightTime, passed && styles.passedText]}>{stopClock}</Text>
-            {delta && !passed ? <Text maxFontSizeMultiplier={1.3} numberOfLines={1} style={[styles.delayText,
+              (isBoarding || isNext || atStop) && !passed && styles.timelineImportantTime, isAlight && styles.alightTime, passed && styles.passedText, skip && styles.skippedTime]}>{stop.timingSource === "journey_estimate" && !passed && !skip &&
+                Boolean(stop.delayMinutes) ? "≈" + stopClock : stopClock}</Text>
+            {delta && !passed && !skip ? <Text maxFontSizeMultiplier={1.3} numberOfLines={1} style={[styles.delayText,
               { color: delta.tone === "red" ? colors.danger : delta.tone === "orange" ? colors.delayWarning : colors.success }]}>{delta.text}</Text> : null}
           </View>
           {platform && !passed ? <Text maxFontSizeMultiplier={1.3} style={[styles.timelinePlatform, stop.platformChanged && styles.timelinePlatformChanged]}
@@ -1012,7 +1014,10 @@ export default function RitScreen() {
         tripId={tripId} line={line} destination={destination}
         onOpenTrip={(item, boardStop) => router.push({ pathname: "/rit/[id]", params: ritParamsForDeparture(item, boardStop) })}
         onOpenBoard={() => openStopBoard(alightStop)}/> : null}
-      <Text style={styles.disclaimer}>Alleen bevestigde GPS verschijnt als live positie. Dienstregeling en verwachtingen kunnen wijzigen.</Text>
+      <Text style={styles.disclaimer}>Alleen bevestigde GPS verschijnt als live positie. {journey.stops.some(
+        (stop) => stop.timingSource === "journey_estimate" && Boolean(stop.delayMinutes))
+        ? "Tijden met ≈ zijn indicaties op basis van de ritvertraging, geen bevestigde haltepassages."
+        : "Dienstregeling en verwachtingen kunnen wijzigen."}</Text>
     </ScrollView>}
     {/* Last child: the menu lies above the trip. */}
     <OverflowMenu open={menuOpen} onClose={() => setMenuOpen(false)} items={menuItems} title="Meer acties voor deze rit" />
@@ -1205,6 +1210,7 @@ function makeStyles(c: RitColors) {
   tagMuted: { backgroundColor: c.stageNeutralBg, color: c.muted },
   alightRow: { backgroundColor: c.alightRowBg },
   skippedName: { textDecorationLine: "line-through", color: c.muted },
+  skippedTime: { textDecorationLine: "line-through", color: c.muted },
   skipTag: { backgroundColor: c.cancelBg, color: c.red, fontSize: 11, fontWeight: "800", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, overflow: "hidden" },
   ritAlertStops: { color: c.text, fontSize: 11.5, fontWeight: "700", marginTop: 2 },
   alightTag: { backgroundColor: c.alightTagBg, color: c.alightTagText, fontSize: 11, fontWeight: "800", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, overflow: "hidden" },
