@@ -322,7 +322,9 @@ function TimeLine({ journey, lineColor, lineTextColor, liveLocation, boarding, o
       const last = index === stops.length - 1;
       const isBoarding = index === boardingIndex;
       const isNext = nextIndex !== null && index === nextIndex && !passed;
-      const delta = timelineTimeDelta(stop.delayMinutes);
+      // Trip-wide GPS delay is already visible in the next-stop header.
+      // Repeat a delta here only if it comes from this particular stop.
+      const delta = stop.timingSource === "journey_estimate" ? null : timelineTimeDelta(stop.delayMinutes);
       const shouldShowCity = index === 0 ||
         (stop.name.includes(", ") && stop.name.split(", ")[0] !== stops[index - 1]?.name.split(", ")[0]);
       const displayName = shouldShowCity ? stop.name : stopShort(stop.name);
@@ -379,6 +381,8 @@ function TimeLine({ journey, lineColor, lineTextColor, liveLocation, boarding, o
             {delta && !passed && !skip ? <Text maxFontSizeMultiplier={1.3} numberOfLines={1} style={[styles.delayText,
               { color: delta.tone === "red" ? colors.danger : delta.tone === "orange" ? colors.delayWarning : colors.success }]}>{delta.text}</Text> : null}
           </View>
+          {/* Fixed, compact status column prevents long stop names from wrapping the badge. */}
+          {skip ? <Text maxFontSizeMultiplier={1.3} style={styles.skipTimeTag}>Vervalt</Text> : null}
           {platform && !passed ? <Text maxFontSizeMultiplier={1.3} style={[styles.timelinePlatform, stop.platformChanged && styles.timelinePlatformChanged]}
             numberOfLines={1}>{platform}</Text> : null}
         </View>
@@ -399,7 +403,6 @@ function TimeLine({ journey, lineColor, lineTextColor, liveLocation, boarding, o
             <Text maxFontSizeMultiplier={1.3} style={[styles.timelineName, passed && styles.passedName, afterAlight && styles.afterAlightText,
               (isBoarding || isNext || atStop) && !passed && styles.timelineImportantName, last && styles.lastStop,
               isAlight && styles.alightName, skip && styles.skippedName, passed && styles.passedName]} numberOfLines={1}>{displayName}</Text>
-            {skip ? <Text maxFontSizeMultiplier={1.3} style={styles.skipTag}>Vervalt</Text> : null}
             {atStop ? <Text maxFontSizeMultiplier={1.3} onPress={!progress.estimated ? onFocusVehicle : undefined} accessibilityRole={!progress.estimated && onFocusVehicle ? "button" : undefined}
               accessibilityLabel={progress.estimated ? "Nu hier volgens verwachte tijden" : vehicleNoun(journey.mode) + " is hier. Volg op de kaart"}
               style={[styles.nowTag, { backgroundColor: lineColor, color: lineTextColor }, progress.estimated && styles.tagMuted]}>Nu hier</Text> : null}
@@ -1016,8 +1019,8 @@ export default function RitScreen() {
         onOpenBoard={() => openStopBoard(alightStop)}/> : null}
       <Text style={styles.disclaimer}>Alleen bevestigde GPS verschijnt als live positie. {journey.stops.some(
         (stop) => stop.timingSource === "journey_estimate" && Boolean(stop.delayMinutes))
-        ? "Tijden met ≈ zijn indicaties op basis van de ritvertraging, geen bevestigde haltepassages."
-        : "Dienstregeling en verwachtingen kunnen wijzigen."}</Text>
+        ? "≈ is een schatting op basis van ritvertraging, geen bevestigde haltetijd."
+        : "Tijden kunnen wijzigen."}</Text>
     </ScrollView>}
     {/* Last child: the menu lies above the trip. */}
     <OverflowMenu open={menuOpen} onClose={() => setMenuOpen(false)} items={menuItems} title="Meer acties voor deze rit" />
@@ -1211,7 +1214,9 @@ function makeStyles(c: RitColors) {
   alightRow: { backgroundColor: c.alightRowBg },
   skippedName: { textDecorationLine: "line-through", color: c.muted },
   skippedTime: { textDecorationLine: "line-through", color: c.muted },
-  skipTag: { backgroundColor: c.cancelBg, color: c.red, fontSize: 11, fontWeight: "800", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, overflow: "hidden" },
+  skipTimeTag: { backgroundColor: c.cancelBg, color: c.red, fontSize: 10, fontWeight: "800",
+    paddingHorizontal: 5, paddingVertical: 2, borderRadius: 6, overflow: "hidden",
+    alignSelf: "flex-start", marginTop: 3 },
   ritAlertStops: { color: c.text, fontSize: 11.5, fontWeight: "700", marginTop: 2 },
   alightTag: { backgroundColor: c.alightTagBg, color: c.alightTagText, fontSize: 11, fontWeight: "800", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, overflow: "hidden" },
   timelineRowDisabled: { opacity: 0.4 },
