@@ -249,22 +249,29 @@ function normalizeJourneyStop(item: any, index: number, total: number, journeyDe
   const scheduledClock = formatDutchClock(plannedArrival);
   const plannedDepartureRaw = first(item?.planned_departure_time, item?.planned_departure);
   const plannedDeparture = plannedDepartureRaw !== undefined ? formatDutchClock(plannedDepartureRaw) : undefined;
+  const rtAge = num(item?.rt_feed_age_seconds);
+  const rtStop = item?.rt_source === "gtfs_rt_stop" && state !== "passed" &&
+    rtAge !== undefined && rtAge >= 0 && rtAge <= 90 &&
+    (item?.rt_arrival_at || item?.rt_departure_at);
+  const rtArrival = rtStop ? formatDutchClock(first(item?.rt_arrival_at, item?.rt_departure_at)) : undefined;
+  const rtDeparture = rtStop ? formatDutchClock(first(item?.rt_departure_at, item?.rt_arrival_at)) : undefined;
+  const rtDelaySeconds = rtStop ? num(first(item?.rt_arrival_delay_seconds, item?.rt_departure_delay_seconds)) : undefined;
   const reportedDeparture = first(item?.actual_departure, item?.departure_time);
   const distinctDeparture = item?.departure_timing_live === true && plannedDepartureRaw !== undefined &&
     reportedDeparture !== undefined && formatDutchClock(reportedDeparture) !== formatDutchClock(plannedDepartureRaw);
-  const stopPredictionAvailable = distinctArrival || distinctDeparture ||
+  const stopPredictionAvailable = Boolean(rtStop) || distinctArrival || distinctDeparture ||
     (item?.timing_live === true && delayMinutes !== undefined && delayMinutes !== 0);
   const tripEstimateAvailable = journeyLive && typeof journeyDelaySeconds === "number" &&
     Number.isFinite(journeyDelaySeconds) && Math.abs(journeyDelaySeconds) <= 3600;
   const timingSource: JourneyStop["timingSource"] = stopPredictionAvailable ? "stop" :
     tripEstimateAvailable ? "journey_estimate" : "schedule";
-  const expectedFromStop = distinctArrival ? formatDutchClock(reportedArrival) :
-    stopPredictionAvailable && delayMinutes !== undefined ? shiftClock(scheduledClock, delayMinutes) : undefined;
+  const expectedFromStop = rtArrival || (distinctArrival ? formatDutchClock(reportedArrival) :
+    stopPredictionAvailable && delayMinutes !== undefined ? shiftClock(scheduledClock, delayMinutes) : undefined);
   const expectedFromJourney = tripEstimateAvailable && !actualKnown
     ? delayedClock(scheduledClock, journeyDelaySeconds) : undefined;
-  const expectedDeparture = distinctDeparture ? formatDutchClock(reportedDeparture) :
+  const expectedDeparture = rtDeparture || (distinctDeparture ? formatDutchClock(reportedDeparture) :
     stopPredictionAvailable && plannedDeparture && delayMinutes !== undefined ? shiftClock(plannedDeparture, delayMinutes) :
-    plannedDeparture && tripEstimateAvailable ? delayedClock(plannedDeparture, journeyDelaySeconds) : plannedDeparture;
+    plannedDeparture && tripEstimateAvailable ? delayedClock(plannedDeparture, journeyDelaySeconds) : plannedDeparture);
 
   return {
     id: str(first(item?.id, item?.stop_id, `${index}`)),
@@ -275,7 +282,8 @@ function normalizeJourneyStop(item: any, index: number, total: number, journeyDe
     expectedTime: expectedFromStop || expectedFromJourney || scheduledClock,
     plannedDepartureTime: plannedDeparture,
     expectedDepartureTime: expectedDeparture,
-    delayMinutes: stopPredictionAvailable ? delayMinutes :
+    delayMinutes: rtStop && rtDelaySeconds !== undefined ? Math.round(rtDelaySeconds / 60) :
+      stopPredictionAvailable ? delayMinutes :
       tripEstimateAvailable ? Math.round(journeyDelaySeconds / 60) : undefined,
     timingSource,
     state,
