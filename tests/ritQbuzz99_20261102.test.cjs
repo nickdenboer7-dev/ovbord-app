@@ -97,6 +97,6 @@ test("unconfirmed projected time at a passed stop is not a measured actual",()=>
 const ui=fs.readFileSync(path.join(__dirname,"../app/rit/[id].tsx"),"utf8");
 test("skipped stops cross out the time and do not show a delay badge",()=>{
  assert.match(ui,/skip && styles\.skippedTime/);
- assert.match(ui,/delta && !passed && !skip/);
+ assert.match(ui,/delta && !overdueNext && !passed && !skip/);
  assert.match(ui,/skip && isTime\(stop\.plannedTime\)/);
 });

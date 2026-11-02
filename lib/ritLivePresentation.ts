@@ -11,6 +11,18 @@ export function verifiedNextStopIndex(location: JourneyProgress, stopCount: numb
 }
 
 /** Distinguish an explicitly known zero delay from unknown timing quality. */
+export function overdueNextStop(clock: string, nowMs: number, verified: boolean): boolean {
+  if (!verified || !/^\d{1,2}:\d{2}$/.test(clock)) return false;
+  const parts = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Amsterdam" }).formatToParts(new Date(nowMs));
+  const h = Number(parts.find(x => x.type === "hour")?.value);
+  const m = Number(parts.find(x => x.type === "minute")?.value);
+  const [hour, minute] = clock.split(":").map(Number);
+  let minutes = hour * 60 + minute - h * 60 - m;
+  if (minutes < -720) minutes += 1440;
+  if (minutes > 720) minutes -= 1440;
+  return minutes < 0;
+}
+
 export function arrivalTimingDescription(
   journeyLive: boolean,
   delayMinutes: number | undefined,

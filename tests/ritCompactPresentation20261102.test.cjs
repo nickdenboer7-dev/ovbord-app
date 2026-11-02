@@ -18,7 +18,7 @@ test("skipped labels are consistently below the clock in the narrow time column"
 });
 test("one trip-wide delay: don't spam +4 on every estimated stop, but keep per-stop changes", () => {
   assert.match(timeline, /stop\.timingSource === "journey_estimate" \? null : timelineTimeDelta\(stop\.delayMinutes\)/);
-  assert.match(timeline, /\{delta && !passed && !skip \?/);
+  assert.match(timeline, /\{delta && !overdueNext && !passed && !skip \?/);
   assert.match(rit, /stop\.timingSource === "journey_estimate" && !passed && !skip/);
   // Important: the next-stop delay in the header is deliberately unchanged.
   assert.match(rit, /journey\.stops\.some\(/);

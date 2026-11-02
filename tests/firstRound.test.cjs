@@ -190,14 +190,14 @@ function tripModule(){
  const source=ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020,jsx:ts.JsxEmit.React,esModuleInterop:true}}).outputText+'\nexports.testTimeLine=TimeLine;exports.testStyles=makeStyles;';
  m._compile(source,file);return m.exports;
 }
-test('timeline renders grey past stops and one Nu hier tag from expected time, with no repeated unconfirmed-position labels',()=>{
+test('timeline renders grey past stops and one Geschat tag without pretending GPS, with no repeated unconfirmed-position labels',()=>{
  defaults();const {testTimeLine:TimeLine,testStyles}=tripModule(),h=new Harness();const {ritColors}=require('../lib/ritTheme.ts');const styles=testStyles(ritColors.light);
  const journey={id:'trip',line:'4',destination:'C',mode:'bus',polyline:[],stops:[stopAt('A','16:50'),stopAt('B','16:59'),stopAt('C','17:08')]};
  try{const tree=h.render(()=>TimeLine({journey,lineColor:'#0863b5',nowMs:now,liveLocation:null,boarding:{},alightIndex:0,onOpenStop(){}})),rows=findAll(tree,'Pressable').filter(r=>r.props.accessibilityLabel?.endsWith('. Vertrekbord openen'));
- assert.equal(rows.length,3);assert.equal(text(tree).split('Nu hier').length-1,1);assert.doesNotMatch(text(tree),/Positie niet bevestigd/);
+ assert.equal(rows.length,3);assert.equal(text(tree).split('Geschat').length-1,1);assert.doesNotMatch(text(tree),/Positie niet bevestigd/);
  assert.equal(findAll(rows[0],'Text').find(n=>text(n)==='A').props.style.filter(Boolean).at(-1).color,ritColors.light.passedName);
  assert.equal(findAll(rows[0],'Text').find(n=>text(n)==='16:50').props.style.filter(Boolean).at(-1).color,ritColors.light.passedText);
- assert.match(text(rows[1]),/Nu hier/);assert.equal(findAll(rows[1],'Text').find(n=>text(n)==='Nu hier').props.onPress,undefined);assert.equal(styles.header.flexShrink,0);assert.equal(styles.header.backgroundColor,'#185c98');assert.equal(styles.headerStatus.flexDirection,'row');
+ assert.match(text(rows[1]),/Geschat/);assert.equal(findAll(rows[1],'Text').find(n=>text(n)==='Geschat').props.onPress,undefined);assert.equal(styles.header.flexShrink,0);assert.equal(styles.header.backgroundColor,'#185c98');assert.equal(styles.headerStatus.flexDirection,'row');
  }finally{h.destroy();}
 });
 test('the trip page displays unconfirmed position once inside its blue header',async()=>{

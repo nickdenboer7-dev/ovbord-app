@@ -41,7 +41,7 @@ import { RitTransfers } from "../../components/RitTransfers";
 import { mapGpsLabel, panMapCenter, routeFollowZoom, routeMapCenter, routeOverviewZoom } from "../../lib/ritMapViewport";
 import type { MapViewMode } from "../../lib/ritMapViewport";
 import { boardingPosition, confirmedDwellStop, gpsFixForRit, verifiedTimelineLocation } from "../../lib/ritConsistency";
-import { verifiedNextStopIndex } from "../../lib/ritLivePresentation";
+import { verifiedNextStopIndex, overdueNextStop } from "../../lib/ritLivePresentation";
 import { boardingDepartureNote } from "../../lib/realtimeConsistency";
 import { ritColors } from "../../lib/ritTheme";
 import type { RitColors } from "../../lib/ritTheme";
@@ -346,9 +346,10 @@ function TimeLine({ journey, lineColor, lineTextColor, liveLocation, boarding, o
         ? (isTime(stop.expectedDepartureTime) ? stop.expectedDepartureTime! :
           isTime(stop.plannedDepartureTime) ? stop.plannedDepartureTime! : timeOf(stop, passed))
         : timeOf(stop, passed);
+      const overdueNext = isNext && !progress.estimated && overdueNextStop(stopClock, nowMs, true);
       const boardingEta = isBoarding ? boardingCountdown(stopClock, nowMs, passed, lastKnown) : "";
       const label = timelineStopLabel({ name: stop.name, clock: stopClock, delayMinutes: stop.delayMinutes, platform,
-        passed, vehicleHere: atStop, next: isNext, boarding: isBoarding, alight: isAlight, last, lastKnown, estimated:progress.estimated, skipped: skip })
+        passed, vehicleHere: atStop && !progress.estimated, next: isNext, boarding: isBoarding, alight: isAlight, last, lastKnown, estimated:progress.estimated, skipped: skip })
         + (boardingEta ? ", " + boardingEta : "");
       // Tap opens the stop board; a long press (or tapping while choosing) picks the alighting stop.
       return <Pressable key={stop.id + "-" + index}
@@ -376,9 +377,10 @@ function TimeLine({ journey, lineColor, lineTextColor, liveLocation, boarding, o
         <View style={styles.timelineTimeCol}>
           <View style={styles.timelineActualLine}>
             <Text maxFontSizeMultiplier={1.3} numberOfLines={1} style={[styles.timelineTime, passed && styles.passedText, afterAlight && styles.afterAlightText,
-              (isBoarding || isNext || atStop) && !passed && styles.timelineImportantTime, isAlight && styles.alightTime, passed && styles.passedText, skip && styles.skippedTime]}>{stop.timingSource === "journey_estimate" && !passed && !skip &&
+              (isBoarding || isNext || atStop) && !passed && styles.timelineImportantTime, isAlight && styles.alightTime, passed && styles.passedText, skip && styles.skippedTime]}>{overdueNext ? "—" : stop.timingSource === "journey_estimate" && !passed && !skip &&
                 Boolean(stop.delayMinutes) ? "≈" + stopClock : stopClock}</Text>
-            {delta && !passed && !skip ? <Text maxFontSizeMultiplier={1.3} numberOfLines={1} style={[styles.delayText,
+            {overdueNext ? <Text style={styles.delayText}>geen ETA</Text> : null}
+            {delta && !overdueNext && !passed && !skip ? <Text maxFontSizeMultiplier={1.3} numberOfLines={1} style={[styles.delayText,
               { color: delta.tone === "red" ? colors.danger : delta.tone === "orange" ? colors.delayWarning : colors.success }]}>{delta.text}</Text> : null}
           </View>
           {/* Fixed, compact status column prevents long stop names from wrapping the badge. */}
@@ -388,7 +390,7 @@ function TimeLine({ journey, lineColor, lineTextColor, liveLocation, boarding, o
         </View>
         <View style={styles.timelineRail}>
           {index > 0 ? <View style={[styles.railTop, { backgroundColor: railAbove, width: railAbovePassed ? 2 : 3 }]}/> : null}
-          {atStop ? <View style={[styles.railVehicle, { backgroundColor: progress.estimated ? c.muted : lineColor }]}>
+          {atStop && !progress.estimated ? <View style={[styles.railVehicle, { backgroundColor: progress.estimated ? c.muted : lineColor }]}>
             <Ionicons name={icon} size={14} color={progress.estimated ? "#FFFFFF" : lineTextColor}/>
           </View> : isAlight ? <View style={[styles.railAlight, { borderColor: c.alightTagText }]}>
             <View style={[styles.railAlightDot, { backgroundColor: c.alightTagText }]}/>
@@ -404,8 +406,8 @@ function TimeLine({ journey, lineColor, lineTextColor, liveLocation, boarding, o
               (isBoarding || isNext || atStop) && !passed && styles.timelineImportantName, last && styles.lastStop,
               isAlight && styles.alightName, skip && styles.skippedName, passed && styles.passedName]} numberOfLines={1}>{displayName}</Text>
             {atStop ? <Text maxFontSizeMultiplier={1.3} onPress={!progress.estimated ? onFocusVehicle : undefined} accessibilityRole={!progress.estimated && onFocusVehicle ? "button" : undefined}
-              accessibilityLabel={progress.estimated ? "Nu hier volgens verwachte tijden" : vehicleNoun(journey.mode) + " is hier. Volg op de kaart"}
-              style={[styles.nowTag, { backgroundColor: lineColor, color: lineTextColor }, progress.estimated && styles.tagMuted]}>Nu hier</Text> : null}
+              accessibilityLabel={progress.estimated ? "Geschatte positie volgens vertrektijden" : vehicleNoun(journey.mode) + " is hier. Volg op de kaart"}
+              style={[styles.nowTag, { backgroundColor: lineColor, color: lineTextColor }, progress.estimated && styles.tagMuted]}>{progress.estimated ? "Geschat" : "Nu hier"}</Text> : null}
             {isNext && !atStop && !isAlight && !skip ? <Text maxFontSizeMultiplier={1.3} style={styles.nextTag}>Volgende halte</Text> : null}
           </View>
           {isBoarding ? <View style={styles.boardingInfo}>
@@ -734,7 +736,8 @@ export default function RitScreen() {
   const headerStatusText = cancelled ? "Deze rit rijdt niet" : ended ? "Rit beëindigd"
     : headerHasLive ? [headline, typeof shownGpsAge === "number" ? "live " + Math.round(shownGpsAge) + " sec" : "live"].filter(Boolean).join(" · ")
     : lastKnown ? "Laatst bekende positie" : journey ? headline : "Rit laden…";
-  const nextStopDelta = nextStop && nextStopIsLive && !lastKnown && journey?.live
+  const nextStopOverdue = Boolean(nextStop && nextStopIsLive && !lastKnown && overdueNextStop(timeOf(nextStop), nowMs, true));
+  const nextStopDelta = nextStop && nextStopIsLive && !lastKnown && journey?.live && !nextStopOverdue
     ? timelineTimeDelta(nextStop.delayMinutes) : null;
   const positionSub = cancelled ? (cancellation.source === "haltebord"
       ? "Het vertrekbord meldt deze rit als uitgevallen. Kijk daar voor een alternatief."
@@ -874,17 +877,18 @@ export default function RitScreen() {
     {/* This small card stays visible with the route, while the timeline itself may scroll to the bus. */}
     {journey && nextStop && !mapOpen && !choosingAlight && !ended && !cancelled ? <Pressable
       onPress={() => openStopBoard(nextStop)} accessibilityRole="button"
-      accessibilityLabel={(nextStopIsLive && !lastKnown ? "Volgende halte volgens GPS" : "Volgende halte volgens dienstregeling") + ": " + nextStop.name + ", " + timeOf(nextStop) + ". Haltebord openen"}
+      accessibilityLabel={(nextStopIsLive && !lastKnown ? "Volgende halte volgens GPS" : "Volgende halte volgens dienstregeling") + ": " + nextStop.name + ", " + (nextStopOverdue ? "geen actuele aankomsttijd" : timeOf(nextStop)) + ". Haltebord openen"}
       style={styles.nextStopQuickCard}>
       <View style={[styles.nextStopQuickIcon, { backgroundColor: nextStopIsLive && !lastKnown ? c.nextTagBg : c.positionBg }]}>
         <Ionicons name={vehicleIcon(journey.mode)} size={18} color={nextStopIsLive && !lastKnown ? c.navy : c.muted}/>
       </View>
       <View style={styles.nextStopQuickBody}>
-        <Text maxFontSizeMultiplier={1.3} style={styles.nextStopQuickLabel}>{nextStopIsLive && !lastKnown ? "Volgende halte · GPS" : lastKnown ? "Laatst bekende volgende halte" : "Volgende volgens dienstregeling"}</Text>
+        <Text maxFontSizeMultiplier={1.3} style={styles.nextStopQuickLabel}>{nextStopIsLive && !lastKnown ? "Volgende halte · GPS" : lastKnown ? "Laatst bekende volgende halte" : (nextStop?.timingSource === "stop" || nextStop?.timingSource === "journey_estimate" ? "Volgende volgens verwachting" : "Volgende volgens dienstregeling")}</Text>
         <Text maxFontSizeMultiplier={1.3} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={styles.nextStopQuickName}>{stopShort(nextStop.name)}</Text>
       </View>
       <View style={styles.nextStopQuickTiming}>
-        <Text maxFontSizeMultiplier={1.3} style={styles.nextStopQuickClock}>{timeOf(nextStop)}</Text>
+        <Text maxFontSizeMultiplier={1.3} style={styles.nextStopQuickClock}>{nextStopOverdue ? "-" : timeOf(nextStop)}</Text>
+        {nextStopOverdue ? <Text style={[styles.nextStopQuickDelta, { color: c.muted }]}>geen ETA</Text> : null}
         {nextStopDelta ? <Text maxFontSizeMultiplier={1.3} style={[styles.nextStopQuickDelta,
           { color: nextStopDelta.tone === "red" ? colors.danger : nextStopDelta.tone === "orange" ? colors.delayWarning : colors.success }]}>{nextStopDelta.text} min</Text> : null}
       </View>
