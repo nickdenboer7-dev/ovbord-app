@@ -40,7 +40,7 @@ import { JourneySkeleton } from "../../components/JourneySkeleton";
 import { RitTransfers } from "../../components/RitTransfers";
 import { mapGpsLabel, panMapCenter, routeFollowZoom, routeMapCenter, routeOverviewZoom } from "../../lib/ritMapViewport";
 import type { MapViewMode } from "../../lib/ritMapViewport";
-import { boardingPosition, confirmedDwellStop, gpsFixForRit, verifiedTimelineLocation } from "../../lib/ritConsistency";
+import { boardingPosition, confirmedDwellStop, gpsFixForRit, safeTimelineLocation } from "../../lib/ritConsistency";
 import { verifiedNextStopIndex, overdueNextStop } from "../../lib/ritLivePresentation";
 import { boardingDepartureNote } from "../../lib/realtimeConsistency";
 import { ritColors } from "../../lib/ritTheme";
@@ -650,7 +650,10 @@ export default function RitScreen() {
   const shownGpsAge = typeof gpsAge === "number" && Number.isFinite(gpsAge) ? Math.max(0, gpsAge + (nowMs - fetchedAt) / 1000) : undefined;
   const gpsFresh = Boolean(live && shownGpsAge !== undefined && shownGpsAge < 45);
   // Backend state "current" is a route-progress marker, not evidence of dwell.
-  const verifiedLive = gpsFresh ? verifiedTimelineLocation(live, confirmedStop.current) : null;
+  const verifiedLive = gpsFresh ? safeTimelineLocation(
+    live, confirmedStop.current, journey ? gpsFixForRit(journey, fetchedAt) : null,
+    journey?.stops || []
+  ) : null;
   // When the last refresh failed, what is shown is the last known state, not live.
   const lastKnown = Boolean(failure && journey);
   const nextStopIndex = verifiedNextStopIndex(verifiedLive, journey?.stops.length || 0);

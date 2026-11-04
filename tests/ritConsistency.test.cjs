@@ -50,3 +50,29 @@ test("boarding state comes only from verified location", () => {
   assert.equal(boardingPosition(1,{kind:"between",index:1,updated:new Date()}),"passed");
   assert.equal(boardingPosition(1,null),"unknown");
 });
+
+test("EBS lijn 65: GPS 39m van De Vlinder markeert halte niet als vertrokken", () => {
+  const currentStops = [
+    {id:"3183838",name:"Zaandam, De Vlinder",state:"current",lat:52.429726,lon:4.856271},
+    {id:"3183775",name:"Zaandam, Zuidervaart",state:"upcoming",lat:52.432076,lon:4.851303}
+  ];
+  const stationary = {lat:52.42949,lon:4.85669,observedMs:10000};
+  const routeMatch = {kind:"between",index:0,updated:new Date(10000)};
+  assert.equal(loaded.exports.safeTimelineLocation(routeMatch,null,stationary,currentStops),null);
+  const next = {lat:52.429491,lon:4.85669,observedMs:25000};
+  const confirmed = confirmedDwellStop(stationary,next,currentStops);
+  assert.equal(confirmed,0);
+  const loc = loaded.exports.safeTimelineLocation(routeMatch,confirmed,next,currentStops);
+  assert.deepEqual(loc,{kind:"at",index:0,updated:new Date(10000)});
+  assert.equal(boardingPosition(0,loc),"at");
+});
+
+test("Na werkelijk verlaten van halte mag onderweg getoond worden", () => {
+  const currentStops = [
+    {id:"a",name:"De Vlinder",state:"current",lat:52.429726,lon:4.856271},
+    {id:"b",name:"Zuidervaart",state:"upcoming",lat:52.432076,lon:4.851303}
+  ];
+  const moved = {lat:52.4304,lon:4.8553,observedMs:40000};
+  const match = {kind:"between",index:0,updated:new Date(40000)};
+  assert.deepEqual(loaded.exports.safeTimelineLocation(match,null,moved,currentStops),match);
+});

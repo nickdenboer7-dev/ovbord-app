@@ -30,8 +30,15 @@ export function confirmedDwellStop(
   const near = stops.map((stop, index) => ({
     index,
     position: typeof stop.lat === "number" && typeof stop.lon === "number" ? {lat:stop.lat,lon:stop.lon} : null
-  })).filter((entry) => entry.position &&
-    distanceMeters(previous, entry.position) <= 12 && distanceMeters(current, entry.position) <= 12);
+  })).filter((entry) => {
+    if (!entry.position) return false;
+    // Bus bays may be tens of metres from the published stop marker.
+    // Allow the wider radius only for the backend current stop and two stable GPS fixes.
+    const stop = stops[entry.index];
+    const radius = stop.state === "current" ? 55 : 12;
+    return distanceMeters(previous, entry.position) <= radius &&
+      distanceMeters(current, entry.position) <= radius;
+  });
   return near.length === 1 ? near[0].index : null;
 }
 
@@ -39,8 +46,28 @@ export function confirmedDwellStop(
 export function verifiedTimelineLocation(
   matched: JourneyLocation, stationaryAt: number | null
 ): JourneyLocation {
-  if (!matched || matched.kind !== "at" || stationaryAt === matched.index) return matched;
+  if (!matched) return null;
+  if (stationaryAt !== null && Math.abs(stationaryAt - matched.index) <= 1)
+    return {kind:"at",index:stationaryAt,updated:matched.updated};
+  if (matched.kind !== "at") return matched;
   return matched.index > 0 ? {kind:"between",index:matched.index-1,updated:matched.updated} : null;
+}
+
+/** Do not claim a bus has departed based on a single ambiguous GPS fix near
+ * the physical stop. Wait for confirmed dwell or movement away from the stop. */
+export function safeTimelineLocation(
+  matched: JourneyLocation, stationaryAt: number | null,
+  fix: GpsFix | null, stops: readonly JourneyStop[]
+): JourneyLocation {
+  const location = verifiedTimelineLocation(matched, stationaryAt);
+  if (!location || location.kind !== "between" || !fix) return location;
+  for (const i of [location.index, location.index + 1]) {
+    const stop = stops[i];
+    if (!stop || stop.state !== "current" ||
+        typeof stop.lat !== "number" || typeof stop.lon !== "number") continue;
+    if (distanceMeters(fix, {lat:stop.lat, lon:stop.lon}) <= 55) return null;
+  }
+  return location;
 }
 
 export type ArrivalPosition = "approaching" | "at" | "passed" | "unknown";
