@@ -242,10 +242,14 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
     };
     reloadBoardRef.current = () => load(false);
     void(async()=>{
-      const entry=await cachedBoard(stop.id);
-      if(!active||seq!==boardRequest.current)return;
-      if(!previousBoard.current&&entry){previousBoard.current=entry.board;setBoard(entry.board);setFetchedAt(entry.fetchedAt);setCachePending(true);setLoading(false);}
-      await load(!initialBoard&&!entry);
+      // Start the live request immediately; Android storage hydration must not
+      // delay the network request for a large station by several seconds.
+      const fetchPromise=load(!initialBoard);
+      const entry=await cachedBoard(stop.id).catch(()=>undefined);
+      if(active&&seq===boardRequest.current&&!previousBoard.current&&entry){
+        previousBoard.current=entry.board;setBoard(entry.board);setFetchedAt(entry.fetchedAt);setCachePending(true);setLoading(false);
+      }
+      await fetchPromise;
     })();
     return () => { active = false; reloadBoardRef.current = async () => {}; };
   }, [stop.id, retryBoard]);

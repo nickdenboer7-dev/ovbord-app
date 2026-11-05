@@ -450,8 +450,11 @@ export async function getHalte(id: string, _skipSiblings = false): Promise<Halte
   };
   if (!board.stop.lines.length) board.stop.lines = mergeLines(board.departures.map(d => ({ line:d.line,carrier:d.carrier,mode:d.mode })));
 
-  // Merge sibling quays: zelfde haltename, max 200m, andere ID → beide richtingen op het bord
-  if (!_skipSiblings && board.stop.lat && board.stop.lon) {
+  // A major interchange is already a complete multi-mode board. The extra
+  // nearby + per-quay requests otherwise delay showing dozens of departures.
+  // Keep sibling merging for smaller stops where both directions need it.
+  const needsSiblingQuays = !_skipSiblings && board.stop.lines.length < 10;
+  if (needsSiblingQuays && board.stop.lat && board.stop.lon) {
     try {
       const nearbyRaw = await requestJson("/api/nearby", { lat: board.stop.lat, lon: board.stop.lon });
       const normName = (s: string) => (s || "").trim().toLocaleLowerCase("nl");
