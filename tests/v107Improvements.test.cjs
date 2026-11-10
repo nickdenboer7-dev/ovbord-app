@@ -63,3 +63,11 @@ test("V1.0.7: reopened boards show a cached snapshot without marking it live", (
   assert.match(file, /initialStale \|\| \(!initialBoard && Boolean\(instantSnapshot\)\)/);
   assert.match(file, /const fetchPromise=load\(!initialVisibleBoard\)/);
 });
+
+test("V1.0.7: fresh GPS without a verified route match gets an honest header, not a claimed stop", () => {
+  const file = read("app/rit/[id].tsx");
+  assert.match(file, /const gpsReceivedUnmatched = Boolean\(!lastKnown && !verifiedLive/);
+  assert.match(file, /validPosition\(journey\.vehicle\) && gpsFixForRit\(journey, fetchedAt\)/);
+  assert.match(file, /gpsReceivedUnmatched \? "GPS " \+ Math\.round\(shownGpsAge!\) \+ " sec · routepositie onzeker"/);
+  assert.match(file, /const nextStopIndex = verifiedNextStopIndex\(verifiedLive/);
+});
