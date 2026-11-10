@@ -21,7 +21,7 @@ import { continuationText, estimatedSpeedKmh, nextTripDecision, notTheTappedTrip
 import type { TripSignature } from "../../lib/ritIdentity";
 import { journeyEnded, ritShareText } from "../../lib/ritLifecycle";
 import { journeyStopClock, expectedTimelineLocation, timelineDisplayProgress } from "../../lib/timelineProgress";
-import { journeyExtras } from "../../lib/flowLiveDetails";
+import { isRouteMatchFailure, journeyExtras } from "../../lib/flowLiveDetails";
 import { disruptionSummary } from "../../lib/haltebordV4";
 import { upcomingJourneyNotices } from "../../lib/upcomingJourneyNotices";
 import { linesConflict } from "../../lib/flowRitQuality";
@@ -731,7 +731,9 @@ export default function RitScreen() {
   const transfersExpanded = transfersOpen ?? (alightState.status === "next" || alightState.status === "at");
   const alertSummary = disruptionSummary(line, disruptions);
   // One position card: where the vehicle is, and one line that follows the trip.
-  const headline = journey ? positionHeadline({ ended, placeText: onTheWayText(placeText), live: Boolean(journey.live), cancelled }) : "";
+  // Fresh GPS that cannot be tied to the route is not the same as "no GPS".
+  const routeUnknown = !live && isRouteMatchFailure(info.liveReason);
+  const headline = journey ? positionHeadline({ ended, placeText: onTheWayText(placeText), live: Boolean(journey.live), cancelled, routeUnknown }) : "";
   const headerHasLive = Boolean(verifiedLive && !lastKnown && !ended && !cancelled);
   const headerStatusText = cancelled ? "Deze rit rijdt niet" : ended ? "Rit beëindigd"
     : headerHasLive ? [headline, typeof shownGpsAge === "number" ? "live " + Math.round(shownGpsAge) + " sec" : "live"].filter(Boolean).join(" · ")

@@ -6,8 +6,43 @@ type Point = {lat: number; lon: number};
 // Cache the actual observation time per fetched journey. Without this,
 // rerendering every 10 seconds would keep resetting GPS freshness.
 const observedGPS = new WeakMap<object, {seconds: number; updatedMs: number}>();
-export type LiveLocation = { kind: "at" | "between"; index: number; updated: Date } | null;
-export type JourneyExtras = { busNumber?: string; carrier?: string; journeyNumber?: string; block?: string; lastUpdate?: string; liveLocation: LiveLocation };
+declare const __DEV__: boolean | undefined;
+/** The backend's /api/rit does not send nextStopId and next_event is timetable-based, so it is no GPS evidence.
+ * Keep false until the origin of a next-stop field is explicitly established as GPS-confirmed. */
+const ALLOW_BACKEND_NEXT: boolean = false;
+/** Where a live location came from. "backend-next" is the weakest source: it relies on the backend's own next-stop field. */
+export type LocationSource = "shape" | "chord" | "backend-next";
+/** Why no live location was produced (diagnosis only; never shown as a position). */
+export type NoLocationReason =
+  | "no-journey" | "not-live" | "no-gps-position" | "no-gps-time" | "stale-gps" | "gps-clock-ahead"
+  | "shape-invalid" | "shape-too-long" | "shape-bad-point" | "shape-gap"
+  | "too-few-stops" | "no-stop-run"
+  | "off-route" | "ambiguous-route" | "outside-mapped-section" | "ambiguous-section" | "ambiguous-stop" | "no-segment"
+  | "before-first-stop" | "after-last-stop"
+  | "chord-no-match" | "no-next-stop";
+export type LiveLocation = { kind: "at" | "between"; index: number; updated: Date; source?: LocationSource } | null;
+export type JourneyExtras = { busNumber?: string; carrier?: string; journeyNumber?: string; block?: string; lastUpdate?: string; liveLocation: LiveLocation; liveReason?: NoLocationReason };
+
+const ROUTE_FAILURES: ReadonlySet<NoLocationReason> = new Set<NoLocationReason>([
+  "shape-invalid", "shape-too-long", "shape-bad-point", "shape-gap", "too-few-stops", "no-stop-run",
+  "off-route", "ambiguous-route", "outside-mapped-section", "ambiguous-section", "ambiguous-stop", "no-segment",
+  "before-first-stop", "after-last-stop",
+  "chord-no-match", "no-next-stop"
+]);
+/** True when GPS was fresh and live but could not be tied to this journey's route ("Routepositie onbekend").
+ * Stale, not-live and missing-GPS reasons are deliberately not route failures. */
+export function isRouteMatchFailure(reason: NoLocationReason | undefined): boolean {
+  return reason !== undefined && ROUTE_FAILURES.has(reason);
+}
+
+// Dev-only: log once per fetched journey object when the outcome changes.
+const diagnosed = new WeakMap<object, string>();
+function diagnose(journey: object, outcome: string, journeyNumber?: string): void {
+  if (typeof __DEV__ === "undefined" || !__DEV__) return;
+  if (diagnosed.get(journey) === outcome) return;
+  diagnosed.set(journey, outcome);
+  console.debug(`[ovbord-gps] rit ${journeyNumber ?? "?"}: ${outcome}`);
+}
 
 function dict(value: unknown): Dict {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Dict : {};
@@ -55,7 +90,7 @@ function meters(a: Point, b: Point): number {
   return Math.hypot(dx, dy);
 }
 /** Project a point onto a polyline segment and return metres along the route. */
-type RouteProjection = {distance: number; along: number; segment: number};
+type RouteProjection = {distance: number; along: number; segment: number; rawT: number};
 function projectToRoute(pos: Point, route: Point[], offsets: number[]): RouteProjection[] {
   const scale = Math.cos(pos.lat * Math.PI / 180) * 111320;
   const projections: RouteProjection[] = [];
@@ -65,17 +100,20 @@ function projectToRoute(pos: Point, route: Point[], offsets: number[]): RoutePro
     const bx = (b.lon - pos.lon) * scale, by = (b.lat - pos.lat) * 111320;
     const vx = bx - ax, vy = by - ay, sq = vx * vx + vy * vy;
     if (sq < 0.01) continue;
-    const t = Math.max(0, Math.min(1, -(ax * vx + ay * vy) / sq));
+    const rawT = -(ax * vx + ay * vy) / sq;
+    const t = Math.max(0, Math.min(1, rawT));
     projections.push({
       distance: Math.hypot(ax + t * vx, ay + t * vy),
       along: offsets[i] + t * (offsets[i + 1] - offsets[i]),
-      segment: i
+      segment: i,
+      rawT
     });
   }
   return projections;
 }
-function routePoints(input: unknown): Point[] | null {
-  if (!Array.isArray(input) || input.length < 2 || input.length > 2500) return null;
+function routePoints(input: unknown): Point[] | NoLocationReason {
+  if (!Array.isArray(input) || input.length < 2) return "shape-invalid";
+  if (input.length > 2500) return "shape-too-long";
   const route: Point[] = [];
   for (const row of input) {
     // The existing /api/rit shape is [latitude, longitude]; tolerate keyed points too.
@@ -83,7 +121,7 @@ function routePoints(input: unknown): Point[] | null {
       ? point({lat: row[0], lon: row[1]})
       : point(dict(row));
     // Do not silently join across invalid points: that can invent a route segment.
-    if (!p) return null;
+    if (!p) return "shape-bad-point";
     route.push(p);
   }
   return route;
@@ -93,15 +131,21 @@ function routePoints(input: unknown): Point[] | null {
  * Never infer progress across a gap or switch to stop-to-stop chords when a
  * shape was supplied but cannot be trusted.
  */
-function matchRoute(pos: Point, stops: JourneyStop[], updated: Date, rawShape: unknown):
-    {usable: boolean; location: LiveLocation} {
+type RouteMatch = {usable: boolean; location: LiveLocation; reason?: NoLocationReason; rejected?: boolean; detail?: string};
+function matchRoute(pos: Point, stops: JourneyStop[], updated: Date, rawShape: unknown): RouteMatch {
   const provided = rawShape !== undefined && rawShape !== null;
+  if (!provided) return {usable: false, location: null};
+  // `rejected` = a trustworthy route was evaluated and this GPS point was refused.
+  // Other reasons only mean the shape could not be used to judge the position.
+  const none = (reason: NoLocationReason, rejected = false, detail?: string): RouteMatch =>
+    ({usable: true, location: null, reason, rejected, detail});
   const route = routePoints(rawShape);
-  if (!route || stops.length < 2) return {usable: provided, location: null};
+  if (typeof route === "string") return none(route);
+  if (stops.length < 2) return none("too-few-stops");
   const offsets = [0];
   for (let i = 1; i < route.length; i++) {
     const step = meters(route[i - 1], route[i]);
-    if (!Number.isFinite(step) || step > 5000) return {usable:true, location:null};
+    if (!Number.isFinite(step) || step > 5000) return none("shape-gap");
     offsets.push(offsets[i - 1] + step);
   }
 
@@ -131,44 +175,97 @@ function matchRoute(pos: Point, stops: JourneyStop[], updated: Date, rawShape: u
   // sufficient evidence. A two-stop journey can legitimately match both.
   const minRun = stops.length <= 3 ? 2 : 3;
   const validRuns = runs.filter((r) => r.length >= minRun && r[r.length - 1].along - r[0].along >= 30);
-  if (!validRuns.length) return {usable:true, location:null};
+  if (!validRuns.length) return none("no-stop-run");
 
   const projections = projectToRoute(pos, route, offsets);
   projections.sort((a, b) => a.distance - b.distance);
   const closest = projections[0];
-  if (!closest || closest.distance > 65) return {usable:true, location:null};
+  if (!closest || closest.distance > 65) return none("off-route", true,
+    closest ? `${Math.round(closest.distance)} m van route` : undefined);
   const ambiguous = projections.some((candidate) =>
     Math.abs(candidate.along - closest.along) > 250 &&
     candidate.distance <= 45 && candidate.distance <= closest.distance + 30);
-  if (ambiguous) return {usable:true, location:null};
+  if (ambiguous) return none("ambiguous-route", true);
 
-  // Only trust a GPS point within exactly one mapped section. No extrapolation
-  // over the unmapped leading/trailing stops or a missing middle section.
+  // Reject GPS positions before the first or after the last actual stop.
+  // This is separate from the 65 m perpendicular distance to the route.
+  const mappedStops = validRuns.flat();
+  const firstStop = mappedStops.find((s) => s.index === 0);
+  const lastStop = mappedStops.find((s) => s.index === stops.length - 1);
+  if (firstStop && lastStop && lastStop.along > firstStop.along) {
+    const beforeMeters = firstStop.along - closest.along;
+    const afterMeters = closest.along - lastStop.along;
+    if (beforeMeters > 0.05)
+      return none("before-first-stop", true, `${Math.round(beforeMeters)} m vóór eerste halte`);
+    if (afterMeters > 0.05)
+      return none("after-last-stop", true, `${Math.round(afterMeters)} m voorbij laatste halte`);
+
+    // A projection at the first/last *shape* vertex is clamped. Check the
+    // direction of travel to recognize positions beyond that vertex.
+    if (firstStop.along <= 0.05 && closest.segment === 0 && closest.rawT < 0) {
+      const overrun = -closest.rawT * meters(route[0], route[1]);
+      if (overrun > 0.05)
+        return none("before-first-stop", true, `${Math.round(overrun)} m vóór eerste halte`);
+    }
+    if (offsets[offsets.length - 1] - lastStop.along <= 0.05 &&
+        closest.segment === route.length - 2 && closest.rawT > 1) {
+      const overrun = (closest.rawT - 1) * meters(route[route.length - 2], route[route.length - 1]);
+      if (overrun > 0.05)
+        return none("after-last-stop", true, `${Math.round(overrun)} m voorbij laatste halte`);
+    }
+  }
+
+  // Do not extend a recognized route section by 70 m beyond its stop bounds.
   const matchingRuns = validRuns.filter((r) =>
-    closest.along >= r[0].along - 70 && closest.along <= r[r.length - 1].along + 70);
-  if (matchingRuns.length !== 1) return {usable:true, location:null};
+    closest.along >= r[0].along && closest.along <= r[r.length - 1].along);
+  if (matchingRuns.length === 0) return none("outside-mapped-section", true);
+  if (matchingRuns.length > 1) return none("ambiguous-section", true);
   const matched = matchingRuns[0];
   const atStops = matched.filter((r) =>
     meters(pos, r.point) <= 35 && Math.abs(r.along - closest.along) <= 65);
   if (atStops.length === 1)
-    return {usable:true, location:{kind:'at', index:atStops[0].index, updated}};
-  if (atStops.length > 1) return {usable:true, location:null};
+    return {usable:true, location:{kind:'at', index:atStops[0].index, updated, source:"shape"}};
+  if (atStops.length > 1) return none("ambiguous-stop", true);
   for (let i = 0; i < matched.length - 1; i++) {
     if (closest.along >= matched[i].along && closest.along < matched[i + 1].along)
-      return {usable:true, location:{kind:'between', index:matched[i].index, updated}};
+      return {usable:true, location:{kind:'between', index:matched[i].index, updated, source:"shape"}};
   }
-  return {usable:true, location:null};
+  const nearestStop = Math.min(...matched.map((s) => meters(pos, s.point)));
+  return none("no-segment", true, `${Math.round(nearestStop)} m tot dichtstbijzijnde halte`);
 }
 
-function matchLocation(pos: Point, stops: JourneyStop[], updated: Date): LiveLocation {
+function matchLocation(pos: Point, stops: JourneyStop[], updated: Date): RouteMatch {
   const locations = stops.map((stop) => point(dict(stop)));
+  // A missing shape is not permission to extrapolate past the terminal stops.
+  const terminalOverrun = (terminal: number, adjacent: number): number | null => {
+    const a = locations[terminal], b = locations[adjacent];
+    if (!a || !b) return null;
+    const scale = Math.cos(pos.lat * Math.PI / 180) * 111320;
+    const dx = (pos.lon - a.lon) * scale, dy = (pos.lat - a.lat) * 111320;
+    const vx = (b.lon - a.lon) * scale, vy = (b.lat - a.lat) * 111320;
+    const length = Math.hypot(vx, vy);
+    if (length < 30) return null;
+    const inward = (dx * vx + dy * vy) / length;
+    const sideways = Math.abs(dx * vy - dy * vx) / length;
+    return inward < -0.05 && sideways <= 65 ? -inward : null;
+  };
   let closestStop = -1;
   let closestStopDistance = Infinity;
   locations.forEach((p, idx) => { if (p && meters(pos,p) < closestStopDistance) {closestStopDistance = meters(pos,p); closestStop = idx;} });
+  if (closestStop === 0 && stops.length > 1) {
+    const overrun = terminalOverrun(0, 1);
+    if (overrun !== null) return {usable:true, location:null, reason:"before-first-stop",
+      rejected:true, detail:`${Math.round(overrun)} m vóór eerste halte`};
+  }
+  if (closestStop === stops.length - 1 && stops.length > 1) {
+    const overrun = terminalOverrun(stops.length - 1, stops.length - 2);
+    if (overrun !== null) return {usable:true, location:null, reason:"after-last-stop",
+      rejected:true, detail:`${Math.round(overrun)} m voorbij laatste halte`};
+  }
   // Only claim that the bus is AT a stop if very close to its actual coordinates.
   if (closestStop >= 0 && closestStopDistance <= 35) {
     const competing = locations.some((p, idx) => idx !== closestStop && p && meters(pos,p) <= 35);
-    if (!competing) return {kind:"at", index:closestStop, updated};
+    if (!competing) return {usable:true, location:{kind:"at", index:closestStop, updated, source:"chord"}};
   }
   const candidates: {index:number; distance:number}[] = [];
   for (let i = 0; i < locations.length - 1; i++) {
@@ -186,12 +283,12 @@ function matchLocation(pos: Point, stops: JourneyStop[], updated: Date): LiveLoc
   candidates.sort((a,b)=>a.distance-b.distance);
   if (candidates.length && candidates[0].distance <= 60 &&
       !candidates.some((other,idx)=>idx > 0 && Math.abs(other.index-candidates[0].index)>1 && other.distance <= candidates[0].distance + 45)) {
-    return {kind:"between", index:candidates[0].index, updated};
+    return {usable:true, location:{kind:"between", index:candidates[0].index, updated, source:"chord"}};
   }
-  return null;
+  return {usable:true, location:null};
 }
 export function journeyExtras(journey: RitData | null, stops: JourneyStop[], nowMs: number = Date.now()): JourneyExtras {
-  if (!journey) return {liveLocation:null};
+  if (!journey) return {liveLocation:null, liveReason:"no-journey"};
   const root = dict(journey), vehicle = dict(root.vehicle);
   // OVbord /api/rit sends GPS freshness as a journey-level age (seconds),
   // while vehicle contains lat/lon but usually no timestamp. Treat this age
@@ -220,19 +317,40 @@ export function journeyExtras(journey: RitData | null, stops: JourneyStop[], now
     valueOf(vehicle,["estimated_position", "estimatedPosition"]) !== true;
   // Strict freshness, valid coordinates and an unambiguous location along this journey are required.
   let liveLocation: LiveLocation = null;
-  if (eligible && gpsPos && last && age >= -5000 && age <= 45000) {
+  let liveReason: NoLocationReason | undefined;
+  let liveDetail: string | undefined;
+  if (!eligible) liveReason = "not-live";
+  else if (!gpsPos) liveReason = "no-gps-position";
+  else if (!last) liveReason = "no-gps-time";
+  else if (age < -5000) liveReason = "gps-clock-ahead";
+  else if (age > 45000) liveReason = "stale-gps";
+  else {
     const road = matchRoute(gpsPos, stops, last, valueOf(root, ["shape", "route_shape", "routeShape"]));
-    // A valid road shape supersedes the legacy chord calculation, even if off-route.
-    liveLocation = road.usable ? road.location : matchLocation(gpsPos, stops, last);
-  }
-  // Use an explicitly supplied next stop as a fallback when the API omits stop coordinates.
-  // A fresh, coordinate-bearing vehicle is still compulsory: a timetable guess is not live GPS.
-  if (!liveLocation && eligible && gpsPos && last && age >= -5000 && age <= 45000) {
-    const nextId = readable(valueOf(vehicle,["nextStopId","next_stop_id", "next_stop_code"]));
-    const norm = (value: string) => value.toLocaleLowerCase("nl").replace(/[^a-z0-9]/g, "");
-    if (nextId) {
-      const indexes = stops.map((stop,index) => norm(String(stop.id)) === norm(nextId) ? index : -1).filter((i)=>i>=0);
-      if (indexes.length === 1 && indexes[0] > 0) liveLocation = {kind:"between",index:indexes[0]-1,updated:last};
+    if (road.usable) {
+      // A usable road shape supersedes the legacy chord calculation, even if off-route.
+      liveLocation = road.location;
+      liveReason = road.reason;
+      liveDetail = road.detail;
+    } else {
+      const chord = matchLocation(gpsPos, stops, last);
+      liveLocation = chord.location;
+      if (!liveLocation) liveReason = chord.reason ?? "chord-no-match";
+      liveDetail = chord.detail;
+    }
+    // Optional fallback on the backend's next stop (disabled, see ALLOW_BACKEND_NEXT). Even when enabled
+    // it never runs after a trustworthy route has refused this GPS point.
+    if (ALLOW_BACKEND_NEXT && !liveLocation && !road.rejected) {
+      const nextId = readable(valueOf(vehicle,["nextStopId","next_stop_id", "next_stop_code"]));
+      const norm = (value: string) => value.toLocaleLowerCase("nl").replace(/[^a-z0-9]/g, "");
+      if (nextId) {
+        const indexes = stops.map((stop,index) => norm(String(stop.id)) === norm(nextId) ? index : -1).filter((i)=>i>=0);
+        if (indexes.length === 1 && indexes[0] > 0) {
+          liveLocation = {kind:"between", index:indexes[0]-1, updated:last, source:"backend-next"};
+          liveReason = undefined;
+        } else {
+          liveReason = liveReason ?? "no-next-stop";
+        }
+      }
     }
   }
   const rawVehicle = readable(root.vehicle);
@@ -241,5 +359,8 @@ export function journeyExtras(journey: RitData | null, stops: JourneyStop[], now
   const journeyNumber = readable(valueOf(root,["journeyNumber","journey_number", "tripNumber", "trip_number"]));
   const block = readable(valueOf(root,["block", "blockNumber", "omloop", "block_id"]));
   const lastUpdate = last ? `${String(last.getHours()).padStart(2,"0")}:${String(last.getMinutes()).padStart(2,"0")}` : undefined;
-  return {busNumber,carrier,journeyNumber,block,lastUpdate,liveLocation};
+  const diagnosticId = readable(valueOf(root, ["id", "journey_id", "journeyId"])) ?? journeyNumber;
+  diagnose(journey, liveLocation ? `ok (${liveLocation.source ?? "?"}, ${liveLocation.kind} ${liveLocation.index})` :
+    `geen positie: ${liveReason ?? "onbekend"}${liveDetail ? ", " + liveDetail : ""}`, diagnosticId);
+  return {busNumber,carrier,journeyNumber,block,lastUpdate,liveLocation,liveReason};
 }

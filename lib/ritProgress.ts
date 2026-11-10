@@ -9,10 +9,12 @@ export function onTheWayText(placeText: string): string {
   return placeText.startsWith("Tussen ") ? "Onderweg tussen " + placeText.slice("Tussen ".length) : placeText;
 }
 
-export function positionHeadline(input: { ended: boolean; placeText: string; live: boolean; cancelled: boolean }): string {
+export function positionHeadline(input: { ended: boolean; placeText: string; live: boolean; cancelled: boolean; routeUnknown?: boolean }): string {
   if (input.cancelled) return "Deze rit rijdt niet";
   if (input.ended) return "Rit beëindigd";
   if (input.placeText) return input.placeText;
+  // Fresh GPS exists but cannot be tied to the route: say so instead of implying there is no GPS.
+  if (input.routeUnknown) return "Routepositie onbekend";
   return "Positie niet bevestigd";
 }
 

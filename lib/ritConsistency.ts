@@ -1,7 +1,8 @@
 import type { JourneyStop, RitData } from "../types/api";
+import type { LocationSource } from "./flowLiveDetails";
 
 export type GpsFix = { lat: number; lon: number; observedMs: number };
-export type JourneyLocation = { kind: "at" | "between"; index: number; updated: Date } | null;
+export type JourneyLocation = { kind: "at" | "between"; index: number; updated: Date; source?: LocationSource } | null;
 
 /** Convert scheduled HH:mm plus live delay in seconds to the same clock precision as the board. */
 export function delayedClock(planned: string, seconds: number | undefined): string | undefined {
@@ -47,10 +48,11 @@ export function verifiedTimelineLocation(
   matched: JourneyLocation, stationaryAt: number | null
 ): JourneyLocation {
   if (!matched) return null;
+  const src = matched.source ? {source: matched.source} : {};
   if (stationaryAt !== null && Math.abs(stationaryAt - matched.index) <= 1)
-    return {kind:"at",index:stationaryAt,updated:matched.updated};
+    return {kind:"at",index:stationaryAt,updated:matched.updated,...src};
   if (matched.kind !== "at") return matched;
-  return matched.index > 0 ? {kind:"between",index:matched.index-1,updated:matched.updated} : null;
+  return matched.index > 0 ? {kind:"between",index:matched.index-1,updated:matched.updated,...src} : null;
 }
 
 /** Do not claim a bus has departed based on a single ambiguous GPS fix near
