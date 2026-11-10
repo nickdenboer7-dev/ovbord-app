@@ -19,8 +19,8 @@ class Harness{constructor(){this.slots=[];this.effects=[];}slot(make){const i=th
 function find(tree,type){if(!tree||typeof tree!=='object')return null;if(tree.type===type)return tree;for(const c of(tree.props?.children||[]).flat(Infinity)){const found=find(c,type);if(found)return found;}return null;}
 const text=tree=>typeof tree==='string'?tree:(tree?.props?.children||[]).flat(Infinity).map(text).join(' ');
 
-test('only a fully downloaded native update displays Update klaar; available alone stays hidden',()=>{
- const a=new Harness();try{enabled=true;status={isUpdateAvailable:true,isUpdatePending:false};assert.equal(a.render(),null);a.flush();status={isUpdatePending:true,isRestarting:false};const tree=a.render();assert.match(text(tree),/Update klaar/);assert.match(text(tree),/Opnieuw starten/);assert.equal(find(tree,'Pressable').props.disabled,false);enabled=false;assert.equal(a.render(),null);}finally{enabled=true;a.destroy();}
+test('only a fully downloaded native update displays the compact restart notice; available alone stays hidden',()=>{
+ const a=new Harness();try{enabled=true;status={isUpdateAvailable:true,isUpdatePending:false};assert.equal(a.render(),null);a.flush();status={isUpdatePending:true,isRestarting:false};const tree=a.render();assert.match(text(tree),/Nieuwe versie klaar/);assert.match(text(tree),/Herstart/);assert.equal(find(tree,'Pressable').props.disabled,false);enabled=false;assert.equal(a.render(),null);}finally{enabled=true;a.destroy();}
 });
 test('restart applies the downloaded update immediately, once, without a confirmation',async()=>{
  const a=new Harness();reloads=0;alerts=0;status={isUpdatePending:true,isRestarting:false};reload=async()=>{reloads++;};

@@ -54,8 +54,33 @@ type Opties = { manualCity?: string | null; fallbackToExample?: boolean; preferF
   /** V5.9: false = never show the permission dialog here (the caller already asked once). */
   askPermission?: boolean };
 
-/** Shared by Start and Buurtbord; only explicit choices may override a real GPS position. */
+/** Never leave Start or Buurtbord waiting for a GPS provider indefinitely. */
+export const LOCATION_FIX_DEADLINE_MS = 5000;
+
+/** A single five-second budget includes permissions, location services and the GPS call. */
 export async function bepaalLocatie(options: Opties = {}): Promise<LocatieResultaat> {
+  // A city chosen by hand is always immediate and must not start the GPS provider.
+  if (options.manualCity && MANUAL_CITIES.some((city) => city.key === options.manualCity)) {
+    return resolveLocatie(options);
+  }
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<LocatieResultaat>((_, reject) => {
+    timeout = setTimeout(() => reject(new LocatieFout("no-gps")), LOCATION_FIX_DEADLINE_MS);
+  });
+  try {
+    return await Promise.race([resolveLocatie(options), deadline]);
+  } catch (error) {
+    if (error instanceof LocatieFout && error.code === "no-gps" && options.fallbackToExample !== false) {
+      return { coords: VOORBEELD_LOCATIE_UTRECHT, bron: "voorbeeld", fixAt: Date.now() };
+    }
+    throw error;
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
+/** Provider-level fallback is deliberately shorter than the shared screen deadline. */
+async function resolveLocatie(options: Opties = {}): Promise<LocatieResultaat> {
   const manual = MANUAL_CITIES.find((city) => city.key === options.manualCity);
   if (manual) {
     return { coords: { latitude: manual.latitude, longitude: manual.longitude }, bron: "handmatig", cityName: manual.name, fixAt: Date.now() };
@@ -85,7 +110,7 @@ export async function bepaalLocatie(options: Opties = {}): Promise<LocatieResult
 
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const deadline = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), options.preferPrecise ? 12000 : 8000); });
+      const deadline = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), 3800); });
       const fresh = await Promise.race([
         Location.getCurrentPositionAsync({ accuracy: options.preferPrecise ? Location.Accuracy.High : Location.Accuracy.Balanced }).catch(() => null),
         deadline

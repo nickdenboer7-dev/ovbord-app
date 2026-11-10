@@ -418,7 +418,7 @@ function TimeLine({ journey, lineColor, lineTextColor, liveLocation, boarding, o
           {passed && !isBoarding ? <Text maxFontSizeMultiplier={1.3} style={styles.passedSub}>Vertrokken</Text>
             : isAlight ? <Text maxFontSizeMultiplier={1.3} style={styles.alightSub}>Je stapt hier uit</Text> : null}
         </View>
-        {!choosing ? <Ionicons name="chevron-forward" size={16} color={passed ? c.passedName : c.muted} /> : null}
+        {!choosing && (isBoarding || isNext || isAlight) ? <Ionicons name="chevron-forward" size={15} color={c.muted} /> : null}
         {between ? <Pressable onPress={onFocusVehicle} disabled={!onFocusVehicle} hitSlop={10} style={[styles.vehicleOnRail, { backgroundColor: lineColor }, lastKnown && { backgroundColor: c.muted }]}
           accessibilityRole={onFocusVehicle ? "button" : undefined}
           accessibilityLabel={vehicleNoun(journey.mode) + (lastKnown ? " was" : " is") + " tussen deze halte en de volgende" + (onFocusVehicle ? ". Volg op de kaart" : "")}>
@@ -1171,13 +1171,13 @@ function makeStyles(c: RitColors) {
   refreshError: { paddingHorizontal: 14, paddingVertical: 9, color: c.refreshError, fontSize: 11 },
   offlineHint: { fontSize: 12, color: c.muted, textAlign: "center", maxWidth: 280 },
   timeLine: { marginTop: 0 },
-  timelineRow: { position: "relative", flexDirection: "row", alignItems: "center", minHeight: 48, paddingHorizontal: 12,
+  timelineRow: { position: "relative", flexDirection: "row", alignItems: "center", minHeight: 44, paddingHorizontal: 12,
     paddingVertical: 2, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.border },
   timelineRowWithVehicle: { zIndex: 2 },
   timelineRowAtVehicle: { minHeight: 48 },
   timelineRowNext: { backgroundColor: c.nextTagBg },
   timelineRowBoarding: { backgroundColor: c.boardingRowBg, borderLeftWidth: 3, borderLeftColor: STOP_BOARD_BLUE, paddingLeft: 9 },
-  passedRow: { minHeight: 48 },
+  passedRow: { minHeight: 40 },
   passedName: { color: c.passedName, fontWeight: "400" },
   timelineImportantName: { fontWeight: "800", fontSize: 14.5 },
   timelineImportantTime: { fontWeight: "800", color: c.text },
@@ -1195,7 +1195,7 @@ function makeStyles(c: RitColors) {
   timelineOldTime: { color: c.muted, fontSize: 10, textDecorationLine: "line-through" },
   passedText: { color: c.passedText },
   delayText: { fontSize: 10, fontWeight: "700", ...(c.delayText ? { color: c.delayText } : null) },
-  timelineRail: { width: 30, minHeight: 48, alignSelf: "stretch", alignItems: "center", justifyContent: "center" },
+  timelineRail: { width: 30, minHeight: 40, alignSelf: "stretch", alignItems: "center", justifyContent: "center" },
   railTop: { position: "absolute", top: 0, height: "50%", width: 3 },
   railBottom: { position: "absolute", top: "50%", bottom: 0, width: 3 },
   railNode: { width: 14, height: 14, borderWidth: 2.5, borderRadius: 7, alignItems: "center", justifyContent: "center", zIndex: 1 },

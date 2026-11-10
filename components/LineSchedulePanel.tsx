@@ -27,6 +27,8 @@ type Props = {
   jumpToNextToken?: number;
   /** Het bestaande compacte overzicht; zichtbaar tijdens laden en als de dienstregeling niet beschikbaar is. */
   fallback?: React.ReactNode;
+  /** In a line-filtered board, stop at local 23:59 rather than the following service night. */
+  calendarDayOnly?: boolean;
 };
 
 type DirectionChoice = { routeId: string; directionId: number | null; destination: string };
@@ -34,7 +36,7 @@ type DirectionChoice = { routeId: string; directionId: number | null; destinatio
 const WEEKDAYS = ["ma", "di", "wo", "do", "vr", "za", "zo"];
 
 /** Inline dienstregeling onder een richting in de Lijnen-tab: geen apart scherm, geen extra terugstap. */
-export function LineSchedulePanel({ stopId, line, routeIds, destination, gtfsTripIds, liveDepartures, date, onChangeDate, onOpenDeparture, onDisplayDirection, jumpToNextToken, fallback }: Props) {
+export function LineSchedulePanel({ stopId, line, routeIds, destination, gtfsTripIds, liveDepartures, date, onChangeDate, onOpenDeparture, onDisplayDirection, jumpToNextToken, fallback, calendarDayOnly = false }: Props) {
   const { colors } = useApp();
   const [schedule, setSchedule] = useState<LineSchedule | null>(null);
   const [loading, setLoading] = useState(true);
@@ -79,7 +81,8 @@ export function LineSchedulePanel({ stopId, line, routeIds, destination, gtfsTri
 
   const live = useMemo(() => isToday ? liveByTripId(liveDepartures) : new Map<string, DepartureItem>(), [isToday, liveDepartures]);
   const opposite = activeSchedule && direction ? oppositeDirection(activeSchedule, direction) : null;
-  const trips = direction?.trips || [];
+  const trips = (direction?.trips || []).filter((trip) =>
+    !calendarDayOnly || localIsoDate(new Date(trip.plannedAt)) === date);
   const nextIndex = isToday ? nextTripIndex(trips, live, nowMs) : 0;
   const pastCount = isToday ? (nextIndex < 0 ? trips.length : nextIndex) : 0;
   const visible = isToday && !showPast ? trips.slice(pastCount) : trips;
@@ -128,7 +131,7 @@ export function LineSchedulePanel({ stopId, line, routeIds, destination, gtfsTri
             <View style={styles.dirText}>
               <Text maxFontSizeMultiplier={1.3} numberOfLines={1} style={[styles.dirName, { color: colors.heading }]}>Richting {direction.destination}</Text>
               <Text maxFontSizeMultiplier={1.3} style={[styles.muted, { color: colors.textSoft }]}>
-                {direction.tripCount} {direction.tripCount === 1 ? "rit" : "ritten"}{direction.firstTime ? " · " + direction.firstTime + "–" + direction.lastTime : ""}
+                {calendarDayOnly ? trips.length : direction.tripCount} {(calendarDayOnly ? trips.length : direction.tripCount) === 1 ? "rit" : "ritten"}{direction.firstTime ? " · " + direction.firstTime + "–" + direction.lastTime : ""}
               </Text>
             </View>
             {opposite ? (

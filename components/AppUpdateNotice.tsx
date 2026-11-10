@@ -40,18 +40,18 @@ export function AppUpdateNotice() {
     }
   };
   return <View style={[styles.bar, { backgroundColor: colors.surface, borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, 8) }]}>
-    <Text accessibilityRole="alert" style={[styles.label, { color: colors.text }]}>Update klaar</Text>
+    <Text accessibilityRole="alert" style={[styles.label, { color: colors.text }]}>Nieuwe versie klaar</Text>
     <Pressable onPress={() => void restart()} disabled={restarting || status.isRestarting}
       accessibilityRole="button" accessibilityLabel="Opnieuw starten met de nieuwe versie"
       accessibilityState={{ disabled: restarting || status.isRestarting }}
       style={[styles.button, { backgroundColor: colors.accent, opacity: restarting ? 0.65 : 1 }]}>
-      <Text style={styles.buttonText}>{restarting ? "Opnieuw starten…" : "Opnieuw starten"}</Text>
+      <Text style={styles.buttonText}>{restarting ? "Herstarten…" : "Herstart"}</Text>
     </Pressable>
   </View>;
 }
 const styles = StyleSheet.create({
-  bar: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth },
-  label: { flex: 1, fontSize: 14, fontWeight: "600" },
-  button: { minHeight: 44, justifyContent: "center", paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9 },
-  buttonText: { color: "#fff", fontSize: 13, fontWeight: "800" }
+  bar: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 14, paddingTop: 3, borderTopWidth: StyleSheet.hairlineWidth },
+  label: { flex: 1, fontSize: 12, fontWeight: "600" },
+  button: { minHeight: 32, justifyContent: "center", paddingHorizontal: 12, paddingVertical: 5, borderRadius: 7 },
+  buttonText: { color: "#fff", fontSize: 12, fontWeight: "800" }
 });

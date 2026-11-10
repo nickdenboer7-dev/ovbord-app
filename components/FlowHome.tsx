@@ -212,6 +212,20 @@ export function FlowHome() {
     return () => { active = false; clearTimeout(timer); };
   }, [query, searchRetry]);
 
+  // Warm exactly one strong search result. Sharing its in-flight request with getHalte
+  // avoids a second cold station query when the user opens it immediately.
+  const warmedStops = useRef(new Set<string>());
+  useEffect(() => {
+    if (query.trim().length < 9 || results.length !== 1) return;
+    const id = results[0].id;
+    if (!id || warmedStops.current.has(id)) return;
+    const timer = setTimeout(() => {
+      warmedStops.current.add(id);
+      void getHalte(id).catch(() => warmedStops.current.delete(id));
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [query, results]);
+
   useEffect(() => {
     const timer = setInterval(() => setNowMs(Date.now()), 15000);
     return () => clearInterval(timer);
@@ -571,7 +585,10 @@ export function FlowHome() {
                   </View>
                   {homeSavedStops.map(saved=>{
                     const distance=walkingPosition?distanceMeters(walkingPosition,saved):Infinity;
-                    const count=saved.lines.length;
+                    const currentBoard=favoriteBoards[saved.id]?.board;
+                    const count=new Set([...saved.lines.map(line=>line.line),
+                      ...(currentBoard?.stop.lines||[]).map(line=>line.line),
+                      ...(currentBoard?.departures||[]).map(item=>item.line)].filter(Boolean)).size;
                     return <Pressable key={saved.id} onPress={()=>openStop(saved)} accessibilityRole="button" style={[styles.nearRow,{borderBottomColor:colors.border}]}>
                       <View style={styles.stopContent}><Text style={[styles.nearName,{color:colors.text}]}>{saved.name}</Text>
                         <Text style={[styles.stopSubtitle,{color:colors.textSoft}]}>{Number.isFinite(distance)?Math.round(distance)+" m · ":""}{count} {count===1?"lijn":"lijnen"}{!favoriteStops.some(s=>s.id===saved.id)?" · recent geopend":""}</Text>

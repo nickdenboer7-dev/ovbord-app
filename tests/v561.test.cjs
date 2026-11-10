@@ -17,7 +17,8 @@ test("all non-selection timeline rows open the stop board with a tap", () => {
   const rit = read("app/rit/[id].tsx");
   assert.match(rit, /onPress=\{\(\) => \{ if \(!choosing\) onOpenStop\(stop\)/);
   assert.match(rit, /disabled=\{choosing && !selectable\}/);
-  assert.match(rit, /name="chevron-forward" size=\{16\}/);
+  assert.match(rit, /name="chevron-forward" size=\{15\}/);
+  assert.match(rit, /isBoarding \|\| isNext \|\| isAlight/);
 });
 
 test("opening a stop remembers the exact originating trip for header and Android Back", () => {

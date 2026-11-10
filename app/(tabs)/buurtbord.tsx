@@ -467,9 +467,15 @@ export default function BuurtbordScreen() {
                   <Text maxFontSizeMultiplier={1.3} style={{ color: colors.accentText, fontWeight: "800" }}>Opnieuw proberen</Text>
                 </Pressable>
               </View>
-            ) : <Text maxFontSizeMultiplier={1.3} style={[styles.empty, { color: colors.textSoft }]}>
-              {!activeLocation ? "Geen GPS-positie beschikbaar. Kies een stad of probeer GPS opnieuw." : "Geen haltes in de buurt gevonden."}
-            </Text>) : null}
+            ) : <View style={styles.emptyWrap}>
+              <Text maxFontSizeMultiplier={1.3} style={[styles.empty, { color: colors.textSoft }]}>
+                {!activeLocation ? "Geen GPS-positie beschikbaar. Je kunt meteen een stad kiezen." : "Geen haltes in de buurt gevonden."}
+              </Text>
+              {!activeLocation ? <Pressable accessibilityRole="button" accessibilityLabel="Kies stad zonder GPS"
+                onPress={() => setShowCities(true)} style={[styles.retryButton, { borderColor: colors.border }]}>
+                <Text maxFontSizeMultiplier={1.3} style={{ color: colors.accentText, fontWeight: "800" }}>Kies stad</Text>
+              </Pressable> : null}
+            </View>) : null}
           </View>
         )}
         </>}

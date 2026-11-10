@@ -11,6 +11,8 @@ import { DepartureSkeleton } from "./DepartureSkeleton";
 import { MenuButton, OverflowMenu } from "./OverflowMenu";
 import type { MenuItem } from "./OverflowMenu";
 import { FlowLineGroups } from "./FlowLineGroups";
+import { LineSchedulePanel } from "./LineSchedulePanel";
+import { localIsoDate } from "../lib/lineSchedule";
 import { useApp } from "../context/AppProvider";
 import { DEFAULT_USER_SETTINGS } from "../lib/userSettings";
 import { useFlowNavigation } from "../context/FlowNavigation";
@@ -89,6 +91,7 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
   const headerInfo=stopBoardHeader(stop,board);
   const modes=stopBoardModes(stop,board);
   const [selectedLine, setSelectedLine] = useState<string | null>(initialLine || null);
+  const [scheduleDate, setScheduleDate] = useState(() => localIsoDate(new Date()));
   /** Destination filter (departures only), combined with the line filter. */
   const [selectedDirection, setSelectedDirection] = useState<string | null>(null);
   const [directionsOpen, setDirectionsOpen] = useState(false);
@@ -193,6 +196,7 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
     let active = true;
     const seq = ++boardRequest.current;
     let pending = false;
+    let initialFailure: FailureKind | null = null;
     const load = async (initial: boolean) => {
       if (pending) return;
       pending = true;
@@ -233,6 +237,7 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
       } catch (caught) {
         if (!active) return;
         const kind = failureKind(caught);
+        if (initial) initialFailure = kind;
         if (initial && !previousBoard.current) setError(kind === "offline" ? "Je bent offline. Vertrektijden van deze halte zijn nog niet geladen." : "Vertrektijden niet beschikbaar.");
         else setRefreshFailure(kind);
       } finally {
@@ -248,6 +253,8 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
       const entry=await cachedBoard(stop.id).catch(()=>undefined);
       if(active&&seq===boardRequest.current&&!previousBoard.current&&entry){
         previousBoard.current=entry.board;setBoard(entry.board);setFetchedAt(entry.fetchedAt);setCachePending(true);setLoading(false);
+        // A fast offline failure can precede slow disk hydration; keep the warning visible.
+        if (initialFailure) { setRefreshFailure(initialFailure); setError(null); }
       }
       await fetchPromise;
     })();
@@ -306,6 +313,7 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
   const selectLine = (line: string | null) => {
     const matchingRow = line === null ? undefined : source.find(row => row.line === line);
     setSelectedLine(line === null ? null : boardLineFilterKey(line, matchingRow?.carrier));
+    if (line !== null) setScheduleDate(localIsoDate(new Date()));
     listRef.current?.scrollToOffset({ offset: 0, animated: false });
   };
   const openTrip = (item: DepartureItem) => {
@@ -538,7 +546,7 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
           ) : null}
           <FlatList
             ref={listRef}
-            data={listRows}
+            data={tab === "departures" && selectedLine ? [] : listRows}
             extraData={{ nowMs, timeChanges, platformChanges, refreshFailure }}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void pullToRefresh()}
               colors={[colors.accentText]} tintColor={colors.accentText} progressBackgroundColor={colors.surface} />}
@@ -547,8 +555,28 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.list}
             style={{ backgroundColor: colors.surface }}
-            ListHeaderComponent={pinnedHeader}
-            ListEmptyComponent={(selectedLine || selectedDirection !== null) && source.length ? (
+            ListHeaderComponent={tab === "departures" && selectedLine ? (
+              <LineSchedulePanel key={stop.id + ":" + selectedLine}
+                stopId={board?.stop.id || stop.id}
+                line={selectedLineLabel.split("|")[0]}
+                routeIds={[]}
+                destination={selectedDirectionLabel || lineEntries[0]?.destination || ""}
+                gtfsTripIds={lineEntries.map((item) => item.gtfsTripId || "").filter(Boolean)}
+                liveDepartures={lineEntries}
+                date={scheduleDate}
+                calendarDayOnly
+                onChangeDate={setScheduleDate}
+                onOpenDeparture={openTrip}
+                fallback={<View style={{ backgroundColor: colors.surface }}>
+                  <Text style={[styles.freshnessText, { color: colors.textSoft, padding: 12 }]}>Eerstvolgende vertrekken terwijl de volledige dagdienstregeling laadt</Text>
+                  {lineEntries.slice(0, 6).map((item, index) => (
+                    <StopBoardRow key={item.id + ":" + index} item={item} nowMs={nowMs} stale={staleDisplay}
+                      onPress={() => openTrip(item)} last={index === Math.min(6, lineEntries.length) - 1} />
+                  ))}
+                </View>}
+              />
+            ) : pinnedHeader}
+            ListEmptyComponent={tab === "departures" && selectedLine ? null : (selectedLine || selectedDirection !== null) && source.length ? (
               <View style={{ alignItems: "center", gap: 10 }}>
                 <Text maxFontSizeMultiplier={1.3} style={[styles.empty, { color: colors.textSoft }]}>Geen {tab === "arrivals" ? "aankomsten" : "vertrekken"}
                   {selectedLine ? " van lijn " + selectedLine : ""}{selectedDirection !== null ? " richting " + selectedDirectionLabel : ""}.</Text>

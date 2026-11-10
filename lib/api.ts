@@ -433,7 +433,20 @@ export async function getDienstregeling(stopId: string, query: { routeIds?: read
   return normalizeSchedule(raw);
 }
 
-export async function getHalte(id: string, _skipSiblings = false): Promise<HalteBoardData> {
+/** Share a pending stop-board request between search preloading, Start and the board screen. */
+const pendingBoards = new Map<string, Promise<HalteBoardData>>();
+export function getHalte(id: string, _skipSiblings = false): Promise<HalteBoardData> {
+  if (_skipSiblings) return fetchHalte(id, true);
+  const existing = pendingBoards.get(id);
+  if (existing) return existing;
+  const task = fetchHalte(id, false).finally(() => {
+    if (pendingBoards.get(id) === task) pendingBoards.delete(id);
+  });
+  pendingBoards.set(id, task);
+  return task;
+}
+
+async function fetchHalte(id: string, _skipSiblings: boolean): Promise<HalteBoardData> {
   const raw = await requestJson(`/api/halte/${encodeURIComponent(id)}`);
   const stopRaw = first(raw?.stop, raw?.halte, raw);
   const board: HalteBoardData = {
