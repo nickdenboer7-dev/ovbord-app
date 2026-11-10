@@ -32,7 +32,7 @@ import { boardDirectionChoices, matchesBoardDirection } from "../lib/boardDirect
 import { favoriteLineKey, pinnedDepartures } from "../lib/favoriteLines";
 import { withBoardFreshness } from "../lib/realtimeConsistency";
 import { boardRefreshNotice, failureKind } from "../lib/offline";
-import { cachedBoard, rememberBoard } from "../lib/boardCache";
+import { cachedBoard, peekBoard, rememberBoard } from "../lib/boardCache";
 import { useWalkingPosition } from "../lib/useWalkingPosition";
 import { walkingDepartureAdvice } from "../lib/leaveTime";
 import { rememberLineOrigin } from "../lib/lineOrigins";
@@ -66,14 +66,17 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
   useFocusEffect(useCallback(()=>{setFocused(true);return()=>setFocused(false);},[]));
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
-  const [board, setBoard] = useState<HalteBoardData | null>(initialBoard || null);
-  const [loading, setLoading] = useState(!initialBoard);
+  // Reopened stops show a recent in-memory snapshot immediately while a fresh request runs.
+  const instantSnapshot = useRef(peekBoard(stop.id)).current;
+  const initialVisibleBoard = initialBoard || instantSnapshot?.board || null;
+  const [board, setBoard] = useState<HalteBoardData | null>(initialVisibleBoard);
+  const [loading, setLoading] = useState(!initialVisibleBoard);
   const [fetchingBoard, setFetchingBoard] = useState(false);
-  const [fetchedAt, setFetchedAt] = useState<number | null>(initialBoard ? initialFetchedAt ?? Date.now() : null);
-  const [cachePending,setCachePending]=useState(initialStale);
+  const [fetchedAt, setFetchedAt] = useState<number | null>(initialBoard ? initialFetchedAt ?? Date.now() : instantSnapshot?.fetchedAt ?? null);
+  const [cachePending,setCachePending]=useState(initialStale || (!initialBoard && Boolean(instantSnapshot)));
   const position=useWalkingPosition(visible && !manualCity);
   const [nowMs,setNowMs] = useState(Date.now());
-  const previousBoard = useRef<HalteBoardData | null>(initialBoard || null);
+  const previousBoard = useRef<HalteBoardData | null>(initialVisibleBoard);
   const [timeChanges, setTimeChanges] = useState<DepartureTimeChanges>({});
   const [platformChanges, setPlatformChanges] = useState<PlatformChanges>({});
   const [departedNotices, setDepartedNotices] = useState<DepartedNotices>({});
@@ -116,7 +119,7 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
   useEffect(() => {
     gpsQualityCheckedAt.current = 0;
     setGpsQuality({});
-    previousBoard.current = initialBoard || null;
+    previousBoard.current = initialVisibleBoard;
     setTimeChanges({});
     setPlatformChanges({});
     setDepartedNotices({});
@@ -249,7 +252,7 @@ export function FlowBoard({ stop, initialBoard, initialFetchedAt, initialStale=f
     void(async()=>{
       // Start the live request immediately; Android storage hydration must not
       // delay the network request for a large station by several seconds.
-      const fetchPromise=load(!initialBoard);
+      const fetchPromise=load(!initialVisibleBoard);
       const entry=await cachedBoard(stop.id).catch(()=>undefined);
       if(active&&seq===boardRequest.current&&!previousBoard.current&&entry){
         previousBoard.current=entry.board;setBoard(entry.board);setFetchedAt(entry.fetchedAt);setCachePending(true);setLoading(false);

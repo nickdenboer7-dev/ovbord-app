@@ -237,10 +237,10 @@ test('header removes only a duplicated city prefix and counts distinct modes/lin
  assert.equal(stopBoardHeader({...s,name:'Amsterdam, Amsterdamlaan',city:''}).title,'Amsterdamlaan');
  assert.equal(stopBoardHeader(stop('s',{name:'Leeuwarden',city:'Leeuwarden'})).title,'Leeuwarden');
 });
-test('the new row is 52px at default size, caps fonts, keeps delay colours and marks departed trips blue',()=>{
- defaults();app.colors=require('../constants/colors.ts').themes.light;const {StopBoardRow,StopBoardBadge}=require('../components/StopBoardRow.tsx');const badgeView=StopBoardBadge({item:dep('badge',8,{carrier:'GVB'})});assert.equal(badgeView.props.style[1].backgroundColor,'#0863b5');assert.equal(badgeView.props.style[0].width,44);assert.equal(find(badgeView,'Text').props.maxFontSizeMultiplier,1.3);
+test('the compact board row caps fonts, keeps delay colours and marks departed trips blue',()=>{
+ defaults();app.colors=require('../constants/colors.ts').themes.light;const {StopBoardRow,StopBoardBadge}=require('../components/StopBoardRow.tsx');const badgeView=StopBoardBadge({item:dep('badge',8,{carrier:'GVB'})});assert.equal(badgeView.props.style[1].backgroundColor,'#0863b5');assert.equal(badgeView.props.style[0].width,42);assert.equal(find(badgeView,'Text').props.maxFontSizeMultiplier,1.3);
  let row=StopBoardRow({item:dep('r',8,{mode:'tram',platform:'A',delayMinutes:4}),nowMs:now,onPress(){}});
- assert.equal(row.props.style({pressed:false})[0].minHeight,52);assert.match(row.props.accessibilityLabel,/perron A/i);
+ assert.equal(row.props.style({pressed:false})[0].minHeight,48);assert.match(row.props.accessibilityLabel,/perron A/i);
  let primary=findAll(row,'Text').find(n=>text(n)==='8 min');assert.equal(primary.props.maxFontSizeMultiplier,1.3);assert.equal(primary.props.style[0].fontSize,17);assert.deepEqual(primary.props.style[0].fontVariant,['tabular-nums']);
  let delay=findAll(row,'Text').find(n=>text(n)==='+4');assert.equal(delay.props.style.color,app.colors.delayWarning);
  row=StopBoardRow({item:dep('r',31,{mode:'tram',platform:'A',delayMinutes:5}),nowMs:now});delay=findAll(row,'Text').find(n=>text(n)==='+5');assert.equal(delay.props.style.color,app.colors.danger);assert.ok(findAll(row,'Text').some(n=>text(n)==='17:31'));

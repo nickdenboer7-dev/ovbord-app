@@ -4,6 +4,7 @@ import { useApp } from "../context/AppProvider";
 import { DEFAULT_USER_SETTINGS } from "../lib/userSettings";
 import { departureClockDelay,departureLineLabel } from "../lib/departureLine";
 import { compactTrainLineLabel } from "../lib/trainLineLabel";
+import { boardLiveLabel } from "../lib/boardLiveLabel";
 import { BOARD_MODE_LABEL,STOP_BOARD_BLUE,stopBoardBadge,stopBoardTiming } from "../lib/stopBoardDesign";
 import type { DepartureItem } from "../types/api";
 
@@ -17,7 +18,7 @@ export function StopBoardBadge({item}:{item:DepartureItem}) {
 export function StopBoardRow({item,nowMs,stale=false,onPress,last=false,note,detail,laterTimes=[]}:Props) {
   const {colors,settings=DEFAULT_USER_SETTINGS}=useApp(),timing=stopBoardTiming(item,nowMs,stale,settings.departureTimeMode),delay=departureClockDelay(item);
   const departed=item.departed===true&&!item.cancelled;
-  const label=item.cancelled?"Rijdt niet":departed?"Vertrokken":stale?"Laatst bekende tijd":item.liveDataStale?"Live-info oud":item.isLive===true?"Live":"Gepland";
+  const label=boardLiveLabel(item,nowMs,stale);
   const mode=BOARD_MODE_LABEL[item.mode||"bus"];
   const extras=[mode,item.platform?(item.mode==="train"?"spoor ":"perron ")+item.platform:"",!stale&&!item.liveDataStale?detail?.text:"",note].filter(Boolean).join(" · ");
   const color=item.cancelled?colors.danger:stale||item.liveDataStale?colors.textSoft:item.isLive?colors.success:colors.textSoft;
@@ -58,14 +59,14 @@ export function StopBoardRow({item,nowMs,stale=false,onPress,last=false,note,det
   </Pressable>;
 }
 const styles=StyleSheet.create({
-  row:{minHeight:52,paddingVertical:7,paddingHorizontal:12,flexDirection:"row",alignItems:"center",gap:10},
-  groupedRow:{minHeight:67,paddingVertical:9,paddingHorizontal:12,justifyContent:"center",gap:3},
+  row:{minHeight:48,paddingVertical:5,paddingHorizontal:12,flexDirection:"row",alignItems:"center",gap:9},
+  groupedRow:{minHeight:60,paddingVertical:6,paddingHorizontal:12,justifyContent:"center",gap:2},
   groupedMain:{flexDirection:"row",alignItems:"center",gap:10},
   groupedPrimary:{fontSize:21,lineHeight:25},
   groupedFollowing:{fontSize:11,lineHeight:15,fontVariant:["tabular-nums"],textAlign:"right"},
-  divider:{borderBottomWidth:StyleSheet.hairlineWidth},badge:{width:44,minHeight:28,paddingHorizontal:5,borderRadius:6,alignItems:"center",justifyContent:"center"},
-  badgeText:{fontSize:13,fontWeight:"800"},body:{flex:1,minWidth:0,gap:2},destination:{fontSize:15,lineHeight:19,fontWeight:"600"},
-  status:{fontSize:12,lineHeight:16},times:{minWidth:65,flexShrink:0,alignItems:"flex-end",gap:1},
+  divider:{borderBottomWidth:StyleSheet.hairlineWidth},badge:{width:42,minHeight:26,paddingHorizontal:5,borderRadius:5,alignItems:"center",justifyContent:"center"},
+  badgeText:{fontSize:13,fontWeight:"800"},body:{flex:1,minWidth:0,gap:1},destination:{fontSize:15,lineHeight:19,fontWeight:"600"},
+  status:{fontSize:11.5,lineHeight:15},times:{minWidth:65,flexShrink:0,alignItems:"flex-end",gap:0},
   primary:{fontSize:17,lineHeight:21,fontWeight:"700",fontVariant:["tabular-nums"],textAlign:"right"},secondary:{fontSize:11,lineHeight:15,fontVariant:["tabular-nums"],textAlign:"right"},
   departedWrap:{flexDirection:"row"},departed:{fontSize:11,lineHeight:15,fontWeight:"700",backgroundColor:STOP_BOARD_BLUE,color:"#fff",paddingHorizontal:6,paddingVertical:1,borderRadius:3,overflow:"hidden"},
   cancelled:{textDecorationLine:"line-through"}

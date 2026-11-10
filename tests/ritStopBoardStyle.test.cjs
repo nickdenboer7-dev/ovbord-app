@@ -51,7 +51,8 @@ test("compact trip list keeps the line rail, vehicle, departed stops and capped 
   assert.match(screen, /minHeight: 48/);
   assert.match(screen, /Jouw halte/);
   assert.match(screen, /Volgende halte/);
-  assert.match(screen, /style=\{styles\.passedSub\}>Vertrokken/);
+  assert.doesNotMatch(screen, /style=\{styles\.passedSub\}>Vertrokken/);
+  assert.match(screen, /passedRow: \{ minHeight: 38/);
   assert.match(screen, /maxFontSizeMultiplier=\{1\.3\}/);
 });
 

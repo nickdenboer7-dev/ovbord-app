@@ -395,8 +395,7 @@ function TimeLine({ journey, lineColor, lineTextColor, liveLocation, boarding, o
           </View> : isAlight ? <View style={[styles.railAlight, { borderColor: c.alightTagText }]}>
             <View style={[styles.railAlightDot, { backgroundColor: c.alightTagText }]}/>
           </View> : <View style={[styles.railNode, { borderColor: passed ? GRAY_RAIL : afterAlight ? c.afterAlightRail : lineColor,
-            backgroundColor: passed ? GRAY_RAIL : c.railFill }]}>
-            {passed ? <Ionicons name="checkmark" size={8} color="#FFFFFF"/> : null}
+            backgroundColor: passed ? GRAY_RAIL : c.railFill }, passed && styles.railNodePassed]}>
           </View>}
           {!last ? <View style={[styles.railBottom, { backgroundColor: railBelow, width: railBelowPassed ? 2 : 3 }]}/> : null}
         </View>
@@ -404,19 +403,17 @@ function TimeLine({ journey, lineColor, lineTextColor, liveLocation, boarding, o
           <View style={styles.timelineNameRow}>
             <Text maxFontSizeMultiplier={1.3} style={[styles.timelineName, passed && styles.passedName, afterAlight && styles.afterAlightText,
               (isBoarding || isNext || atStop) && !passed && styles.timelineImportantName, last && styles.lastStop,
-              isAlight && styles.alightName, skip && styles.skippedName, passed && styles.passedName]} numberOfLines={1}>{displayName}</Text>
+              isAlight && styles.alightName, skip && styles.skippedName, passed && styles.passedName]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>{displayName}</Text>
             {atStop ? <Text maxFontSizeMultiplier={1.3} onPress={!progress.estimated ? onFocusVehicle : undefined} accessibilityRole={!progress.estimated && onFocusVehicle ? "button" : undefined}
               accessibilityLabel={progress.estimated ? "Geschatte positie volgens vertrektijden" : vehicleNoun(journey.mode) + " is hier. Volg op de kaart"}
               style={[styles.nowTag, { backgroundColor: lineColor, color: lineTextColor }, progress.estimated && styles.tagMuted]}>{progress.estimated ? "Geschat" : "Nu hier"}</Text> : null}
             {isNext && !atStop && !isAlight && !skip ? <Text maxFontSizeMultiplier={1.3} style={styles.nextTag}>Volgende halte</Text> : null}
           </View>
-          {isBoarding ? <View style={styles.boardingInfo}>
+          {isBoarding && !passed ? <View style={styles.boardingInfo}>
             <Text maxFontSizeMultiplier={1.3} style={styles.boardingTag}>Jouw halte</Text>
-            {boardingEta ? <Text maxFontSizeMultiplier={1.3} style={styles.boardingEta}>{boardingEta}</Text>
-              : passed ? <Text maxFontSizeMultiplier={1.3} style={styles.passedSub}>Vertrokken</Text> : null}
+            {boardingEta ? <Text maxFontSizeMultiplier={1.3} style={styles.boardingEta}>{boardingEta}</Text> : null}
           </View> : null}
-          {passed && !isBoarding ? <Text maxFontSizeMultiplier={1.3} style={styles.passedSub}>Vertrokken</Text>
-            : isAlight ? <Text maxFontSizeMultiplier={1.3} style={styles.alightSub}>Je stapt hier uit</Text> : null}
+          {isAlight ? <Text maxFontSizeMultiplier={1.3} style={styles.alightSub}>Je stapt hier uit</Text> : null}
         </View>
         {!choosing && (isBoarding || isNext || isAlight) ? <Ionicons name="chevron-forward" size={15} color={c.muted} /> : null}
         {between ? <Pressable onPress={onFocusVehicle} disabled={!onFocusVehicle} hitSlop={10} style={[styles.vehicleOnRail, { backgroundColor: lineColor }, lastKnown && { backgroundColor: c.muted }]}
@@ -1172,13 +1169,13 @@ function makeStyles(c: RitColors) {
   offlineHint: { fontSize: 12, color: c.muted, textAlign: "center", maxWidth: 280 },
   timeLine: { marginTop: 0 },
   timelineRow: { position: "relative", flexDirection: "row", alignItems: "center", minHeight: 44, paddingHorizontal: 12,
-    paddingVertical: 2, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.border },
+    paddingVertical: 1, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.border },
   timelineRowWithVehicle: { zIndex: 2 },
   timelineRowAtVehicle: { minHeight: 48 },
   timelineRowNext: { backgroundColor: c.nextTagBg },
   timelineRowBoarding: { backgroundColor: c.boardingRowBg, borderLeftWidth: 3, borderLeftColor: STOP_BOARD_BLUE, paddingLeft: 9 },
-  passedRow: { minHeight: 40 },
-  passedName: { color: c.passedName, fontWeight: "400" },
+  passedRow: { minHeight: 38, paddingVertical: 0 },
+  passedName: { color: c.passedName, fontWeight: "400", fontSize: 13 },
   timelineImportantName: { fontWeight: "800", fontSize: 14.5 },
   timelineImportantTime: { fontWeight: "800", color: c.text },
   afterAlightText: { color: c.passedName },
@@ -1193,12 +1190,13 @@ function makeStyles(c: RitColors) {
   timelineActualLine: { flexDirection: "column", alignItems: "flex-start", gap: 0 },
   timelineTime: { fontSize: 13.5, color: c.muted, fontVariant: ["tabular-nums"] },
   timelineOldTime: { color: c.muted, fontSize: 10, textDecorationLine: "line-through" },
-  passedText: { color: c.passedText },
+  passedText: { color: c.passedText, fontSize: 12.5 },
   delayText: { fontSize: 10, fontWeight: "700", ...(c.delayText ? { color: c.delayText } : null) },
-  timelineRail: { width: 30, minHeight: 40, alignSelf: "stretch", alignItems: "center", justifyContent: "center" },
+  timelineRail: { width: 30, minHeight: 38, alignSelf: "stretch", alignItems: "center", justifyContent: "center" },
   railTop: { position: "absolute", top: 0, height: "50%", width: 3 },
   railBottom: { position: "absolute", top: "50%", bottom: 0, width: 3 },
   railNode: { width: 14, height: 14, borderWidth: 2.5, borderRadius: 7, alignItems: "center", justifyContent: "center", zIndex: 1 },
+  railNodePassed: { width: 9, height: 9, borderWidth: 0, borderRadius: 4.5 },
   railVehicle: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", zIndex: 1,
     borderWidth: 2, borderColor: c.vehicleRing },
   railAlight: { width: 20, height: 20, borderRadius: 10, borderWidth: 2.5, backgroundColor: c.railFill, alignItems: "center", justifyContent: "center", zIndex: 1 },
@@ -1207,7 +1205,7 @@ function makeStyles(c: RitColors) {
   vehicleOnRail: { position: "absolute", left: 79, bottom: -12, width: 24, height: 24, borderRadius: 12,
     backgroundColor: c.green, borderWidth: 2, borderColor: c.vehicleRing, justifyContent: "center",
     alignItems: "center", zIndex: 4 },
-  timelineLabel: { flex: 1, paddingLeft: 10, minWidth: 0, justifyContent: "center", paddingVertical: 3 },
+  timelineLabel: { flex: 1, paddingLeft: 9, minWidth: 0, justifyContent: "center", paddingVertical: 1 },
   timelineName: { flexShrink: 1, fontSize: 14.5, color: c.text, fontWeight: "500" },
   nowTag: { borderRadius: 5, color: "#FFFFFF", fontSize: 10, fontWeight: "800", paddingHorizontal: 6, paddingVertical: 2, overflow: "hidden" },
   endTag: { backgroundColor: c.endTagBg, borderRadius: 9, color: c.text, fontSize: 9.5, fontWeight: "700", paddingHorizontal: 6, paddingVertical: 3, overflow: "hidden" },
