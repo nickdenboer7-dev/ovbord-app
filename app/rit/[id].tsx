@@ -653,11 +653,6 @@ export default function RitScreen() {
   ) : null;
   // When the last refresh failed, what is shown is the last known state, not live.
   const lastKnown = Boolean(failure && journey);
-  // A real, recent GPS fix can exist even when the strict route matcher cannot
-  // assign it to a stop. Explain that distinction without inventing progress.
-  const gpsReceivedUnmatched = Boolean(!lastKnown && !verifiedLive && journey &&
-    validPosition(journey.vehicle) && gpsFixForRit(journey, fetchedAt) &&
-    shownGpsAge !== undefined && shownGpsAge < 45);
   const nextStopIndex = verifiedNextStopIndex(verifiedLive, journey?.stops.length || 0);
   const nextStopIsLive = nextStopIndex !== null && !lastKnown;
   // A backend "current" state is not a reliable next stop: use the same clock-based
@@ -740,9 +735,7 @@ export default function RitScreen() {
   const headerHasLive = Boolean(verifiedLive && !lastKnown && !ended && !cancelled);
   const headerStatusText = cancelled ? "Deze rit rijdt niet" : ended ? "Rit beëindigd"
     : headerHasLive ? [headline, typeof shownGpsAge === "number" ? "live " + Math.round(shownGpsAge) + " sec" : "live"].filter(Boolean).join(" · ")
-    : lastKnown ? "Laatst bekende positie"
-    : gpsReceivedUnmatched ? "GPS " + Math.round(shownGpsAge!) + " sec · routepositie onzeker"
-    : journey ? headline : "Rit laden…";
+    : lastKnown ? "Laatst bekende positie" : journey ? headline : "Rit laden…";
   const nextStopOverdue = Boolean(nextStop && nextStopIsLive && !lastKnown && overdueNextStop(timeOf(nextStop), nowMs, true));
   const nextStopDelta = nextStop && nextStopIsLive && !lastKnown && journey?.live && !nextStopOverdue
     ? timelineTimeDelta(nextStop.delayMinutes) : null;
