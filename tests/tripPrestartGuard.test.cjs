@@ -94,3 +94,36 @@ test("timeline and map both suppress GPS claiming a future journey has begun", (
   assert.match(page, /const busPoint=live&&!preStart&&!journey\.estimatedPosition/);
   assert.match(page, /const gpsLabel=preStart \? \{text:"Rit nog niet begonnen",tone:"muted" as const\}/);
 });
+
+
+test("N94 actual API response: minus 3600 seconds must not shift a future trip by one hour", () => {
+  const raw = JSON.parse(fs.readFileSync(path.join(qaDir,"EBS_4418-api-rit.json"),"utf8"));
+  assert.equal(raw.delay,-3600);
+  const at = Date.parse("2026-11-11T02:08:00+01:00");
+  const j = normalizeRit("EBS_4418",raw,at);
+  assert.equal(j.stops[0].plannedTime,"03:25");
+  assert.equal(j.stops[0].expectedTime,"03:25");
+  assert.equal(j.stops[0].timingSource,"schedule");
+  assert.equal(j.stops[1].expectedTime,"03:27");
+  assert.equal(tripNotYetStarted(j,at),true);
+  assert.equal(journeyExtras(j,j.stops,at).liveReason,"before-trip-start");
+});
+
+test("one-hour trip-wide delay is not applied even after scheduled start", () => {
+  const raw = JSON.parse(fs.readFileSync(path.join(qaDir,"EBS_4418-api-rit.json"),"utf8"));
+  const at = Date.parse("2026-11-11T03:26:00+01:00");
+  const j = normalizeRit("EBS_4418",raw,at);
+  assert.equal(j.stops[0].expectedTime,"03:25");
+  assert.equal(j.stops[1].expectedTime,"03:27");
+});
+
+test("reasonable trip estimate remains usable after journey begins", () => {
+  const raw = JSON.parse(fs.readFileSync(path.join(qaDir,"EBS_4418-api-rit.json"),"utf8"));
+  raw.delay = 120;
+  raw.gps_age_seconds = 8;
+  const at = Date.parse("2026-11-11T03:26:00+01:00");
+  const j = normalizeRit("EBS_4418",raw,at);
+  assert.equal(j.stops[0].expectedTime,"03:27");
+  assert.equal(j.stops[1].expectedTime,"03:29");
+  assert.equal(j.stops[0].timingSource,"journey_estimate");
+});

@@ -7,11 +7,15 @@ import type { RitData } from "../types/api";
  * Only compare full, timezone-aware timetable timestamps. A bare HH:mm clock
  * cannot safely be compared near midnight and must never create a false gate.
  */
-export function firstPlannedDepartureMs(journey: Pick<RitData, "stops"> | null | undefined): number | null {
-  const value = journey?.stops?.[0]?.plannedDepartureAt;
+/** Convert an explicitly timezone-aware API departure to a precise instant. */
+export function plannedDepartureAtMs(value: unknown): number | null {
   if (typeof value !== "string" || !/[zZ]|[+-]\d{2}:\d{2}$/.test(value)) return null;
   const time = Date.parse(value);
   return Number.isFinite(time) ? time : null;
+}
+
+export function firstPlannedDepartureMs(journey: Pick<RitData, "stops"> | null | undefined): number | null {
+  return plannedDepartureAtMs(journey?.stops?.[0]?.plannedDepartureAt);
 }
 
 /** Never label a journey as already underway before its first scheduled departure. */

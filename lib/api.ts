@@ -3,6 +3,7 @@ import { DepartureItem, HalteBoardData, JourneyStop, LineInfo, Mode, Reliability
 import { mergeLines, primaryMode } from "./lineSet";
 import { formatClock, formatDutchClock, normalizeMode, relativeMinutesText, shiftClock } from "./format";
 import { delayedClock } from "./ritConsistency";
+import { plannedDepartureAtMs } from "./ritStartGuard";
 import { isUnconfirmedExtremeEarlyDeparture } from "./earlyDepartureGuard";
 import { parseDisruptions, parseStopDisruptions } from "./haltebordV4";
 import { rememberBoard } from "./boardCache";
@@ -262,7 +263,7 @@ function normalizeJourneyStop(item: any, index: number, total: number, journeyDe
   const stopPredictionAvailable = Boolean(rtStop) || distinctArrival || distinctDeparture ||
     (item?.timing_live === true && delayMinutes !== undefined && delayMinutes !== 0);
   const tripEstimateAvailable = journeyLive && typeof journeyDelaySeconds === "number" &&
-    Number.isFinite(journeyDelaySeconds) && Math.abs(journeyDelaySeconds) <= 3600;
+    Number.isFinite(journeyDelaySeconds) && Math.abs(journeyDelaySeconds) < 3600;
   const timingSource: JourneyStop["timingSource"] = stopPredictionAvailable ? "stop" :
     tripEstimateAvailable ? "journey_estimate" : "schedule";
   const expectedFromStop = rtArrival || (distinctArrival ? formatDutchClock(reportedArrival) :
@@ -539,7 +540,7 @@ export async function getRit(id: string): Promise<RitData> {
 }
 
 /** Pure mapping of an /api/rit response; exported for regression tests. */
-export function normalizeRit(id: string, raw: any): RitData {
+export function normalizeRit(id: string, raw: any, nowMs: number = Date.now()): RitData {
   const line = str(first(raw?.line, raw?.line_number, raw?.trip?.line, raw?.service), "?");
   const carrier = str(first(raw?.carrier, raw?.operator, raw?.agency_name), inferCarrierFromLine(line));
   const points = arrayOf<any>(first(raw?.polyline, raw?.shape, raw?.route_shape, raw?.path)).map((point) => ({
@@ -547,6 +548,10 @@ export function normalizeRit(id: string, raw: any): RitData {
     longitude: num(Array.isArray(point) ? point[1] : first(point?.longitude, point?.lon, point?.lng), 0) || 0
   }));
   const stopItems = arrayOf<any>(first(raw?.stops, raw?.timeline, raw?.haltes, raw?.journey));
+  // GPS/delay on a vehicle may belong to an earlier service using the same vehicle.
+  // Do not project a journey-wide delay onto stops until this scheduled trip starts.
+  const firstStartMs = plannedDepartureAtMs(stopItems[0]?.planned_departure_at);
+  const tripNotStarted = firstStartMs !== null && nowMs < firstStartMs;
   const vehicle = first(raw?.vehicle, raw?.position, raw?.live_position);
   const vLat = num(first(vehicle?.lat, vehicle?.latitude));
   const vLon = num(first(vehicle?.lon, vehicle?.lng, vehicle?.longitude));
@@ -581,7 +586,8 @@ export function normalizeRit(id: string, raw: any): RitData {
       vehicle?.estimated_position === true || vehicle?.estimatedPosition === true,
     polyline: points.filter((point) => point.latitude !== 0 && point.longitude !== 0),
     stops: stopItems.map((item, index) => normalizeJourneyStop(item, index, stopItems.length, journeyDelaySeconds,
-      raw?.live === true && typeof gpsAgeSeconds === "number" && gpsAgeSeconds >= 0 && gpsAgeSeconds <= 120)),
+      raw?.live === true && !tripNotStarted &&
+      typeof gpsAgeSeconds === "number" && gpsAgeSeconds >= 0 && gpsAgeSeconds <= 120)),
     liveLabel: str(first(raw?.live_label, raw?.status_label), raw?.live === false ? "Dienstregeling" : "Live ritinformatie"),
     delayLabel: str(first(raw?.delay_label, raw?.delay_text), "") || undefined,
     cancelled: raw?.cancelled === true,
