@@ -22,6 +22,7 @@ import type { TripSignature } from "../../lib/ritIdentity";
 import { journeyEnded, ritShareText } from "../../lib/ritLifecycle";
 import { journeyStopClock, expectedTimelineLocation, timelineDisplayProgress } from "../../lib/timelineProgress";
 import { isRouteMatchFailure, journeyExtras } from "../../lib/flowLiveDetails";
+import { firstDepartureClock, tripNotYetStarted } from "../../lib/ritStartGuard";
 import { disruptionSummary } from "../../lib/haltebordV4";
 import { upcomingJourneyNotices } from "../../lib/upcomingJourneyNotices";
 import { linesConflict } from "../../lib/flowRitQuality";
@@ -90,7 +91,7 @@ function coordFromStop(stop: JourneyStop | undefined): LatLon | undefined {
 /** Fixed overlay colour for the part of the route still to ride (to the alighting stop). */
 const RIDE = "#6A42C2";
 
-function TripMap({ journey, live, gpsAgeSeconds, nextStop, boarding, expanded = false, alight, initialFollow = false, focusStopId = null }: { journey: RitData; live: boolean; gpsAgeSeconds?: number; nextStop?: JourneyStop | null; boarding: BoardingHint; expanded?: boolean;
+function TripMap({ journey, live, preStart = false, gpsAgeSeconds, nextStop, boarding, expanded = false, alight, initialFollow = false, focusStopId = null }: { journey: RitData; live: boolean; preStart?: boolean; gpsAgeSeconds?: number; nextStop?: JourneyStop | null; boarding: BoardingHint; expanded?: boolean;
   /** Where the user gets off: a marker, and the route there is highlighted. */
   alight?: JourneyStop | null;
   /** Opened by tapping the vehicle in the timeline: start by following it. */
@@ -112,7 +113,7 @@ function TripMap({ journey, live, gpsAgeSeconds, nextStop, boarding, expanded = 
   const first = journey.stops.find((s) => validPosition(coordFromStop(s)));
   const height = expanded ? 415 : 230;
   const boardingPoint=coordFromStop(board);
-  const busPoint=live&&!journey.estimatedPosition&&validPosition(journey.vehicle)?journey.vehicle:undefined;
+  const busPoint=live&&!preStart&&!journey.estimatedPosition&&validPosition(journey.vehicle)?journey.vehicle:undefined;
   const nextPoint=coordFromStop(nextStop || undefined);
   const affectedStop = focusStopId ? journey.stops.find(s => String(s.id) === focusStopId) : undefined;
   const affectedPoint = coordFromStop(affectedStop);
@@ -124,7 +125,7 @@ function TripMap({ journey, live, gpsAgeSeconds, nextStop, boarding, expanded = 
   // On GPS loss preserve the camera but remove the vehicle marker until a fresh fix arrives.
   const center=routeMapCenter(viewMode, busPoint, boardingPoint, coordFromStop(first),
     viewMode === "follow" ? lastFollowPoint.current : selectedCenter);
-  const gpsLabel=mapGpsLabel(gpsAgeSeconds, Boolean(busPoint), Boolean(journey.estimatedPosition));
+  const gpsLabel=preStart ? {text:"Rit nog niet begonnen",tone:"muted" as const} : mapGpsLabel(gpsAgeSeconds, Boolean(busPoint), Boolean(journey.estimatedPosition));
   panState.current = {center, zoom};
   function applyDrag(dx:number,dy:number) {
     const start=dragStart.current;
@@ -642,6 +643,7 @@ export default function RitScreen() {
   }, []);
 
   const info = useMemo(() => journeyExtras(journey, journey?.stops || [], nowMs), [journey, nowMs]);
+  const beforeTripStart = tripNotYetStarted(journey, nowMs);
   const live = info.liveLocation;
   const gpsAge = journey?.gpsAgeSeconds;
   const shownGpsAge = typeof gpsAge === "number" && Number.isFinite(gpsAge) ? Math.max(0, gpsAge + (nowMs - fetchedAt) / 1000) : undefined;
@@ -736,6 +738,7 @@ export default function RitScreen() {
   const headline = journey ? positionHeadline({ ended, placeText: onTheWayText(placeText), live: Boolean(journey.live), cancelled, routeUnknown }) : "";
   const headerHasLive = Boolean(verifiedLive && !lastKnown && !ended && !cancelled);
   const headerStatusText = cancelled ? "Deze rit rijdt niet" : ended ? "Rit beëindigd"
+    : beforeTripStart ? "Rit nog niet begonnen · vertrek " + (firstDepartureClock(journey) || "volgens dienstregeling")
     : headerHasLive ? [headline, typeof shownGpsAge === "number" ? "live " + Math.round(shownGpsAge) + " sec" : "live"].filter(Boolean).join(" · ")
     : lastKnown ? "Laatst bekende positie" : journey ? headline : "Rit laden…";
   const nextStopOverdue = Boolean(nextStop && nextStopIsLive && !lastKnown && overdueNextStop(timeOf(nextStop), nowMs, true));
@@ -989,7 +992,7 @@ export default function RitScreen() {
             <Text style={styles.mapAffectedBoardText}>Haltebord</Text>
           </Pressable>
         </View> : null}
-        <TripMap journey={journey} live={gpsFresh} gpsAgeSeconds={shownGpsAge} nextStop={nextStopIsLive ? nextStop : null} boarding={boarding} expanded
+        <TripMap journey={journey} live={gpsFresh && !beforeTripStart} preStart={beforeTripStart} gpsAgeSeconds={shownGpsAge} nextStop={nextStopIsLive ? nextStop : null} boarding={boarding} expanded
           alight={alightState.status !== "passed" ? alightStop : null} initialFollow={mapFollowStart} focusStopId={alertMapStopId}/>
         {nextStop ? <View style={styles.mapNextStop}>
           <Ionicons name="location" color={nextStopIsLive && !lastKnown ? c.green : c.muted} size={22}/>

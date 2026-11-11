@@ -1,5 +1,6 @@
 /** Read-only adapter for available journey information. Never synthesise GPS positions. */
 import type { JourneyStop, RitData } from "../types/api";
+import { firstPlannedDepartureMs, tripNotYetStarted } from "./ritStartGuard";
 
 type Dict = Record<string, unknown>;
 type Point = {lat: number; lon: number};
@@ -18,7 +19,7 @@ export type NoLocationReason =
   | "shape-invalid" | "shape-too-long" | "shape-bad-point" | "shape-gap"
   | "too-few-stops" | "no-stop-run"
   | "off-route" | "ambiguous-route" | "outside-mapped-section" | "ambiguous-section" | "ambiguous-stop" | "no-segment"
-  | "before-first-stop" | "after-last-stop"
+  | "before-first-stop" | "after-last-stop" | "before-trip-start"
   | "chord-no-match" | "no-next-stop";
 export type LiveLocation = { kind: "at" | "between"; index: number; updated: Date; source?: LocationSource } | null;
 export type JourneyExtras = { busNumber?: string; carrier?: string; journeyNumber?: string; block?: string; lastUpdate?: string; liveLocation: LiveLocation; liveReason?: NoLocationReason };
@@ -319,7 +320,12 @@ export function journeyExtras(journey: RitData | null, stops: JourneyStop[], now
   let liveLocation: LiveLocation = null;
   let liveReason: NoLocationReason | undefined;
   let liveDetail: string | undefined;
-  if (!eligible) liveReason = "not-live";
+  if (tripNotYetStarted(journey, nowMs)) {
+    liveReason = "before-trip-start";
+    const start = firstPlannedDepartureMs(journey);
+    if (start !== null) liveDetail = `vertrek over ${Math.ceil((start - nowMs) / 60000)} min`;
+  }
+  else if (!eligible) liveReason = "not-live";
   else if (!gpsPos) liveReason = "no-gps-position";
   else if (!last) liveReason = "no-gps-time";
   else if (age < -5000) liveReason = "gps-clock-ahead";

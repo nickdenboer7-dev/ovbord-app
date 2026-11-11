@@ -115,6 +115,8 @@ export interface JourneyStop {
   actualKnown?: boolean;
   expectedTime?: string;
   plannedDepartureTime?: string;
+  /** Exact scheduled departure from GTFS/API, including date and timezone. */
+  plannedDepartureAt?: string;
   expectedDepartureTime?: string;
   delayMinutes?: number;
   /** Source of the stop clock: per-stop feed, KV6 trip-level estimate, or schedule. */

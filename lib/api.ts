@@ -281,6 +281,7 @@ function normalizeJourneyStop(item: any, index: number, total: number, journeyDe
     actualKnown,
     expectedTime: expectedFromStop || expectedFromJourney || scheduledClock,
     plannedDepartureTime: plannedDeparture,
+    plannedDepartureAt: typeof item?.planned_departure_at === "string" ? item.planned_departure_at : undefined,
     expectedDepartureTime: expectedDeparture,
     delayMinutes: rtStop && rtDelaySeconds !== undefined ? Math.round(rtDelaySeconds / 60) :
       stopPredictionAvailable ? delayMinutes :
